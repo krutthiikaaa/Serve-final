@@ -4,7 +4,7 @@ import type { AppContext } from '../../context.js';
 import { createAuthenticate } from '../../middleware/auth.js';
 import { sensitiveLimiter } from '../../middleware/rate-limit.js';
 import { email, id, name, parse } from '../../http/validation.js';
-import { createAuthService } from './auth.service.js';
+import type { Services } from '../../services.js';
 import { resolvePrincipal } from './principal.js';
 
 const studentRegistrationBody = z.object({ name, email, hostelId: id });
@@ -14,9 +14,9 @@ const staffRegistrationBody = z.object({ name, email, requestedCanteenId: id.opt
  * /api/auth — registration and identity. Registration endpoints accept a
  * verified Firebase token from a user who has no SERVE account yet.
  */
-export function createAuthRouter(ctx: AppContext): Router {
+export function createAuthRouter(ctx: AppContext, services: Services): Router {
   const router = Router();
-  const service = createAuthService(ctx);
+  const service = services.auth;
   const authenticate = createAuthenticate(ctx);
   const limiter = sensitiveLimiter(ctx.env);
 

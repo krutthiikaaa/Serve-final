@@ -7,6 +7,21 @@ import { requestLogger } from './middleware/request-logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
+import { createServices } from './services.js';
+import {
+  createCanteensRouter,
+  createHostelsRouter,
+  createMenuRouter,
+} from './modules/canteens/canteens.routes.js';
+import { createCartRouter, createOrdersRouter } from './modules/orders/orders.routes.js';
+import {
+  createPaymentWebhookRouter,
+  createPaymentsRouter,
+} from './modules/payments/payments.routes.js';
+import { createStaffRouter } from './modules/staff/staff.routes.js';
+import { createAdminRouter } from './modules/admin/admin.routes.js';
+import { createNotificationsRouter } from './modules/notifications/notifications.routes.js';
+import { createStudentsRouter } from './modules/students/students.routes.js';
 
 /**
  * Build the Express application. Dependencies are injected so tests can run
@@ -46,6 +61,11 @@ export function createApp(ctx: AppContext): Express {
     }),
   );
 
+  const services = createServices(ctx);
+
+  // Webhooks need the raw body for signature verification: mount before JSON parsing.
+  app.use('/api/payments/webhooks', createPaymentWebhookRouter(ctx, services));
+
   app.use(express.json({ limit: '100kb' }));
 
   // Health probes are mounted before the rate limiter so load-balancer checks
@@ -67,7 +87,17 @@ export function createApp(ctx: AppContext): Express {
     }),
   );
 
-  app.use('/api/auth', createAuthRouter(ctx));
+  app.use('/api/auth', createAuthRouter(ctx, services));
+  app.use('/api/hostels', createHostelsRouter(ctx));
+  app.use('/api/canteens', createCanteensRouter(ctx, services));
+  app.use('/api/menu', createMenuRouter(ctx, services));
+  app.use('/api/cart', createCartRouter(ctx, services));
+  app.use('/api/orders', createOrdersRouter(ctx, services));
+  app.use('/api/payments', createPaymentsRouter(ctx, services));
+  app.use('/api/students', createStudentsRouter(ctx, services));
+  app.use('/api/staff', createStaffRouter(ctx, services));
+  app.use('/api/admin', createAdminRouter(ctx, services));
+  app.use('/api/notifications', createNotificationsRouter(ctx, services));
 
   app.use(notFoundHandler);
   app.use(errorHandler);
