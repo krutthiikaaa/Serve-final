@@ -1,0 +1,29 @@
+{
+  "name": "serve",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SERVE — university night-canteen ordering platform. Order. Track. Collect.",
+  "workspaces": [
+    "backend"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev:backend": "npm run dev --workspace backend",
+    "db:setup:local": "bash backend/scripts/db-setup-local.sh",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "prettier": "3.9.9"
+  },
+  "overrides": {
+    "mysql2": "3.24.5",
+    "deepmerge-ts": "8.0.2"
+  }
+}

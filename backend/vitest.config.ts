@@ -1,0 +1,12 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    include: ['tests/**/*.test.ts'],
+    testTimeout: 15_000,
+    hookTimeout: 30_000,
+    // Integration suites share one PostgreSQL test database; run files serially.
+    fileParallelism: false,
+  },
+});

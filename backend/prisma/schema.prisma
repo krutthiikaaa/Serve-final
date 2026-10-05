@@ -1,0 +1,19 @@
+// SERVE — PostgreSQL schema
+//
+// Phase 1: connection only. Domain models (Canteen, Hostel, Student, Staff,
+// Admin, MenuCategory, MenuItem, CanteenChangeRequest, Order, OrderItem,
+// Payment, Notification) are introduced in Phase 2 via a reviewed migration.
+//
+// The connection URL is supplied by prisma.config.ts (CLI) and by the
+// driver adapter in src/lib/prisma.ts (runtime). It is never hardcoded here.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
