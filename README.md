@@ -2,12 +2,13 @@
 
 ### Order. Track. Collect.
 
-> **Under active development.** SERVE is being built in 12 reviewed phases.
-> **Phase 1 is done:** the monorepo and backend foundation (Express server,
-> validated environment configuration, PostgreSQL through Prisma, security
-> middleware and health endpoints). The Student App, Staff Dashboard and
-> Admin Portal **are not implemented yet**. Wherever this README describes
-> them, it describes the approved design, not working software. See
+> **Under active development.** The **backend platform is implemented**:
+> PostgreSQL schema, Firebase authentication, the REST API (canteens, menus,
+> cart quotes, orders, mock payments, staff and admin operations,
+> notifications) and authenticated Socket.IO realtime, all covered by
+> automated tests. The Student App, Staff Dashboard and Admin Portal **are not
+> implemented yet**. Wherever this README describes them, it describes the
+> approved design, not working software. See
 > [Current Development Status](#17-current-development-status).
 
 ---
@@ -44,31 +45,35 @@ don't know:
 
 ## 5. Key Features
 
-All of the following are **planned**. The phase that delivers each one is
-shown in brackets.
+Implemented in the backend (API + realtime):
 
-- Canteen-specific menus served from the database. Nothing is hardcoded in
-  the apps. (Phase 4–5)
-- A cart tied to one canteen at a time, with confirmation before switching
-  canteens. (Phase 5)
-- Server-side pricing and totals. Prices and totals sent by clients are never
-  trusted. (Phase 4)
-- Online payment, built as a mock provider first in a Razorpay-ready design,
-  with idempotency protection against duplicate orders. (Phase 9)
-- Real-time order status, menu and canteen updates over authenticated
-  Socket.IO. (Phase 8)
-- Staff menu management and pausing/resuming orders, scoped strictly to the
-  staff member's assigned canteen. (Phase 4, 6)
-- Admin management of canteens, staff approval and canteen assignment.
-  (Phase 4, 7)
+- Canteen-specific menus served from PostgreSQL. Unavailable items stay
+  visible but cannot be ordered.
+- Server-side pricing and totals. Prices, totals, roles and identities sent by
+  clients are never trusted.
+- Orders with immutable item snapshots, public order numbers (`SV1001`, …)
+  and `Idempotency-Key` protection against duplicates.
+- Online payment through a provider abstraction: a mock provider for
+  development and a Razorpay adapter (signature verification done; API calls
+  pending). Amounts are verified and every payment event is processed once.
+- Realtime order status, menu, canteen and staff-assignment updates over
+  authenticated Socket.IO, with rooms assigned by the server.
+- Staff menu management and pausing/resuming orders, strictly limited to the
+  staff member's assigned canteen.
+- Admin management of canteens, hostels, staff approval, assignment and
+  deactivation.
+- Persistent notifications for order and staff events.
+
+Planned in the client apps: the mobile ordering experience, the cart switch
+confirmation, and the staff and admin dashboards.
 
 ## 6. Three Interfaces
 
 | Interface | Users | Form factor | Status |
 |---|---|---|---|
-| **Student App** | Students | Mobile only (Flutter). Bottom navigation: Home · Menu · Orders · Profile; cart in the header | Planned (Phase 5) |
-| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation | Planned (Phase 6) |
-| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation | Planned (Phase 7) |
+| **Student App** | Students | Mobile only (Flutter). Bottom navigation: Home · Menu · Orders · Profile; cart in the header | Planned |
+| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation | Planned |
+| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation | Planned |
 
 All three talk to **one shared backend**.
 
@@ -104,10 +109,10 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Student App | Flutter 3.47.4 + Dart 3.13.3 | Planned |
 | Staff Dashboard | React 19 + TypeScript + Vite | Planned |
 | Admin Portal | React 19 + TypeScript + Vite | Planned |
-| Backend | Node.js + TypeScript + Express + Socket.IO | Express foundation **implemented**; Socket.IO planned |
-| Database | PostgreSQL + Prisma | Connection **implemented**; schema planned (Phase 2) |
-| Authentication | Firebase Authentication + Firebase Admin | Planned (Phase 3) |
-| Payments | Mock provider, Razorpay-ready | Planned (Phase 9) |
+| Backend | Node.js + TypeScript + Express + Socket.IO | **Implemented** |
+| Database | PostgreSQL + Prisma | **Implemented** (schema, migration, seed) |
+| Authentication | Firebase Authentication + Firebase Admin | **Implemented** (Auth Emulator in development; a real project is configuration-only) |
+| Payments | Mock provider, Razorpay-ready | Mock **implemented**; Razorpay API calls pending |
 
 ## 9. User Roles
 
@@ -136,8 +141,8 @@ new hostel towers can be added without code changes.
 
 A student's default canteen comes from their hostel. They may also order from
 any other canteen that is **active** and **accepting orders**. The backend
-re-checks this on every order. The mapping above is seed data (Phase 2), not
-application code.
+re-checks this on every order. The mapping above is seed data in PostgreSQL,
+not application code. Admins can add hostels or remap them through the API.
 
 ## 11. Order Lifecycle
 
@@ -154,39 +159,40 @@ past orders.
 
 ## 12. Project Structure
 
-The planned monorepo layout. Entries marked *(planned)* don't exist yet.
+The monorepo layout. Entries marked *(planned)* don't exist yet.
 
 ```
 serve/
-├── backend/            Node.js + TypeScript + Express + Prisma   (Phase 1 – present)
-├── student-app/        Flutter mobile app                        (planned – Phase 5)
-├── staff-dashboard/    React + TypeScript + Vite                 (planned – Phase 6)
-├── admin-portal/       React + TypeScript + Vite                 (planned – Phase 7)
-├── e2e/                Cross-application end-to-end tests        (planned – Phase 10)
-├── docs/               Architecture, API, database, development  (present)
-├── brand/              Official logo location and palette        (present; logo pending)
-├── firebase.json       Firebase Auth Emulator configuration      (planned – Phase 3)
-├── .env.example        Documented environment variables          (present)
+├── backend/            Node.js + TypeScript + Express + Socket.IO + Prisma   (present)
+├── student-app/        Flutter mobile app                                    (planned)
+├── staff-dashboard/    React + TypeScript + Vite                             (planned)
+├── admin-portal/       React + TypeScript + Vite                             (planned)
+├── e2e/                Cross-application end-to-end tests                    (planned)
+├── docs/               Architecture, API, database, development              (present)
+├── brand/              Official logo location and palette                    (present; logo pending)
+├── firebase.json       Firebase Auth Emulator configuration                  (present)
+├── .env.example        Documented environment variables                      (present)
 ├── .gitignore
 ├── package.json        npm workspaces
 └── README.md
 ```
 
-Current backend layout:
+Backend layout:
 
 ```
 backend/
-├── prisma/schema.prisma      generator + datasource (models arrive in Phase 2)
-├── prisma.config.ts          Prisma CLI configuration
-├── scripts/db-setup-local.sh idempotent local role/database creation
+├── prisma/            schema.prisma, migrations/, seed.ts
+├── scripts/           db-setup-local.sh, create-admin.ts, seed-dev-users.ts
 ├── src/
-│   ├── config/               env validation, logger
-│   ├── lib/                  errors, Prisma client factory
-│   ├── middleware/           request logging, error handling
-│   ├── modules/health/       health endpoints
-│   ├── app.ts                Express application
-│   └── server.ts             process entry point
-└── tests/                    unit + integration (real PostgreSQL)
+│   ├── config/        env validation, logger
+│   ├── lib/           errors, Prisma, Firebase verifier
+│   ├── middleware/    authentication + role guards, rate limits, logging, errors
+│   ├── modules/       auth, canteens, menu, orders, payments, change-requests,
+│   │                  staff, admin, notifications, students, health
+│   ├── realtime/      event outbox + Socket.IO server
+│   ├── app.ts         Express composition
+│   └── server.ts      HTTP + Socket.IO entry point
+└── tests/             unit + integration (PostgreSQL + Firebase Auth Emulator)
 ```
 
 ## 13. Local Development Setup
@@ -197,6 +203,7 @@ Only the backend can be run at this stage.
 
 - Node.js 22.12 or newer (see `.nvmrc`) and npm 10+
 - PostgreSQL 16 running locally on port 5432
+- Java 21 and the Firebase CLI (`npm install -g firebase-tools`) for the Auth Emulator
 
 ### Steps
 
@@ -210,19 +217,32 @@ SERVE_DB_PASSWORD='choose-a-password' npm run db:setup:local
 #    If your superuser is only reachable as the postgres OS user:
 #    SERVE_DB_PASSWORD='...' PSQL_ADMIN="sudo -u postgres psql -d postgres" npm run db:setup:local
 
-# 3. Create env files from the template (both are gitignored)
+# 3. Create env files from the template (both are gitignored), then edit them
 cp .env.example backend/.env
 cp .env.example backend/.env.test
-#    backend/.env      -> NODE_ENV=development, DATABASE_URL .../serve_dev
-#    backend/.env.test -> NODE_ENV=test,        DATABASE_URL .../serve_test
-#    In both: set the database password and PAYMENT_SECRET (openssl rand -hex 32)
+#    See docs/development.md for the exact values for each file.
 
-# 4. Run the backend with live reload on http://localhost:5001
+# 4. Start the Firebase Auth Emulator (separate terminal)
+npm run emulators
+
+# 5. Apply migrations and seed canteens, hostels and menus
+npm run prisma:migrate:deploy --workspace backend
+npm run db:seed --workspace backend
+
+# 6. Optional: emulator demo accounts (admin, approved staff, pending staff, student)
+DEV_SEED_PASSWORD='choose-a-password' npm run db:seed:dev-users --workspace backend
+
+# 7. Run the backend with live reload on http://localhost:5001
 npm run dev:backend
-
-# 5. Check it
 curl http://localhost:5001/api/health
 curl http://localhost:5001/api/health/db
+```
+
+Provision an admin explicitly (there is no public admin registration):
+
+```bash
+ADMIN_BOOTSTRAP_PASSWORD='choose-a-password' \
+  npm run admin:create --workspace backend -- --email ops@serve.dev --name "Ops Admin"
 ```
 
 Production-style build and start:
@@ -248,11 +268,14 @@ error names the variable without printing its value.
 | `PORT` | no | Default `5001`; `5000` rejected |
 | `DATABASE_URL` | yes | `postgresql://…` |
 | `CORS_ORIGINS` | yes | Comma-separated exact origins; production requires https and no localhost |
-| `PAYMENT_MODE` | no | `mock` (default) or `razorpay` |
-| `PAYMENT_SECRET` | yes | At least 32 characters |
-| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | production | Used from Phase 3 |
+| `FIREBASE_PROJECT_ID` | yes | `demo-serve` with the emulator; a real project id in production (`demo-` is rejected there) |
 | `FIREBASE_AUTH_EMULATOR_HOST` | no | Development/test only; rejected in production |
-| `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX` | no | See `.env.example` |
+| `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | without emulator | Service-account values (never commit the JSON) |
+| `STUDENT_EMAIL_DOMAINS` | no | Optional university email-domain allowlist; empty disables it |
+| `PAYMENT_MODE` | no | `mock` (default, development/test only) or `razorpay` (required in production) |
+| `PAYMENT_SECRET` | mock mode | At least 32 characters |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | razorpay mode | Placeholders only until the Razorpay integration is completed |
+| `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_*`, `SENSITIVE_RATE_LIMIT_*` | no | See `.env.example` |
 
 | Environment | Configuration source | Database |
 |---|---|---|
@@ -263,64 +286,72 @@ error names the variable without printing its value.
 ## 15. Testing
 
 ```bash
-npm test             # backend: Vitest + Supertest against the real serve_test database
+npm run test:emulator   # starts a temporary Firebase Auth Emulator and runs the backend suite
+npm test                # same suite, if `npm run emulators` is already running
 npm run typecheck
 npm run lint
 npm run format:check
 npm run build
 ```
 
-The current suite (Phase 1) covers environment validation, log redaction,
-both health endpoints (including a real unreachable-database case), security
-headers, CORS, request IDs, the error format and rate limiting. HTTP and the
-database are not mocked. Cross-application end-to-end tests are planned for
-Phase 10.
+The backend suite runs against the real `serve_test` database, which every run
+recreates from the migrations, and against the real Firebase Auth Emulator. It
+covers:
+- database constraints and seed idempotency
+- token verification and registration
+- menu management and cross-canteen isolation
+- cart quotes, orders, idempotency and the state machine
+- payments, including amount mismatch and replayed events
+- staff approval and admin operations
+- notifications
+- Socket.IO authentication and room isolation
+- a security sweep over every protected route
+- a critical end-to-end flow (admin approval through to realtime pickup)
+
+HTTP, the database and authentication are not mocked. Cross-application
+end-to-end tests with the client apps come later.
 
 ## 16. Security
 
-Implemented in Phase 1:
+Implemented:
 
-- Startup validation of all configuration. In production, localhost or
-  plain-http CORS origins and the Firebase emulator are rejected, and Firebase
-  credentials are required.
-- `helmet` security headers with a strict content security policy.
-- An exact-origin CORS allowlist with no cookie credentials (the API uses
-  Bearer tokens).
-- Rate limiting on the API (health checks are exempt) and a 100 kB JSON body
-  limit.
-- Structured logs that redact authorization headers, tokens, passwords,
-  signatures and keys.
-- One central error handler that never exposes stack traces or internal
-  details.
-- `.gitignore` rules that keep env files, private keys and service-account
-  JSON out of the repository.
+- Firebase ID-token verification with revocation checks. Roles, staff status
+  and canteen scope come from PostgreSQL only.
+- Strict per-canteen isolation for staff, and per-student isolation for orders
+  and notifications. Out-of-scope resources return 404.
+- Server-side prices and totals, a backend-enforced order state machine,
+  idempotent order creation, and amount-verified, replay-safe payments.
+- Authenticated Socket.IO with rooms assigned by the server.
+- Startup validation of all configuration. Production rejects localhost or
+  plain-http CORS origins, the Firebase emulator, `demo-` projects and the
+  mock payment provider.
+- `helmet` headers with a strict CSP, an exact-origin CORS allowlist, global
+  and per-user rate limits, request-size limits, and zod validation of all
+  input.
+- Redacted structured logs, and a central error handler that never exposes
+  internals.
+- `.gitignore` rules for env files, private keys and service-account JSON.
 
-Planned:
-
-- Firebase ID-token verification with roles and canteen scope taken from
-  PostgreSQL (Phase 3).
-- Per-canteen data isolation for staff and validated state transitions
-  (Phase 4).
-- Authenticated Socket.IO with server-assigned rooms (Phase 8).
-- HMAC-verified payments with idempotency keys (Phase 9).
-- A full security audit (Phase 11).
+Planned: a full production security audit and the real Razorpay integration.
 
 ## 17. Current Development Status
 
+The backend master task combined database, authentication, REST APIs,
+payments and realtime into backend Phases 2–5. The client apps follow.
+
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Monorepo, backend foundation, environment configuration, PostgreSQL/Prisma connection, health endpoints | **Complete** |
-| 2 | Database schema, migrations, seed data | Not started |
-| 3 | Firebase authentication, roles, authorization | Not started |
-| 4 | Backend REST APIs | Not started |
-| 5 | Student App (Flutter) | Not started |
-| 6 | Staff Dashboard (React) | Not started |
-| 7 | Admin Portal (React) | Not started |
-| 8 | Socket.IO realtime | Not started |
-| 9 | Mock payments and verification | Not started |
-| 10 | Full end-to-end testing | Not started |
-| 11 | Production configuration and security audit | Not started |
-| 12 | Documentation and deployment preparation | Not started |
+| 1 | Monorepo, backend foundation, environment configuration, health endpoints | **Complete** |
+| 2 | Database schema, migration, seed data | **Complete** |
+| 3 | Firebase authentication, roles, authorization | **Complete** |
+| 4 | REST APIs: canteens, menus, cart, orders, mock payments, staff, admin, notifications | **Complete** |
+| 5 | Socket.IO realtime and the critical end-to-end backend flow | **Complete** |
+| — | Student App (Flutter) | Not started |
+| — | Staff Dashboard (React) | Not started |
+| — | Admin Portal (React) | Not started |
+| — | Cross-application end-to-end tests | Not started |
+| — | Real Razorpay integration | Not started |
+| — | Production security audit and deployment preparation | Not started |
 
 ## 18. Future Enhancements
 

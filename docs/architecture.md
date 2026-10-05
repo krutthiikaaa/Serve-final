@@ -1,122 +1,132 @@
 # SERVE — Architecture
 
-_Status: Phase 1 implemented (backend foundation). Sections marked
-**(planned)** describe the design approved for later phases._
+_Status: the backend is implemented through Phase 5 (database,
+authentication, REST API, payments, realtime). The three client apps are
+planned for later phases and are described here as integration targets._
 
 ## 1. System overview
 
 ```
-┌──────────────┐  ┌──────────────────┐  ┌───────────────┐
-│ Student App  │  │ Staff Dashboard  │  │ Admin Portal  │
-│  (Flutter)   │  │  (React + Vite)  │  │ (React + Vite)│
-└──────┬───────┘  └────────┬─────────┘  └──────┬────────┘
-       │ ① Firebase sign-in (email/password) → ID token
-       ▼                   ▼                    ▼
-   ┌────────────── Firebase Authentication ──────────────┐
-   └──────────────────────────────────────────────────────┘
-       │ ② HTTPS REST   Authorization: Bearer <idToken>
-       │ ③ Socket.IO    auth: { token }
-       ▼
-┌──────────────────────── Backend (Express 5 + Socket.IO) ────────────────────────┐
-│ helmet · strict CORS · rate limit · request ids · redacted structured logs      │
-│ verifyIdToken → principal resolved from PostgreSQL (role, status, canteen)      │
-│ Services: menu · orders (state machine) · payments (provider interface) · staff │
-│ Domain events (after commit) → rooms student:<id> / canteen:<id> / admin        │
-└───────────────────────────────────┬─────────────────────────────────────────────┘
-                                    ▼ Prisma 7 + @prisma/adapter-pg
-                              PostgreSQL 16
+Flutter Student App ──┐
+React Staff Dashboard ─┼──► Express backend (REST + Socket.IO) ──► PostgreSQL
+React Admin Portal ────┘              │
+                                      └──► Firebase Admin (token verification)
+
+   Firebase Authentication : who you are (identity)
+   PostgreSQL              : what you may do (roles, assignments) + all application state
+   Socket.IO               : realtime delivery of committed changes
 ```
 
-**Core rule: Firebase proves identity; PostgreSQL decides authorisation.**
-The backend works out the student, staff member or admin and their canteen
-scope from the verified token's UID. It never takes these from request
-bodies, and it never accepts prices or totals from clients.
+Each client signs in with the Firebase SDK and sends the ID token with every
+REST call (`Authorization: Bearer …`) and on the Socket.IO handshake
+(`auth.token`). The backend verifies the token, loads the account from
+PostgreSQL, and makes every authorization decision from that database record.
 
-## 2. Backend layout (implemented)
+## 2. Backend layout
 
 ```
 backend/src/
-├── config/
-│   ├── env.ts            zod-validated configuration; the ONLY reader of process.env
-│   └── logger.ts         pino with secret redaction
-├── lib/
-│   ├── errors.ts         AppError hierarchy (400/401/403/404/409/422/503)
-│   └── prisma.ts         PrismaClient factory (node-postgres driver adapter)
-├── middleware/
-│   ├── request-logger.ts pino-http + X-Request-Id
-│   └── error-handler.ts  central error → JSON translation, 404 handler
+├── config/         env.ts (validated config: the only reader of process.env), logger.ts
+├── lib/            errors, prisma client, firebase verifier, prisma error helpers, time
+├── middleware/     auth (authenticate + role guards), rate limits, request logging, errors
+├── http/           zod validation helpers, keyset pagination
+├── realtime/       events.ts (Outbox, rooms, publisher contract), socket-server.ts
 ├── modules/
-│   └── health/           GET /api/health, GET /api/health/db
-├── generated/prisma/     generated client (gitignored)
-├── app.ts                createApp({ env, logger, prisma }): dependency-injected
-└── server.ts             process entry: env → logger → prisma → HTTP, graceful shutdown
+│   ├── auth/            principal resolution, registration, admin bootstrap, /api/auth
+│   ├── canteens/        visibility rules, menu read models, /api/canteens /api/menu /api/hostels
+│   ├── menu/            menu management (staff + admin scopes)
+│   ├── orders/          pricing, state machine, order service, /api/cart /api/orders
+│   ├── payments/        provider interface, mock + Razorpay adapters, payment service, routes
+│   ├── change-requests/ staff access / reassignment workflow
+│   ├── staff/           dashboard, order-taking toggle, /api/staff
+│   ├── admin/           canteens, hostels, staff management, /api/admin
+│   ├── notifications/   writer (inside transactions) + read API
+│   ├── students/        recommendations
+│   └── health/
+├── services.ts     builds every service from the AppContext
+├── context.ts      AppContext: env, logger, prisma, verifier, events, payments
+├── app.ts          Express composition
+└── server.ts       HTTP server + Socket.IO + graceful shutdown
 ```
 
-`createApp` receives its dependencies, so the integration tests run the real
-application against a real PostgreSQL test database without mocks.
+Dependencies are injected through `AppContext`. The test suite therefore runs
+the real composition against PostgreSQL and the Firebase Auth Emulator, with
+nothing mocked.
 
-### Request pipeline
+## 3. Request pipeline
 
-1. `trust proxy` (configurable hop count, for correct client IPs behind a load balancer)
-2. Request logger: assigns or propagates `X-Request-Id`, logs with secrets redacted
-3. `helmet`: strict CSP (`default-src 'none'`), HSTS, nosniff, frame protection
-4. CORS: exact-origin allowlist from `CORS_ORIGINS`. No credentials, because the API uses Bearer tokens rather than cookies.
-5. JSON body parser (100 kB limit)
-6. `/api/health`: mounted before the rate limiter so probes are never throttled
-7. Rate limiter on `/api` (per client IP, IETF draft-8 headers)
-8. Feature routers _(Phase 4+)_
-9. 404 handler, then the central error handler
+1. `trust proxy` (configurable hop count)
+2. Request logging with `X-Request-Id` and redacted secrets
+3. `helmet`: strict CSP, HSTS, nosniff, frame protection
+4. Exact-origin CORS (Bearer tokens, no cookies)
+5. Payment webhooks with a **raw** body, mounted before JSON parsing so signatures cover the exact bytes
+6. JSON body parser (100 kB)
+7. `/api/health`, which is not rate limited
+8. Global per-IP rate limit on `/api`
+9. Feature routers. Each one authenticates first and then applies role guards. Sensitive routes add a per-user rate limit.
+10. 404 handler, then the central error handler (stable `{ error: { code, message, requestId } }`)
 
-### Error contract
+## 4. Authentication and authorization
 
-```json
-{ "error": { "code": "DATABASE_UNAVAILABLE", "message": "Database is unreachable", "requestId": "…" } }
+```
+ID token ──► FirebaseIdentityVerifier.verifyIdToken(token, checkRevoked=true)
+         ──► uid ──► resolvePrincipal(prisma, uid) ──► Student | Staff | Admin | null
 ```
 
-Unknown errors are logged in full on the server and returned as a generic
-`500 INTERNAL_ERROR`. Stack traces, SQL and connection details never reach clients.
+- Token problems (expired, revoked, disabled, malformed) return **401**. Firebase being unreachable returns **503**.
+- Guards: `currentStudent`, `currentStaff` (not deactivated), `currentApprovedStaff` (APPROVED with a canteen), `currentAdmin`, `currentPrincipal`. Wrong role → `403 FORBIDDEN_ROLE`; registered in Firebase only → `403 ACCOUNT_NOT_REGISTERED`.
+- **Registration:** students self-register (the token email must match; the hostel is validated; an optional domain allowlist applies). Staff self-register as PENDING. Admins come only from the `admin:create` bootstrap.
+- **Canteen isolation:** staff routes never accept a canteen id for authorization. The scope is `Staff.canteenId` from the database. Resources from another canteen return 404.
+- **Emulator vs production:** `FIREBASE_AUTH_EMULATOR_HOST` selects the emulator. Production rejects the emulator and `demo-` projects, and requires service-account credentials. Switching is configuration-only.
 
-## 3. Environments
+## 5. Orders, pricing and idempotency
+
+- `priceCart` reads current prices, availability and canteen state from PostgreSQL. Client prices and totals are discarded by schema validation.
+- `POST /api/orders` requires `Idempotency-Key`. Uniqueness is enforced by (`studentId`, `idempotencyKey`), plus a SHA-256 `requestHash` that detects a key reused with a different body. Concurrent duplicates collapse onto the winner of the unique constraint.
+- One transaction creates the Order, its OrderItem snapshots, the PENDING Payment and a notification.
+- The state machine in `orders/order-state.ts` is enforced with conditional updates (`WHERE status = <expected>`), so concurrent changes cannot skip states.
+
+## 6. Payments
+
+```
+initiate ──► provider.createOrder(amount = Payment.amountPaise)        (server total)
+client pays on the gateway (mock: simulateCheckout)
+verify   ──► provider.verifyPaymentSignature()                         HMAC
+         ──► provider.fetchPayment()   captured amount and order match (server-to-server)
+         ──► transaction: ProcessedPaymentEvent(provider, eventId) ── duplicate? → no-op
+                          Payment PENDING→SUCCESS, Order PLACED→PAYMENT_CONFIRMED,
+                          notification
+         ──► after commit: order:status_updated (student), order:created (kitchen)
+```
+
+- **MockPaymentProvider:** development and test only. It is rejected in production, and `mock-complete` is only mounted in mock mode outside production.
+- **RazorpayPaymentProvider:** signature verification is implemented as documented by Razorpay. API calls are pending and return `503 PAYMENT_PROVIDER_NOT_IMPLEMENTED`; they never fake success.
+- **Webhooks:** verified over the raw body, and replay-safe through `ProcessedPaymentEvent`.
+
+## 7. Realtime
+
+- Services record changes in an `Outbox` during the transaction. `outbox.flush(events)` runs **after commit**, so no event can describe uncommitted state.
+- Socket.IO authenticates the handshake exactly like REST and assigns rooms on the server: `student:<id>`, `staff:<id>`, `canteen:<id>` (approved staff), `admin:<id>` and `admin`. The one client-initiated room is the read-only `canteen-public:<id>`, joined through a validated `menu:subscribe`.
+- Room commands follow committed assignment changes. Approval or reassignment moves the staff member's live sockets to the new canteen room; deactivation disconnects them.
+- `RealtimeBridge` lets Express be created before Socket.IO attaches to the same HTTP server.
+- Scaling past one instance requires the Socket.IO Redis adapter (planned). The room commands already use cross-node-safe APIs (`fetchSockets`, `disconnectSockets`).
+
+The event catalogue is in [api.md](api.md#realtime-socketio).
+
+## 8. Environments
 
 | | development | test | production |
 |---|---|---|---|
-| Env source | `backend/.env` | `backend/.env.test` | platform/secrets manager only |
-| Database | `serve_dev` | `serve_test` | managed PostgreSQL |
-| Firebase | Auth Emulator | Auth Emulator | real project (credentials required) |
-| CORS | localhost allowed | localhost allowed | https only, localhost rejected |
-| Logs | pretty | silent | JSON |
+| Config source | `backend/.env` | `backend/.env.test` | platform env / secrets manager only |
+| Database | `serve_dev` | `serve_test` (recreated per run) | managed PostgreSQL |
+| Firebase | Auth Emulator (`demo-serve`) | Auth Emulator | real project, service account |
+| Payments | mock | mock | Razorpay (adapter API calls pending) |
+| CORS | localhost allowed | localhost allowed | https only, no localhost |
 
-Production startup fails fast when it's configured with local origins, the
-Firebase emulator or missing Firebase credentials. It never falls back to
-localhost.
+## 9. Clients (planned phases)
 
-## 4. Authentication (planned — Phase 3)
-
-1. The client signs in with the Firebase SDK and attaches its ID token as `Authorization: Bearer`.
-2. The backend runs `verifyIdToken(token, checkRevoked)` to get the UID.
-3. `requireStudent` / `requireStaff` / `requireAdmin` look up the UID in that role's table and check active status. Approved staff get `canteenId` attached from the database.
-4. Student self-registration (`POST /api/auth/student/register`, with name and hostel) only ever creates a Student. An optional university email-domain restriction is configured by environment variable.
-5. Admins are bootstrapped with a CLI script. No role can be self-assigned.
-
-## 5. Realtime (planned — Phase 8)
-
-Socket.IO handshake: `auth.token` is a Firebase ID token, verified the same way as REST.
-**Rooms are assigned by the server**, and clients cannot join arbitrary rooms:
-`student:<id>`, `staff:<id>`, `canteen:<id>` (approved staff only), `admin`,
-plus a read-only `canteen-public:<id>` room for menu and status events.
-Events are emitted only after the database transaction commits.
-
-## 6. Payments (planned — Phase 9)
-
-A `PaymentProvider` interface with `MockProvider` (now) and `RazorpayProvider`
-(later). The backend re-prices the cart from PostgreSQL, creates the order
-(`PLACED`) and payment (`PENDING`), and verifies an HMAC signature
-(`PAYMENT_SECRET`) before moving the order to `PAYMENT_CONFIRMED`. An
-`Idempotency-Key` header with a unique constraint prevents duplicate orders.
-
-## 7. Deployment (planned — Phase 12)
-
-The backend runs as a container (ECS Fargate or App Runner) behind an ALB,
-with RDS PostgreSQL. `prisma migrate deploy` runs as a release step. The
-React apps are static builds on S3 + CloudFront. Running more than one
-backend instance needs the Socket.IO Redis adapter.
+| Client | Uses |
+|---|---|
+| Student app (Flutter) | `/auth/*`, `/hostels`, `/canteens/*`, `/menu/*`, `/cart/quote`, `/orders/*`, `/payments/*`, `/students/me/recommendations`, `/notifications/*`; socket rooms `student:*` + `menu:subscribe` |
+| Staff dashboard (React) | `/auth/*`, `/staff/*`, `/notifications/*`; rooms `staff:*`, `canteen:*` |
+| Admin portal (React) | `/auth/me`, `/admin/*`, `/notifications/*`; rooms `admin`, `admin:*` |
