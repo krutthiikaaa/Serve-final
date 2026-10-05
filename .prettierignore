@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+backend/src/generated
+backend/prisma/migrations
+student-app
+*.md
