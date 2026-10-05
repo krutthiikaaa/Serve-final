@@ -1,175 +1,356 @@
 # SERVE
 
-**Order. Track. Collect.**
+### Order. Track. Collect.
 
-SERVE is a university night-canteen ordering platform. Students browse their
-night canteen's menu on their phone, pay online and track their order in real
-time. They walk over to collect it only when it's ready. There is no delivery
-and no cash on delivery.
-
-> **Status: Phase 1 of 12 — repository and backend foundation.**
-> Shipped so far: the monorepo, the backend skeleton, validated environment
-> configuration, PostgreSQL via Prisma, security middleware and health
-> endpoints. Later sections marked _(Phase N)_ describe planned work that
-> does not exist yet.
+> **Under active development.** SERVE is being built in 12 reviewed phases.
+> **Phase 1 is done:** the monorepo and backend foundation (Express server,
+> validated environment configuration, PostgreSQL through Prisma, security
+> middleware and health endpoints). The Student App, Staff Dashboard and
+> Admin Portal **are not implemented yet**. Wherever this README describes
+> them, it describes the approved design, not working software. See
+> [Current Development Status](#17-current-development-status).
 
 ---
 
-## Architecture
+## 2. Overview
+
+SERVE is a digital night-canteen ordering platform designed for university
+students. It reduces long queues and uncertainty during peak night-canteen
+hours by allowing students to browse menus, place orders, make online
+payments, receive an order number, track order status in real time, and
+collect their food when it is ready.
+
+## 3. Problem We Solve
+
+During peak hours, students queue at the night canteen in person, and they
+don't know:
+
+- how long the queue will take
+- whether the food they want is available
+- whether their order is ready
+- what stage their order is at
+
+## 4. How SERVE Works
+
+1. A student signs in to the mobile app and picks a night canteen. It
+   defaults to the canteen linked to their hostel.
+2. They browse that canteen's menu, add items to their cart and check out.
+3. They pay online. There is **no cash on delivery** and **no delivery to
+   rooms**.
+4. They get an order number (for example `SV1024`) and follow its status live.
+5. Canteen staff see the order immediately, then mark it preparing, ready
+   and collected.
+6. When the order is **ready**, the student walks over and collects it.
+
+## 5. Key Features
+
+All of the following are **planned**. The phase that delivers each one is
+shown in brackets.
+
+- Canteen-specific menus served from the database. Nothing is hardcoded in
+  the apps. (Phase 4–5)
+- A cart tied to one canteen at a time, with confirmation before switching
+  canteens. (Phase 5)
+- Server-side pricing and totals. Prices and totals sent by clients are never
+  trusted. (Phase 4)
+- Online payment, built as a mock provider first in a Razorpay-ready design,
+  with idempotency protection against duplicate orders. (Phase 9)
+- Real-time order status, menu and canteen updates over authenticated
+  Socket.IO. (Phase 8)
+- Staff menu management and pausing/resuming orders, scoped strictly to the
+  staff member's assigned canteen. (Phase 4, 6)
+- Admin management of canteens, staff approval and canteen assignment.
+  (Phase 4, 7)
+
+## 6. Three Interfaces
+
+| Interface | Users | Form factor | Status |
+|---|---|---|---|
+| **Student App** | Students | Mobile only (Flutter). Bottom navigation: Home · Menu · Orders · Profile; cart in the header | Planned (Phase 5) |
+| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation | Planned (Phase 6) |
+| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation | Planned (Phase 7) |
+
+All three talk to **one shared backend**.
+
+## 7. System Architecture
 
 ```
  Student App (Flutter)   Staff Dashboard (React)   Admin Portal (React)
           │                        │                        │
-          │  ① Firebase Authentication (email/password) → ID token
-          │  ② REST  Authorization: Bearer <token>
-          │  ③ Socket.IO (token-authenticated, server-assigned rooms)
+          │  1. Firebase Authentication (email/password) -> ID token
+          │  2. REST over HTTPS   Authorization: Bearer <token>
+          │  3. Socket.IO         token-authenticated, server-assigned rooms
           ▼                        ▼                        ▼
  ┌──────────────── Shared backend: Node.js · Express · Socket.IO ───────────────┐
- │ Firebase proves identity → PostgreSQL decides role, status, canteen access   │
+ │  Firebase proves identity -> PostgreSQL decides role, status, canteen access │
  └───────────────────────────────────┬──────────────────────────────────────────┘
-                                     ▼ Prisma 7 (driver adapter: node-postgres)
-                               PostgreSQL 16
+                                     ▼  Prisma
+                               PostgreSQL
 ```
 
-All three apps talk to one backend. PostgreSQL is the source of truth for
-users, roles, canteens, menus, prices, orders and payments. The backend never
-trusts identities, prices or totals sent by a client. See
-[docs/architecture.md](docs/architecture.md).
+- **PostgreSQL is the source of truth** for users, roles, hostels, canteens,
+  menus, prices, availability, staff assignments, change requests, orders,
+  payments and notifications.
+- The backend works out who the caller is, and which canteen they may act on,
+  from the verified Firebase token. It never trusts IDs, roles, canteen
+  assignments, prices or totals sent by a client.
 
-## Repository structure
+Details: [docs/architecture.md](docs/architecture.md).
 
-```
-.
-├── backend/            Node.js · TypeScript · Express 5 · Prisma 7   (Phase 1 ✅)
-│   ├── prisma/         schema.prisma, migrations (Phase 2)
-│   ├── scripts/        db-setup-local.sh
-│   ├── src/            config/ lib/ middleware/ modules/ app.ts server.ts
-│   └── tests/          unit/ integration/ (real PostgreSQL)
-├── student-app/        Flutter 3.47.4 mobile app                     (Phase 5)
-├── staff-dashboard/    React 19 · TypeScript · Vite                  (Phase 6)
-├── admin-portal/       React 19 · TypeScript · Vite                  (Phase 7)
-├── brand/              Official logo location + palette
-├── docs/               architecture · api · database · development
-├── .env.example        Every environment variable, documented
-└── package.json        npm workspaces
-```
+## 8. Tech Stack
 
-## Prerequisites
+| Layer | Technology | Status |
+|---|---|---|
+| Student App | Flutter 3.47.4 + Dart 3.13.3 | Planned |
+| Staff Dashboard | React 19 + TypeScript + Vite | Planned |
+| Admin Portal | React 19 + TypeScript + Vite | Planned |
+| Backend | Node.js + TypeScript + Express + Socket.IO | Express foundation **implemented**; Socket.IO planned |
+| Database | PostgreSQL + Prisma | Connection **implemented**; schema planned (Phase 2) |
+| Authentication | Firebase Authentication + Firebase Admin | Planned (Phase 3) |
+| Payments | Mock provider, Razorpay-ready | Planned (Phase 9) |
 
-| Tool | Version |
+## 9. User Roles
+
+| Role | How the account is created | Can do |
+|---|---|---|
+| **Student** | Self-registration (Firebase email/password, then a backend registration step with name, email and hostel). An optional university email-domain restriction is configurable. | Browse active canteens, order, pay, track, view history and notifications |
+| **Staff** | Self-registration, then a canteen access request reviewed by an admin | After approval, manage orders, the menu and the order-taking status of their **assigned canteen only** |
+| **Admin** | Bootstrapped by an operator script; never self-assigned | Manage canteens, review staff requests, assign or reassign or deactivate staff |
+
+Roles live in PostgreSQL. A user who registers through the student flow can
+only ever become a Student.
+
+## 10. Canteen Structure
+
+Each student belongs to a **hostel**, and each hostel belongs to a **night
+canteen**. Hostels and canteens are stored as separate database records, so
+new hostel towers can be added without code changes.
+
+| Hostels | Night canteen |
 |---|---|
-| Node.js | ≥ 22.12 (see `.nvmrc`) |
-| npm | ≥ 10 |
-| PostgreSQL | 16 (14+ should work) |
-| Flutter / Dart | 3.47.4 / 3.13.3 _(Phase 5)_ |
-| Java 21 + Firebase CLI | for the Firebase Auth Emulator _(Phase 3)_ |
+| Krishna + Godavari | Krishna & Godavari Night Canteen |
+| Yamuna + Narmada | Yamuna & Narmada Night Canteen |
+| New Hostel | New Hostel Night Canteen |
+| Vedavathi | Vedavathi Night Canteen |
+| Ganga A + Ganga B | Ganga A & Ganga B Night Canteen |
 
-## Quick start (backend)
+A student's default canteen comes from their hostel. They may also order from
+any other canteen that is **active** and **accepting orders**. The backend
+re-checks this on every order. The mapping above is seed data (Phase 2), not
+application code.
+
+## 11. Order Lifecycle
+
+```
+PLACED -> PAYMENT_CONFIRMED -> PREPARING -> READY -> COLLECTED
+
+CANCELLED is also a possible terminal state.
+```
+
+Only valid transitions are allowed, and the backend enforces them. Staff see
+an order only after payment is confirmed. Each order item keeps a snapshot of
+the item name, unit price and quantity, so later menu changes never alter
+past orders.
+
+## 12. Project Structure
+
+The planned monorepo layout. Entries marked *(planned)* don't exist yet.
+
+```
+serve/
+├── backend/            Node.js + TypeScript + Express + Prisma   (Phase 1 – present)
+├── student-app/        Flutter mobile app                        (planned – Phase 5)
+├── staff-dashboard/    React + TypeScript + Vite                 (planned – Phase 6)
+├── admin-portal/       React + TypeScript + Vite                 (planned – Phase 7)
+├── e2e/                Cross-application end-to-end tests        (planned – Phase 10)
+├── docs/               Architecture, API, database, development  (present)
+├── brand/              Official logo location and palette        (present; logo pending)
+├── firebase.json       Firebase Auth Emulator configuration      (planned – Phase 3)
+├── .env.example        Documented environment variables          (present)
+├── .gitignore
+├── package.json        npm workspaces
+└── README.md
+```
+
+Current backend layout:
+
+```
+backend/
+├── prisma/schema.prisma      generator + datasource (models arrive in Phase 2)
+├── prisma.config.ts          Prisma CLI configuration
+├── scripts/db-setup-local.sh idempotent local role/database creation
+├── src/
+│   ├── config/               env validation, logger
+│   ├── lib/                  errors, Prisma client factory
+│   ├── middleware/           request logging, error handling
+│   ├── modules/health/       health endpoints
+│   ├── app.ts                Express application
+│   └── server.ts             process entry point
+└── tests/                    unit + integration (real PostgreSQL)
+```
+
+## 13. Local Development Setup
+
+Only the backend can be run at this stage.
+
+### Prerequisites
+
+- Node.js 22.12 or newer (see `.nvmrc`) and npm 10+
+- PostgreSQL 16 running locally on port 5432
+
+### Steps
 
 ```bash
-npm install                                    # installs all workspaces
+# 1. Install dependencies (npm workspaces)
+npm install
 
-# 1. PostgreSQL: create role "serve" + databases serve_dev / serve_test (idempotent)
+# 2. Create the local PostgreSQL role "serve" and databases serve_dev + serve_test.
+#    Safe to re-run; never drops anything.
 SERVE_DB_PASSWORD='choose-a-password' npm run db:setup:local
-#   Linux distro packages: add PSQL_ADMIN="sudo -u postgres psql -d postgres"
+#    If your superuser is only reachable as the postgres OS user:
+#    SERVE_DB_PASSWORD='...' PSQL_ADMIN="sudo -u postgres psql -d postgres" npm run db:setup:local
 
-# 2. Environment
-cp .env.example backend/.env          # keep the BACKEND section
-cp .env.example backend/.env.test     # NODE_ENV=test, DATABASE_URL -> serve_test
-#   set DATABASE_URL password and PAYMENT_SECRET (openssl rand -hex 32)
+# 3. Create env files from the template (both are gitignored)
+cp .env.example backend/.env
+cp .env.example backend/.env.test
+#    backend/.env      -> NODE_ENV=development, DATABASE_URL .../serve_dev
+#    backend/.env.test -> NODE_ENV=test,        DATABASE_URL .../serve_test
+#    In both: set the database password and PAYMENT_SECRET (openssl rand -hex 32)
 
-# 3. Run
-npm run dev:backend                   # http://localhost:5001
+# 4. Run the backend with live reload on http://localhost:5001
+npm run dev:backend
+
+# 5. Check it
 curl http://localhost:5001/api/health
 curl http://localhost:5001/api/health/db
 ```
 
-The full walkthrough is in [docs/development.md](docs/development.md).
-
-## PostgreSQL setup
-
-`backend/scripts/db-setup-local.sh` creates the `serve` role and the
-`serve_dev` and `serve_test` databases. It is safe to re-run: it only creates
-what's missing and never drops anything. See [docs/database.md](docs/database.md).
-
-## Prisma setup
-
-Prisma 7 configuration lives in `backend/prisma.config.ts`. It reads
-`DATABASE_URL` using the same env-file rules as the app. The client is
-generated into `backend/src/generated/prisma` (gitignored):
+Production-style build and start:
 
 ```bash
-npm run prisma:generate --workspace backend
-npm run prisma:migrate:deploy --workspace backend   # apply migrations (Phase 2+)
+npm run build
+npm run start --workspace backend    # sets NODE_ENV=production; needs production variables
 ```
 
-Destructive commands such as `prisma migrate reset` are never run against
-shared or production data.
+The backend uses port **5001**. Port 5000 is rejected because it conflicts
+with macOS AirPlay Receiver. The full guide is in
+[docs/development.md](docs/development.md).
 
-## Firebase setup _(Phase 3)_
+## 14. Environment Variables
 
-Development and automated tests use the **Firebase Auth Emulator**. It speaks
-the real Firebase Auth protocol, and the Admin SDK verifies its tokens. To
-switch to a real Firebase project you only change environment variables
-(`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`).
-Service-account JSON files are never committed.
-
-## Environment variables
-
-Every variable is documented in [`.env.example`](.env.example) and validated at
-startup by `backend/src/config/env.ts`. The server refuses to start if a value
-is invalid, and the error names the variable without echoing its value.
+Every variable is documented in [`.env.example`](.env.example) and validated
+at startup. The server refuses to start on invalid configuration, and the
+error names the variable without printing its value.
 
 | Variable | Required | Notes |
 |---|---|---|
-| `NODE_ENV` | – | `development` (default) · `test` · `production` |
-| `PORT` | – | default `5001`; `5000` is rejected (macOS AirPlay) |
-| `DATABASE_URL` | ✅ | `postgresql://…` |
-| `CORS_ORIGINS` | ✅ | exact origins; production: https only, no localhost |
-| `PAYMENT_MODE` | – | `mock` (default) · `razorpay` |
-| `PAYMENT_SECRET` | ✅ | ≥ 32 chars |
-| `FIREBASE_PROJECT_ID` / `_CLIENT_EMAIL` / `_PRIVATE_KEY` | production | Phase 3 |
-| `FIREBASE_AUTH_EMULATOR_HOST` | – | dev/test only; forbidden in production |
-| `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_*` | – | see `.env.example` |
+| `NODE_ENV` | no | `development` (default), `test`, `production` |
+| `PORT` | no | Default `5001`; `5000` rejected |
+| `DATABASE_URL` | yes | `postgresql://…` |
+| `CORS_ORIGINS` | yes | Comma-separated exact origins; production requires https and no localhost |
+| `PAYMENT_MODE` | no | `mock` (default) or `razorpay` |
+| `PAYMENT_SECRET` | yes | At least 32 characters |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | production | Used from Phase 3 |
+| `FIREBASE_AUTH_EMULATOR_HOST` | no | Development/test only; rejected in production |
+| `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX` | no | See `.env.example` |
 
-## Running
-
-| App | Command | Status |
+| Environment | Configuration source | Database |
 |---|---|---|
-| Backend | `npm run dev:backend` → `http://localhost:5001` | ✅ |
-| Student app | `cd student-app && flutter run --dart-define-from-file=env/dev.json` | Phase 5 |
-| Staff dashboard | `npm run dev --workspace staff-dashboard` | Phase 6 |
-| Admin portal | `npm run dev --workspace admin-portal` | Phase 7 |
+| development | `backend/.env` | `serve_dev` |
+| test | `backend/.env.test` | `serve_test` |
+| production | Platform environment / secrets manager only (no file is read) | Managed PostgreSQL |
 
-## Testing
+## 15. Testing
 
 ```bash
-npm test          # all workspaces (backend: Vitest + Supertest on real PostgreSQL)
+npm test             # backend: Vitest + Supertest against the real serve_test database
 npm run typecheck
 npm run lint
 npm run format:check
+npm run build
 ```
 
-Backend tests run against the real `serve_test` database. HTTP and the
-database are never mocked.
+The current suite (Phase 1) covers environment validation, log redaction,
+both health endpoints (including a real unreachable-database case), security
+headers, CORS, request IDs, the error format and rate limiting. HTTP and the
+database are not mocked. Cross-application end-to-end tests are planned for
+Phase 10.
 
-## Build
+## 16. Security
 
-```bash
-npm run build                                  # all workspaces
-NODE_ENV=production node backend/dist/server.js  # production start
-```
+Implemented in Phase 1:
 
-## Git workflow
+- Startup validation of all configuration. In production, localhost or
+  plain-http CORS origins and the Firebase emulator are rejected, and Firebase
+  credentials are required.
+- `helmet` security headers with a strict content security policy.
+- An exact-origin CORS allowlist with no cookie credentials (the API uses
+  Bearer tokens).
+- Rate limiting on the API (health checks are exempt) and a 100 kB JSON body
+  limit.
+- Structured logs that redact authorization headers, tokens, passwords,
+  signatures and keys.
+- One central error handler that never exposes stack traces or internal
+  details.
+- `.gitignore` rules that keep env files, private keys and service-account
+  JSON out of the repository.
 
-Owner-reviewed, phase by phase. Work happens on feature branches with one
-logical commit per phase; the owner reviews and merges through pull requests
-(feature → `develop` → `main`). Nobody pushes directly to `main`, force-pushes
-or rewrites history.
+Planned:
 
-## Documentation
+- Firebase ID-token verification with roles and canteen scope taken from
+  PostgreSQL (Phase 3).
+- Per-canteen data isolation for staff and validated state transitions
+  (Phase 4).
+- Authenticated Socket.IO with server-assigned rooms (Phase 8).
+- HMAC-verified payments with idempotency keys (Phase 9).
+- A full security audit (Phase 11).
 
-- [docs/architecture.md](docs/architecture.md): system design, auth, realtime, payments
-- [docs/api.md](docs/api.md): REST API reference
-- [docs/database.md](docs/database.md): schema, migrations, safety rules
-- [docs/development.md](docs/development.md): local setup, scripts, conventions
+## 17. Current Development Status
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Monorepo, backend foundation, environment configuration, PostgreSQL/Prisma connection, health endpoints | **Complete** |
+| 2 | Database schema, migrations, seed data | Not started |
+| 3 | Firebase authentication, roles, authorization | Not started |
+| 4 | Backend REST APIs | Not started |
+| 5 | Student App (Flutter) | Not started |
+| 6 | Staff Dashboard (React) | Not started |
+| 7 | Admin Portal (React) | Not started |
+| 8 | Socket.IO realtime | Not started |
+| 9 | Mock payments and verification | Not started |
+| 10 | Full end-to-end testing | Not started |
+| 11 | Production configuration and security audit | Not started |
+| 12 | Documentation and deployment preparation | Not started |
+
+## 18. Future Enhancements
+
+- Razorpay payments in place of the mock provider
+- Firebase Cloud Messaging for background push notifications
+- AWS deployment (containerised backend, managed PostgreSQL, static web hosting)
+- A Socket.IO Redis adapter for running several backend instances
+- Student hostel/canteen change requests (the data model leaves room for this)
+
+## Brand
+
+The official SERVE logo is a transparent, hand-drawn food/leaf mark supplied
+by the project owner and stored in [`brand/`](brand/). It is pending; the apps
+will use only the official asset. Palette: olive `#879F2D`, dark olive
+`#6F8425`, orange `#E86A2E`, black `#111111`, warm off-white `#F8F7F2`,
+white `#FFFFFF`, muted grey `#5F6258`.
+
+## 19. Contributors
+
+Maintained by the owner of this repository. The project owner will add
+contributor credits.
+
+Contributions follow an owner-reviewed workflow: work happens on feature
+branches with logical commits, and the owner reviews pull requests before
+merging. Nobody commits directly to `main`, force-pushes or rewrites shared
+history.
+
+## Further documentation
+
+- [docs/architecture.md](docs/architecture.md)
+- [docs/api.md](docs/api.md)
+- [docs/database.md](docs/database.md)
+- [docs/development.md](docs/development.md)
