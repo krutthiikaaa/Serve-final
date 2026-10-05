@@ -2,24 +2,18 @@ import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
-import type { Logger } from 'pino';
-import type { Env } from './config/env.js';
-import type { PrismaClient } from './lib/prisma.js';
+import type { AppContext } from './context.js';
 import { requestLogger } from './middleware/request-logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
-
-export interface AppDeps {
-  env: Env;
-  logger: Logger;
-  prisma: PrismaClient;
-}
+import { createAuthRouter } from './modules/auth/auth.routes.js';
 
 /**
  * Build the Express application. Dependencies are injected so tests can run
  * the real app against a real (test) database without starting a server.
  */
-export function createApp({ env, logger, prisma }: AppDeps): Express {
+export function createApp(ctx: AppContext): Express {
+  const { env, logger, prisma } = ctx;
   const app = express();
 
   app.set('trust proxy', env.TRUST_PROXY);
@@ -73,7 +67,7 @@ export function createApp({ env, logger, prisma }: AppDeps): Express {
     }),
   );
 
-  // Feature routers are mounted here in later phases.
+  app.use('/api/auth', createAuthRouter(ctx));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

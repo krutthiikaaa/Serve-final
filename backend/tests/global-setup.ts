@@ -34,4 +34,20 @@ export default async function setup(): Promise<void> {
     env: { ...process.env, NODE_ENV: 'test' },
     stdio: 'pipe',
   });
+
+  const host = env.FIREBASE_AUTH_EMULATOR_HOST;
+  if (!host) throw new Error('Tests require FIREBASE_AUTH_EMULATOR_HOST (Firebase Auth Emulator)');
+  const reachable = await fetch(`http://${host}/`).then(
+    (res) => res.ok,
+    () => false,
+  );
+  if (!reachable) {
+    throw new Error(
+      `Firebase Auth Emulator is not reachable at ${host}. Start it with \`npm run emulators\` ` +
+        'or run the suite with `npm run test:emulator` from the repository root.',
+    );
+  }
+  await fetch(`http://${host}/emulator/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts`, {
+    method: 'DELETE',
+  });
 }

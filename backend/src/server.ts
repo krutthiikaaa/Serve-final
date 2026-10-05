@@ -2,6 +2,9 @@ import { createServer } from 'node:http';
 import { EnvValidationError, loadEnv } from './config/env.js';
 import { createLogger } from './config/logger.js';
 import { createPrismaClient } from './lib/prisma.js';
+import { createFirebaseAuth, FirebaseIdentityVerifier } from './lib/firebase.js';
+import { createPaymentProvider } from './modules/payments/index.js';
+import { noopPublisher } from './realtime/events.js';
 import { createApp } from './app.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -21,7 +24,9 @@ function main(): void {
 
   const logger = createLogger(env);
   const prisma = createPrismaClient(env.DATABASE_URL);
-  const app = createApp({ env, logger, prisma });
+  const verifier = new FirebaseIdentityVerifier(createFirebaseAuth(env));
+  const payments = createPaymentProvider(env);
+  const app = createApp({ env, logger, prisma, verifier, payments, events: noopPublisher });
   const server = createServer(app);
 
   server.on('error', (err: NodeJS.ErrnoException) => {

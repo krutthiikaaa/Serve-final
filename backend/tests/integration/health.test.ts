@@ -1,9 +1,8 @@
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
-import { createLogger } from '../../src/config/logger.js';
 import { createPrismaClient } from '../../src/lib/prisma.js';
-import { buildTestApp } from '../helpers/test-app.js';
+import { buildTestApp, buildTestContext } from '../helpers/test-app.js';
 
 describe('health endpoints (real PostgreSQL)', () => {
   const { app, prisma } = buildTestApp();
@@ -28,10 +27,9 @@ describe('health endpoints (real PostgreSQL)', () => {
 });
 
 describe('health endpoints (PostgreSQL unreachable)', () => {
-  const { env } = buildTestApp();
   // A real Prisma client pointed at a port where nothing is listening.
   const deadPrisma = createPrismaClient('postgresql://serve:invalid@127.0.0.1:1/serve_unreachable');
-  const app = createApp({ env, logger: createLogger(env), prisma: deadPrisma });
+  const app = createApp(buildTestContext({ prisma: deadPrisma }));
   afterAll(() => deadPrisma.$disconnect());
 
   it('GET /api/health stays 200 (liveness has no DB dependency)', async () => {

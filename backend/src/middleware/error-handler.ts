@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { ZodError } from 'zod';
+import { Prisma } from '../generated/prisma/client.js';
 import { AppError, NotFoundError } from '../lib/errors.js';
 
 interface ErrorBody {
@@ -43,6 +44,13 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next)
       message: 'Validation failed',
       details: err.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
     };
+  } else if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    // Unique-constraint race not caught by a service-level check.
+    status = 409;
+    body = { code: 'CONFLICT', message: 'This conflicts with an existing record.' };
+  } else if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+    status = 404;
+    body = { code: 'NOT_FOUND', message: 'Resource not found' };
   } else if (isParserError(err) && err.type === 'entity.parse.failed') {
     status = 400;
     body = { code: 'INVALID_JSON', message: 'Request body is not valid JSON' };

@@ -5,6 +5,8 @@ const SECRET = 'x'.repeat(32);
 
 const validDev = {
   NODE_ENV: 'development',
+  FIREBASE_PROJECT_ID: 'demo-serve',
+  FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
   DATABASE_URL: 'postgresql://serve:pw@localhost:5432/serve_dev',
   CORS_ORIGINS: 'http://localhost:5173, http://localhost:5174',
   PAYMENT_SECRET: SECRET,
@@ -14,8 +16,10 @@ const validProd = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgresql://serve:pw@db.internal:5432/serve',
   CORS_ORIGINS: 'https://staff.serve.example,https://admin.serve.example',
-  PAYMENT_MODE: 'mock',
-  PAYMENT_SECRET: SECRET,
+  PAYMENT_MODE: 'razorpay',
+  RAZORPAY_KEY_ID: 'rzp_live_placeholder',
+  RAZORPAY_KEY_SECRET: 'placeholder-secret',
+  RAZORPAY_WEBHOOK_SECRET: 'placeholder-webhook-secret',
   FIREBASE_PROJECT_ID: 'serve-prod',
   FIREBASE_CLIENT_EMAIL: 'firebase-adminsdk@serve-prod.iam.gserviceaccount.com',
   FIREBASE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n',
@@ -45,11 +49,44 @@ describe('parseEnv', () => {
     expect(parseEnv(raw).NODE_ENV).toBe('development');
   });
 
-  it('requires DATABASE_URL, CORS_ORIGINS and PAYMENT_SECRET', () => {
-    const issues = issuesOf({ NODE_ENV: 'development' });
-    expect(issues.some((i) => i.startsWith('DATABASE_URL'))).toBe(true);
-    expect(issues.some((i) => i.startsWith('CORS_ORIGINS'))).toBe(true);
-    expect(issues.some((i) => i.startsWith('PAYMENT_SECRET'))).toBe(true);
+  it('requires DATABASE_URL, CORS_ORIGINS, FIREBASE_PROJECT_ID and PAYMENT_SECRET (mock)', () => {
+    const issues = issuesOf({
+      NODE_ENV: 'development',
+      FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
+    });
+    for (const key of ['DATABASE_URL', 'CORS_ORIGINS', 'FIREBASE_PROJECT_ID']) {
+      expect(issues.some((i) => i.startsWith(key))).toBe(true);
+    }
+  });
+
+  it('requires PAYMENT_SECRET in mock mode and Razorpay keys in razorpay mode', () => {
+    const { PAYMENT_SECRET: _omit, ...noSecret } = validDev;
+    expect(issuesOf(noSecret)).toEqual([expect.stringContaining('PAYMENT_SECRET')]);
+    const issues = issuesOf({ ...validDev, PAYMENT_MODE: 'razorpay' });
+    expect(issues).toHaveLength(3);
+    expect(issues.join(' ')).toMatch(
+      /RAZORPAY_KEY_ID.*RAZORPAY_KEY_SECRET.*RAZORPAY_WEBHOOK_SECRET/,
+    );
+  });
+
+  it('requires service-account credentials when the emulator is not configured', () => {
+    const { FIREBASE_AUTH_EMULATOR_HOST: _omit, ...raw } = validDev;
+    const issues = issuesOf(raw);
+    expect(issues).toEqual([
+      expect.stringContaining('FIREBASE_CLIENT_EMAIL'),
+      expect.stringContaining('FIREBASE_PRIVATE_KEY'),
+    ]);
+  });
+
+  it('treats empty values as unset and parses student email domains', () => {
+    const env = parseEnv({
+      ...validDev,
+      FIREBASE_CLIENT_EMAIL: '',
+      STUDENT_EMAIL_DOMAINS: ' @Uni.edu, college.ac.in ,',
+    });
+    expect(env.FIREBASE_CLIENT_EMAIL).toBeUndefined();
+    expect(env.STUDENT_EMAIL_DOMAINS).toEqual(['uni.edu', 'college.ac.in']);
+    expect(parseEnv(validDev).STUDENT_EMAIL_DOMAINS).toEqual([]);
   });
 
   it('rejects non-PostgreSQL database URLs', () => {
@@ -113,6 +150,17 @@ describe('parseEnv', () => {
     it('requires Firebase Admin credentials in production', () => {
       const { FIREBASE_PRIVATE_KEY: _omit, ...raw } = validProd;
       expect(issuesOf(raw)).toEqual([expect.stringContaining('FIREBASE_PRIVATE_KEY')]);
+    });
+
+    it('rejects demo- Firebase projects in production', () => {
+      expect(issuesOf({ ...validProd, FIREBASE_PROJECT_ID: 'demo-serve' })).toEqual([
+        expect.stringContaining('demo-'),
+      ]);
+    });
+
+    it('rejects the mock payment provider in production', () => {
+      const issues = issuesOf({ ...validProd, PAYMENT_MODE: 'mock', PAYMENT_SECRET: SECRET });
+      expect(issues).toEqual([expect.stringContaining('mock payment provider')]);
     });
   });
 });

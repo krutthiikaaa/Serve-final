@@ -1,0 +1,47 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import type { AppContext } from '../../context.js';
+import { createAuthenticate } from '../../middleware/auth.js';
+import { sensitiveLimiter } from '../../middleware/rate-limit.js';
+import { email, id, name, parse } from '../../http/validation.js';
+import { createAuthService } from './auth.service.js';
+import { resolvePrincipal } from './principal.js';
+
+const studentRegistrationBody = z.object({ name, email, hostelId: id });
+const staffRegistrationBody = z.object({ name, email, requestedCanteenId: id.optional() });
+
+/**
+ * /api/auth — registration and identity. Registration endpoints accept a
+ * verified Firebase token from a user who has no SERVE account yet.
+ */
+export function createAuthRouter(ctx: AppContext): Router {
+  const router = Router();
+  const service = createAuthService(ctx);
+  const authenticate = createAuthenticate(ctx);
+  const limiter = sensitiveLimiter(ctx.env);
+
+  router.use(authenticate);
+
+  router.get('/me', async (req, res) => {
+    const auth = req.auth!;
+    res.json({ data: await service.me(auth, auth.principal) });
+  });
+
+  router.post('/student/register', limiter, async (req, res) => {
+    const auth = req.auth!;
+    await service.registerStudent(auth, parse(studentRegistrationBody, req.body));
+    res
+      .status(201)
+      .json({ data: await service.me(auth, await resolvePrincipal(ctx.prisma, auth.uid)) });
+  });
+
+  router.post('/staff/register', limiter, async (req, res) => {
+    const auth = req.auth!;
+    await service.registerStaff(auth, parse(staffRegistrationBody, req.body));
+    res
+      .status(201)
+      .json({ data: await service.me(auth, await resolvePrincipal(ctx.prisma, auth.uid)) });
+  });
+
+  return router;
+}

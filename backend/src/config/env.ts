@@ -63,6 +63,10 @@ const corsOrigins = z
       .min(1, { error: 'CORS_ORIGINS must contain at least one origin' }),
   );
 
+/** Treat empty strings (e.g. `KEY=` copied from .env.example) as unset. */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(NODE_ENVS).default('development'),
@@ -94,61 +98,108 @@ const envSchema = z
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
 
-    // --- Firebase Admin (wired in Phase 3) ---------------------------------
-    FIREBASE_PROJECT_ID: z.string().min(1).optional(),
-    FIREBASE_CLIENT_EMAIL: z.email().optional(),
-    /** PEM private key; literal "\n" sequences are converted to newlines. */
-    FIREBASE_PRIVATE_KEY: z
-      .string()
-      .min(1)
-      .transform((key) => key.replace(/\\n/g, '\n'))
-      .optional(),
-    /** host:port of the Firebase Auth Emulator (development/test only). */
-    FIREBASE_AUTH_EMULATOR_HOST: z.string().min(1).optional(),
+    /** Stricter per-user limit for registration, order creation, payments and webhooks. */
+    SENSITIVE_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+    SENSITIVE_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 
-    // --- Payments (wired in Phase 9) ----------------------------------------
+    // --- Firebase -------------------------------------------------------------
+    /** Firebase project id. Use a "demo-" id (e.g. demo-serve) with the emulator. */
+    FIREBASE_PROJECT_ID: z.string({ error: 'FIREBASE_PROJECT_ID is required' }).min(1),
+    FIREBASE_CLIENT_EMAIL: optional(z.email()),
+    /** PEM private key; literal "\n" sequences are converted to newlines. */
+    FIREBASE_PRIVATE_KEY: optional(z.string().transform((key) => key.replace(/\\n/g, '\n'))),
+    /** host:port of the Firebase Auth Emulator (development/test only). */
+    FIREBASE_AUTH_EMULATOR_HOST: optional(
+      z.string().regex(/^[\w.-]+:\d+$/, { error: 'Expected host:port, e.g. 127.0.0.1:9099' }),
+    ),
+
+    /**
+     * Optional comma-separated list of email domains allowed to register as
+     * students (e.g. "university.edu"). Empty/unset = no restriction.
+     */
+    STUDENT_EMAIL_DOMAINS: z
+      .string()
+      .optional()
+      .transform((value) =>
+        (value ?? '')
+          .split(',')
+          .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+          .filter((domain) => domain.length > 0),
+      ),
+
+    // --- Payments -------------------------------------------------------------
+    /** mock = development provider; razorpay = production provider (adapter pending). */
     PAYMENT_MODE: z.enum(['mock', 'razorpay']).default('mock'),
-    /** HMAC secret used to sign/verify payment confirmations. */
-    PAYMENT_SECRET: z
-      .string({ error: 'PAYMENT_SECRET is required (generate with: openssl rand -hex 32)' })
-      .min(32, { error: 'PAYMENT_SECRET must be at least 32 characters' }),
+    /** HMAC secret for the mock provider's payment signatures (mock mode only). */
+    PAYMENT_SECRET: optional(
+      z.string().min(32, { error: 'PAYMENT_SECRET must be at least 32 characters' }),
+    ),
+    RAZORPAY_KEY_ID: optional(z.string()),
+    RAZORPAY_KEY_SECRET: optional(z.string()),
+    RAZORPAY_WEBHOOK_SECRET: optional(z.string()),
   })
   .superRefine((env, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: 'custom', path: [path], message });
+
+    // Firebase: either the emulator, or full service-account credentials.
+    if (!env.FIREBASE_AUTH_EMULATOR_HOST) {
+      for (const key of ['FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'] as const) {
+        if (!env[key]) {
+          issue(key, `${key} is required unless FIREBASE_AUTH_EMULATOR_HOST is set`);
+        }
+      }
+    }
+
+    // Payments
+    if (env.PAYMENT_MODE === 'mock' && !env.PAYMENT_SECRET) {
+      issue(
+        'PAYMENT_SECRET',
+        'PAYMENT_SECRET is required when PAYMENT_MODE=mock (openssl rand -hex 32)',
+      );
+    }
+    if (env.PAYMENT_MODE === 'razorpay') {
+      for (const key of [
+        'RAZORPAY_KEY_ID',
+        'RAZORPAY_KEY_SECRET',
+        'RAZORPAY_WEBHOOK_SECRET',
+      ] as const) {
+        if (!env[key]) issue(key, `${key} is required when PAYMENT_MODE=razorpay`);
+      }
+    }
+
     if (env.NODE_ENV !== 'production') return;
 
     // Production must never fall back to local development endpoints.
     const localOrigins = env.CORS_ORIGINS.filter(isLocalOrigin);
     if (localOrigins.length > 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['CORS_ORIGINS'],
-        message: `Local origins are not allowed in production: ${localOrigins.join(', ')}`,
-      });
+      issue(
+        'CORS_ORIGINS',
+        `Local origins are not allowed in production: ${localOrigins.join(', ')}`,
+      );
     }
     const insecureOrigins = env.CORS_ORIGINS.filter((origin) => origin.startsWith('http://'));
     if (insecureOrigins.length > 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['CORS_ORIGINS'],
-        message: `Production CORS origins must use https: ${insecureOrigins.join(', ')}`,
-      });
+      issue(
+        'CORS_ORIGINS',
+        `Production CORS origins must use https: ${insecureOrigins.join(', ')}`,
+      );
     }
-
     if (env.FIREBASE_AUTH_EMULATOR_HOST) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['FIREBASE_AUTH_EMULATOR_HOST'],
-        message: 'The Firebase Auth Emulator must not be used in production',
-      });
+      issue(
+        'FIREBASE_AUTH_EMULATOR_HOST',
+        'The Firebase Auth Emulator must not be used in production',
+      );
     }
-    for (const key of [
-      'FIREBASE_PROJECT_ID',
-      'FIREBASE_CLIENT_EMAIL',
-      'FIREBASE_PRIVATE_KEY',
-    ] as const) {
-      if (!env[key]) {
-        ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required in production` });
-      }
+    if (env.FIREBASE_PROJECT_ID.startsWith('demo-')) {
+      issue(
+        'FIREBASE_PROJECT_ID',
+        'demo- projects are emulator-only and not allowed in production',
+      );
+    }
+    // No simulated payment success in production.
+    if (env.PAYMENT_MODE === 'mock') {
+      issue('PAYMENT_MODE', 'The mock payment provider is not allowed in production');
     }
   });
 
