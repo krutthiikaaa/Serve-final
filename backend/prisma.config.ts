@@ -23,6 +23,7 @@ export default defineConfig({
   schema: path.join(import.meta.dirname, 'prisma', 'schema.prisma'),
   migrations: {
     path: path.join(import.meta.dirname, 'prisma', 'migrations'),
+    seed: 'tsx prisma/seed.ts',
   },
   // Optional for `prisma generate`; required for migrate/introspection commands.
   datasource: {

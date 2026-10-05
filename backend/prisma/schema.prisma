@@ -1,19 +1,372 @@
 // SERVE — PostgreSQL schema
 //
-// Phase 1: connection only. Domain models (Canteen, Hostel, Student, Staff,
-// Admin, MenuCategory, MenuItem, CanteenChangeRequest, Order, OrderItem,
-// Payment, Notification) are introduced in Phase 2 via a reviewed migration.
+// Conventions
+// - IDs: server-generated UUIDs.
+// - Money: integer paise (Int). Never floating point.
+// - Timestamps: createdAt / updatedAt on every mutable table.
+// - Authorization data (roles, staff canteen assignment) lives here and is
+//   never taken from clients.
 //
-// The connection URL is supplied by prisma.config.ts (CLI) and by the
-// driver adapter in src/lib/prisma.ts (runtime). It is never hardcoded here.
+// Constraints Prisma cannot express (CHECK constraints, the order-number
+// sequence, the order-item immutability trigger) are added in the migration
+// SQL and documented in docs/database.md.
+//
+// The connection URL is supplied by prisma.config.ts (CLI) and by the driver
+// adapter in src/lib/prisma.ts (runtime). It is never hardcoded here.
 
 generator client {
   provider            = "prisma-client"
   output              = "../src/generated/prisma"
   moduleFormat        = "esm"
   importFileExtension = "js"
+  previewFeatures     = ["partialIndexes"]
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum StaffStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DEACTIVATED
+}
+
+enum ChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PLACED
+  PAYMENT_CONFIRMED
+  PREPARING
+  READY
+  COLLECTED
+  CANCELLED
+}
+
+enum PaymentProvider {
+  MOCK
+  RAZORPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  ORDER_PLACED
+  PAYMENT_CONFIRMED
+  ORDER_PREPARING
+  ORDER_READY
+  ORDER_COLLECTED
+  ORDER_CANCELLED
+  STAFF_ACCESS_REQUESTED
+  STAFF_APPROVED
+  STAFF_REJECTED
+  STAFF_CANTEEN_ASSIGNED
+  STAFF_DEACTIVATED
+  CANTEEN_UPDATE
+}
+
+// ---------------------------------------------------------------------------
+// Canteens and hostels
+// ---------------------------------------------------------------------------
+
+model Canteen {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String   @unique
+  slug              String   @unique
+  location          String?
+  /// Free-form display text, e.g. "9:00 PM – 3:00 AM".
+  openingHours      String?
+  isActive          Boolean  @default(true)
+  isAcceptingOrders Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  hostels                 Hostel[]
+  staff                   Staff[]
+  categories              MenuCategory[]
+  menuItems               MenuItem[]
+  orders                  Order[]
+  requestedChangeRequests CanteenChangeRequest[] @relation("RequestedCanteen")
+  fromChangeRequests      CanteenChangeRequest[] @relation("FromCanteen")
+}
+
+model Hostel {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  /// Default night canteen for students living in this hostel.
+  canteenId String   @db.Uuid
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  canteen  Canteen   @relation(fields: [canteenId], references: [id], onDelete: Restrict)
+  students Student[]
+
+  @@index([canteenId])
+}
+
+// ---------------------------------------------------------------------------
+// Accounts. Firebase proves identity (firebaseUid); these tables decide roles.
+// Emails are stored lower-cased (CHECK constraint in the migration).
+// ---------------------------------------------------------------------------
+
+model Student {
+  id          String   @id @default(uuid()) @db.Uuid
+  firebaseUid String   @unique
+  email       String   @unique
+  name        String
+  hostelId    String   @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hostel        Hostel         @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  orders        Order[]
+  notifications Notification[]
+
+  @@index([hostelId])
+}
+
+model Staff {
+  id          String      @id @default(uuid()) @db.Uuid
+  firebaseUid String      @unique
+  email       String      @unique
+  name        String
+  status      StaffStatus @default(PENDING)
+  /// Assigned canteen. Required when APPROVED (CHECK constraint); null while pending.
+  canteenId   String?     @db.Uuid
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  canteen        Canteen?               @relation(fields: [canteenId], references: [id], onDelete: Restrict)
+  changeRequests CanteenChangeRequest[]
+  notifications  Notification[]
+
+  @@index([canteenId])
+  @@index([status])
+}
+
+model Admin {
+  id          String   @id @default(uuid()) @db.Uuid
+  firebaseUid String   @unique
+  email       String   @unique
+  name        String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reviewedChangeRequests CanteenChangeRequest[]
+  notifications          Notification[]
+}
+
+/// Staff request for canteen access or reassignment. Not used for students.
+model CanteenChangeRequest {
+  id                 String              @id @default(uuid()) @db.Uuid
+  staffId            String              @db.Uuid
+  requestedCanteenId String              @db.Uuid
+  /// Canteen the staff member was assigned to when the request was made.
+  fromCanteenId      String?             @db.Uuid
+  status             ChangeRequestStatus @default(PENDING)
+  /// Message from the staff member.
+  notes              String?
+  /// Message from the reviewing admin.
+  reviewNotes        String?
+  reviewedByAdminId  String?             @db.Uuid
+  reviewedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  staff            Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  requestedCanteen Canteen  @relation("RequestedCanteen", fields: [requestedCanteenId], references: [id], onDelete: Restrict)
+  fromCanteen      Canteen? @relation("FromCanteen", fields: [fromCanteenId], references: [id], onDelete: SetNull)
+  reviewedBy       Admin?   @relation(fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  /// At most one PENDING request per staff member.
+  @@unique([staffId], map: "CanteenChangeRequest_one_pending_per_staff", where: raw("status = 'PENDING'"))
+  @@index([staffId, createdAt])
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Menu
+// ---------------------------------------------------------------------------
+
+model MenuCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  canteenId String   @db.Uuid
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  canteen Canteen    @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  items   MenuItem[]
+
+  @@unique([canteenId, name])
+  /// Target of MenuItem's composite FK, guaranteeing item/category share a canteen.
+  @@unique([id, canteenId])
+  @@index([canteenId])
+}
+
+model MenuItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  canteenId   String   @db.Uuid
+  categoryId  String   @db.Uuid
+  name        String
+  description String?
+  /// Current price in paise (> 0, CHECK constraint).
+  pricePaise  Int
+  imageUrl    String?
+  isAvailable Boolean  @default(true)
+  /// Soft delete: inactive items are hidden from students and never orderable.
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  canteen    Canteen      @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  /// Composite FK: the category must belong to the same canteen as the item.
+  category   MenuCategory @relation(fields: [categoryId, canteenId], references: [id, canteenId], onDelete: Restrict, onUpdate: Cascade)
+  orderItems OrderItem[]
+
+  @@unique([canteenId, name])
+  @@index([canteenId])
+  @@index([categoryId])
+  @@index([canteenId, isAvailable])
+}
+
+// ---------------------------------------------------------------------------
+// Orders and payments
+// ---------------------------------------------------------------------------
+
+model Order {
+  id             String      @id @default(uuid()) @db.Uuid
+  /// Public, human-friendly number, e.g. "SV1024". Generated by a PostgreSQL sequence.
+  orderNumber    String      @unique @default(dbgenerated("('SV'::text || nextval('order_number_seq'::regclass))"))
+  studentId      String      @db.Uuid
+  canteenId      String      @db.Uuid
+  status         OrderStatus @default(PLACED)
+  /// Server-calculated sum of line totals, in paise (> 0).
+  totalPaise     Int
+  /// Client-supplied Idempotency-Key, unique per student.
+  idempotencyKey String
+  /// SHA-256 of the normalized order request; detects key reuse with a different body.
+  requestHash    String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  paidAt         DateTime?
+  preparingAt    DateTime?
+  readyAt        DateTime?
+  collectedAt    DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+
+  student       Student        @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  canteen       Canteen        @relation(fields: [canteenId], references: [id], onDelete: Restrict)
+  items         OrderItem[]
+  payment       Payment?
+  notifications Notification[]
+
+  @@unique([studentId, idempotencyKey])
+  @@index([studentId, createdAt])
+  @@index([canteenId, status, createdAt])
+  @@index([status])
+  @@index([createdAt])
+  @@index([idempotencyKey])
+}
+
+/// Immutable snapshot of an ordered item (UPDATE blocked by trigger).
+model OrderItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  orderId        String   @db.Uuid
+  /// Source menu item; kept for analytics, nulled if the item is ever hard-deleted.
+  menuItemId     String?  @db.Uuid
+  itemName       String
+  unitPricePaise Int
+  /// 1..20 (CHECK constraint).
+  quantity       Int
+  /// unitPricePaise × quantity (CHECK constraint).
+  lineTotalPaise Int
+  createdAt      DateTime @default(now())
+
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([menuItemId])
+}
+
+model Payment {
+  id                String          @id @default(uuid()) @db.Uuid
+  orderId           String          @unique @db.Uuid
+  provider          PaymentProvider
+  status            PaymentStatus   @default(PENDING)
+  /// Always equal to the order's server-calculated total.
+  amountPaise       Int
+  currency          String          @default("INR")
+  providerOrderId   String?         @unique
+  providerPaymentId String?         @unique
+  signature         String?
+  failureReason     String?
+  paidAt            DateTime?
+  refundedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+}
+
+/// Replay protection for payment confirmations and (future) provider webhooks.
+model ProcessedPaymentEvent {
+  id          String          @id @default(uuid()) @db.Uuid
+  provider    PaymentProvider
+  eventId     String
+  processedAt DateTime        @default(now())
+
+  @@unique([provider, eventId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — exactly one recipient (CHECK constraint).
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  studentId String?          @db.Uuid
+  staffId   String?          @db.Uuid
+  adminId   String?          @db.Uuid
+  orderId   String?          @db.Uuid
+  type      NotificationType
+  title     String
+  message   String
+  /// Small structured payload for clients (e.g. orderNumber, status).
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  admin   Admin?   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  order   Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, createdAt])
+  @@index([staffId, createdAt])
+  @@index([adminId, createdAt])
+  @@index([createdAt])
 }

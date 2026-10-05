@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    globalSetup: ['tests/global-setup.ts'],
     testTimeout: 15_000,
     hookTimeout: 30_000,
     // Integration suites share one PostgreSQL test database; run files serially.
