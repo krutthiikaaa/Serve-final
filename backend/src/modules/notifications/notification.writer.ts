@@ -61,7 +61,7 @@ export async function writeNotifications(
       },
       select: notificationSelect,
     });
-    outbox.emit('notification:created', [recipientRoom(recipient)], { notification });
+    outbox.emit('notification.created', [recipientRoom(recipient)], { notification });
   }
 }
 

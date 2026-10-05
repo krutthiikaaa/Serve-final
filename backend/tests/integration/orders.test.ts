@@ -1,7 +1,9 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
-import { buildTestApp } from '../helpers/test-app.js';
+import { createApp } from '../../src/app.js';
+import { MockPaymentProvider } from '../../src/modules/payments/mock.provider.js';
+import { buildTestApp, buildTestContext } from '../helpers/test-app.js';
 import { truncateAll } from '../helpers/db.js';
 import {
   bearer,
@@ -56,32 +58,70 @@ describe('cart quote', () => {
       ],
     }).expect(200);
     expect(res.body.data).toMatchObject({
-      canteen: { id: kg.id },
+      canteen: { id: kg.id, name: 'Krishna & Godavari Night Canteen' },
+      itemCount: 5,
+      subtotalPaise: 2 * 5_000 + 3 * 3_000,
       totalPaise: 2 * 5_000 + 3 * 3_000,
       currency: 'INR',
     });
     expect(res.body.data.items[0]).toMatchObject({
+      menuItemId: sandwich.id,
+      itemName: 'Veg Grilled Sandwich',
       unitPricePaise: 5_000,
       quantity: 2,
       lineTotalPaise: 10_000,
     });
   });
 
-  it('ignores client-submitted prices and totals', async () => {
-    const res = await quote({
-      canteenId: kg.id,
-      totalPaise: 1,
-      items: [
-        {
-          menuItemId: sandwich.id,
-          quantity: 1,
-          pricePaise: 1,
-          unitPricePaise: 1,
-          lineTotalPaise: 1,
+  it('rejects client-submitted prices and totals instead of trusting them', async () => {
+    for (const body of [
+      { canteenId: kg.id, totalPaise: 1, items: [{ menuItemId: sandwich.id, quantity: 1 }] },
+      { canteenId: kg.id, items: [{ menuItemId: sandwich.id, quantity: 1, pricePaise: 1 }] },
+      { canteenId: kg.id, items: [{ menuItemId: sandwich.id, quantity: 1, unitPricePaise: 1 }] },
+      { canteenId: kg.id, items: [{ menuItemId: sandwich.id, quantity: 1, lineTotalPaise: 1 }] },
+    ]) {
+      const res = await quote(body).expect(422);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+
+  it('rejects non-numeric, infinite and oversized values', async () => {
+    for (const quantity of ['2', null, 'NaN', 'Infinity', 1e9]) {
+      await quote({ canteenId: kg.id, items: [{ menuItemId: sandwich.id, quantity }] }).expect(422);
+    }
+    const tooMany = Array.from({ length: 51 }, () => ({ menuItemId: sandwich.id, quantity: 1 }));
+    await quote({ canteenId: kg.id, items: tooMany }).expect(422);
+  });
+
+  it('reports every problem item with a reason', async () => {
+    const off = await itemByName(prisma, kg.id, 'Banana Fresh Juice');
+    const gone = await itemByName(prisma, kg.id, 'Muskmelon Fresh Juice');
+    await prisma.menuItem.update({ where: { id: off.id }, data: { isAvailable: false } });
+    await prisma.menuItem.update({ where: { id: gone.id }, data: { isActive: false } });
+    try {
+      const res = await quote({
+        canteenId: kg.id,
+        items: [
+          { menuItemId: sandwich.id, quantity: 1 },
+          { menuItemId: off.id, quantity: 1 },
+          { menuItemId: gone.id, quantity: 1 },
+        ],
+      }).expect(422);
+      expect(res.body.error).toMatchObject({
+        code: 'ITEM_UNAVAILABLE',
+        details: {
+          items: [
+            { menuItemId: off.id, reason: 'UNAVAILABLE' },
+            { menuItemId: gone.id, reason: 'INACTIVE' },
+          ],
         },
-      ],
-    }).expect(200);
-    expect(res.body.data.totalPaise).toBe(5_000);
+      });
+    } finally {
+      await prisma.menuItem.updateMany({
+        where: { id: { in: [off.id, gone.id] } },
+        data: { isAvailable: true, isActive: true },
+      });
+    }
   });
 
   it('rejects invalid quantities, duplicates, foreign and unknown items', async () => {
@@ -104,7 +144,7 @@ describe('cart quote', () => {
     }).expect(422);
     expect(foreign.body.error).toMatchObject({
       code: 'ITEM_NOT_FOUND',
-      details: { menuItemIds: [ynItem.id] },
+      details: { items: [{ menuItemId: ynItem.id, reason: 'NOT_IN_CANTEEN' }] },
     });
 
     await quote({ canteenId: kg.id, items: [] }).expect(422);
@@ -131,10 +171,8 @@ describe('order creation', () => {
       .set('Idempotency-Key', idempotencyKey())
       .send({
         canteenId: kg.id,
-        studentId: otherStudent.id,
-        totalPaise: 1,
         items: [
-          { menuItemId: sandwich.id, quantity: 2, pricePaise: 1 },
+          { menuItemId: sandwich.id, quantity: 2 },
           { menuItemId: coffee.id, quantity: 1 },
         ],
       })
@@ -153,7 +191,7 @@ describe('order creation', () => {
       where: { id: order.id },
       include: { items: true, payment: true },
     });
-    expect(row.studentId).toBe(student.id); // never the client-supplied studentId
+    expect(row.studentId).toBe(student.id); // owner comes from the verified token
     expect(
       row.items.map((i) => [i.itemName, i.unitPricePaise, i.quantity, i.lineTotalPaise]).sort(),
     ).toEqual(
@@ -553,5 +591,177 @@ describe('staff dashboard', () => {
       _sum: { totalPaise: true },
     });
     expect(res.body.data.today.revenuePaise).toBe(fromDb._sum.totalPaise);
+  });
+});
+
+describe('audit: transitions, concurrency, limits, refunds', () => {
+  async function paidOrder() {
+    const order = await placeOrder(app, student, kg.id, [{ menuItemId: sandwich.id, quantity: 1 }]);
+    await payOrder(app, student, order.id);
+    return order;
+  }
+  const setStatus = (orderId: string, status: string, actor = staffKG) =>
+    request(app)
+      .patch(`/api/staff/orders/${orderId}/status`)
+      .set(bearer(actor.token))
+      .send({ status });
+
+  it('rejects COLLECTED->PREPARING/READY and CANCELLED->PREPARING/READY', async () => {
+    const collected = await paidOrder();
+    for (const status of ['PREPARING', 'READY', 'COLLECTED'])
+      await setStatus(collected.id, status).expect(200);
+    for (const status of ['PREPARING', 'READY']) {
+      const res = await setStatus(collected.id, status).expect(409);
+      expect(res.body.error).toMatchObject({
+        code: 'INVALID_STATUS_TRANSITION',
+        details: { from: 'COLLECTED', to: status },
+      });
+    }
+
+    const cancelled = await paidOrder();
+    await setStatus(cancelled.id, 'CANCELLED').expect(200);
+    for (const status of ['PREPARING', 'READY']) {
+      const res = await setStatus(cancelled.id, status).expect(409);
+      expect(res.body.error.details).toEqual({ from: 'CANCELLED', to: status });
+    }
+  });
+
+  it('rejects moving back to PLACED (READY->PLACED, PREPARING->PLACED)', async () => {
+    const order = await paidOrder();
+    await setStatus(order.id, 'PREPARING').expect(200);
+    expect((await setStatus(order.id, 'PLACED').expect(422)).body.error.code).toBe(
+      'VALIDATION_ERROR',
+    );
+    await setStatus(order.id, 'READY').expect(200);
+    await setStatus(order.id, 'PLACED').expect(422);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe(
+      'READY',
+    );
+  });
+
+  it('lets exactly one of several concurrent identical updates win', async () => {
+    const order = await paidOrder();
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => setStatus(order.id, 'PREPARING')),
+    );
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(results.filter((r) => r.status === 409)).toHaveLength(5);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe(
+      'PREPARING',
+    );
+    expect(
+      await prisma.notification.count({ where: { orderId: order.id, type: 'ORDER_PREPARING' } }),
+    ).toBe(1);
+  });
+
+  it('keeps payment and order consistent when PREPARING and CANCELLED race', async () => {
+    for (let round = 0; round < 3; round += 1) {
+      const order = await paidOrder();
+      const [a, b] = await Promise.all([
+        setStatus(order.id, 'PREPARING'),
+        setStatus(order.id, 'CANCELLED'),
+      ]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      const row = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+        include: { payment: true },
+      });
+      if (row.status === 'CANCELLED') expect(row.payment?.status).toBe('REFUNDED');
+      else {
+        expect(row.status).toBe('PREPARING');
+        expect(row.payment?.status).toBe('SUCCESS'); // no refund for an order being prepared
+      }
+    }
+  });
+
+  it('exposes a status timeline for tracking screens', async () => {
+    const order = await paidOrder();
+    await setStatus(order.id, 'PREPARING').expect(200);
+    const res = await request(app)
+      .get(`/api/orders/${order.id}`)
+      .set(bearer(student.token))
+      .expect(200);
+    expect(res.body.data.timeline.map((t: { status: string }) => t.status)).toEqual([
+      'PLACED',
+      'PAYMENT_CONFIRMED',
+      'PREPARING',
+    ]);
+  });
+
+  it('caps the order total (no integer overflow, clear error)', async () => {
+    const items = await prisma.menuItem.findMany({
+      where: { canteenId: kg.id, isActive: true },
+      take: 6,
+    });
+    const before = items.map((i) => [i.id, i.pricePaise] as const);
+    await prisma.menuItem.updateMany({
+      where: { id: { in: items.map((i) => i.id) } },
+      data: { pricePaise: 1_000_000 },
+    });
+    try {
+      const res = await quote({
+        canteenId: kg.id,
+        items: items.map((i) => ({ menuItemId: i.id, quantity: 20 })),
+      }).expect(422);
+      expect(res.body.error.code).toBe('ORDER_TOTAL_TOO_LARGE');
+      const atCap = await quote({
+        canteenId: kg.id,
+        items: items.slice(0, 5).map((i) => ({ menuItemId: i.id, quantity: 20 })),
+      }).expect(200);
+      expect(atCap.body.data.totalPaise).toBe(100_000_000);
+    } finally {
+      for (const [id, pricePaise] of before)
+        await prisma.menuItem.update({ where: { id }, data: { pricePaise } });
+    }
+    await request(app)
+      .patch(`/api/staff/menu/items/${sandwich.id}/price`)
+      .set(bearer(staffKG.token))
+      .send({ pricePaise: 1_000_001 })
+      .expect(422);
+  });
+
+  it('isolates staff dashboard statistics per canteen', async () => {
+    const res = await request(app)
+      .get('/api/staff/dashboard')
+      .set(bearer(staffYN.token))
+      .expect(200);
+    const ynRevenue = await prisma.order.aggregate({
+      where: { canteenId: yn.id, status: { notIn: ['PLACED', 'CANCELLED'] } },
+      _sum: { totalPaise: true },
+    });
+    expect(res.body.data.canteen.id).toBe(yn.id);
+    expect(res.body.data.today.revenuePaise).toBe(ynRevenue._sum.totalPaise ?? 0);
+  });
+});
+
+describe('audit: refund failure after cancellation', () => {
+  it('keeps the order cancelled and records the pending refund instead of hiding it', async () => {
+    class FailingRefundProvider extends MockPaymentProvider {
+      override refund(): Promise<{ refundId: string }> {
+        return Promise.reject(new Error('provider down'));
+      }
+    }
+    const ctx = { ...buildTestContext(), payments: new FailingRefundProvider(env.PAYMENT_SECRET!) };
+    const failingApp = createApp(ctx);
+    try {
+      const order = await placeOrder(failingApp, student, kg.id, [
+        { menuItemId: coffee.id, quantity: 1 },
+      ]);
+      await payOrder(failingApp, student, order.id);
+      const res = await request(failingApp)
+        .patch(`/api/staff/orders/${order.id}/status`)
+        .set(bearer(staffKG.token))
+        .send({ status: 'CANCELLED' })
+        .expect(200);
+      expect(res.body.data).toMatchObject({
+        status: 'CANCELLED',
+        payment: {
+          status: 'SUCCESS',
+          failureReason: 'Refund pending: the payment provider refund failed',
+        },
+      });
+    } finally {
+      await ctx.prisma.$disconnect();
+    }
   });
 });

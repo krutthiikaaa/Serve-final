@@ -11,6 +11,7 @@ item, price, order, payment and notification.
 |---|---|
 | `backend/prisma/schema.prisma` | Domain model |
 | `backend/prisma/migrations/20261005184013_init_domain_schema/` | Initial migration: Prisma DDL plus hand-written constraints (see below) |
+| `backend/prisma/migrations/20261006090000_order_item_integrity/` | Audit fixes: order-item canteen trigger, immutability escape hatch for `SET NULL`, order total cap |
 | `backend/prisma.config.ts` | Prisma CLI config: schema and migrations paths, `DATABASE_URL`, seed command |
 | `backend/src/db/seed.ts` / `backend/prisma/seed.ts` | Idempotent development seed |
 | `backend/scripts/seed-dev-users.ts` | Emulator-only demo accounts |
@@ -42,7 +43,7 @@ ProcessedPaymentEvent (provider, eventId) — replay protection
 | **MenuCategory** | `canteenId`, `name`, `sortOrder`, `isActive` | belongs to a Canteen |
 | **MenuItem** | `canteenId`, `categoryId`, `name`, `description`, `pricePaise`, `imageUrl`, `isAvailable`, `isActive` | Canteen, plus a Category in the **same** canteen |
 | **Order** | `orderNumber` unique, `studentId`, `canteenId`, `status`, `totalPaise`, `idempotencyKey`, `requestHash`, status timestamps, `cancelReason` | Student, Canteen, items, payment |
-| **OrderItem** | `orderId`, `menuItemId?`, `itemName`, `unitPricePaise`, `quantity`, `lineTotalPaise` | Order (cascade), MenuItem (set null) |
+| **OrderItem** | `orderId`, `menuItemId?`, `itemName`, `unitPricePaise`, `quantity`, `lineTotalPaise` | Order (cascade), MenuItem (set null); the menu item must belong to the order's canteen (trigger) |
 | **Payment** | `orderId` unique, `provider` (MOCK / RAZORPAY), `status` (PENDING / SUCCESS / FAILED / REFUNDED), `amountPaise`, `currency`, `providerOrderId` unique, `providerPaymentId` unique, `signature`, `failureReason`, `paidAt`, `refundedAt` | one per Order |
 | **ProcessedPaymentEvent** | `provider`, `eventId`, `processedAt` | unique (`provider`, `eventId`) |
 | **Notification** | `studentId?`, `staffId?`, `adminId?`, `orderId?`, `type`, `title`, `message`, `data`, `readAt` | exactly one recipient |
@@ -67,11 +68,13 @@ Added in the migration SQL:
 | `CanteenChangeRequest_distinct_canteens_check` | from ≠ requested |
 | `CanteenChangeRequest_review_consistency_check` | `PENDING` ⇔ `reviewedAt IS NULL` |
 | `MenuItem_price_positive_check`, `Order_total_positive_check`, `OrderItem_unit_price_positive_check`, `Payment_amount_positive_check` | > 0 |
+| `Order_total_max_check` | `totalPaise ≤ 100,000,000` (₹10,00,000) — keeps every total far inside `INTEGER` |
 | `OrderItem_quantity_range_check` | 1 ≤ quantity ≤ 20 |
 | `OrderItem_line_total_check` | `lineTotalPaise = unitPricePaise × quantity` |
 | `Order_idempotency_key_format_check` | `^[A-Za-z0-9_-]{8,128}$` |
 | `Notification_single_recipient_check` | `num_nonnulls(studentId, staffId, adminId) = 1` |
-| trigger `OrderItem_immutable` | `UPDATE` on `OrderItem` raises an error |
+| trigger `OrderItem_immutable` | Any `UPDATE` on `OrderItem` raises an error, except the FK's own `menuItemId → NULL` (all snapshot columns unchanged), so a menu item with history can still be hard-deleted |
+| trigger `OrderItem_same_canteen` | `INSERT` with a `menuItemId` from another canteen raises `foreign_key_violation` (Prisma `P2003`) |
 | sequence `order_number_seq` | starts at 1001; `orderNumber` defaults to `'SV' \|\| nextval(...)` |
 
 `prisma migrate diff` reports **no drift**: Prisma does not model CHECK
@@ -108,7 +111,10 @@ provider.
 `OrderItem` stores `itemName`, `unitPricePaise`, `quantity` and
 `lineTotalPaise` at order time. Renaming, repricing, disabling or deleting a
 menu item never changes historical orders. The `OrderItem_immutable` trigger
-blocks updates at the database level.
+blocks updates at the database level. Hard-deleting a menu item only unlinks
+`menuItemId`; the snapshot survives. Order items can only reference menu items
+of the order's canteen (`OrderItem_same_canteen`). Item prices are limited to
+₹1–₹10,000 by API validation, and order totals to ₹10,00,000.
 
 ## Authorization relationships
 

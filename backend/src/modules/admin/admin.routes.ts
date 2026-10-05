@@ -17,7 +17,7 @@ const slug = z
   .string()
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { error: 'Use lowercase letters, digits and hyphens' })
   .max(80);
-const canteenBody = z.object({
+const canteenBody = z.strictObject({
   name,
   slug: slug.optional(),
   location: optionalText(200),
@@ -30,9 +30,13 @@ const canteenPatch = canteenBody
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     error: 'Nothing to update',
   });
-const hostelBody = z.object({ name, canteenId: id });
+const hostelBody = z.strictObject({ name, canteenId: id });
 const hostelPatch = z
-  .object({ name: name.optional(), canteenId: id.optional(), isActive: z.boolean().optional() })
+  .strictObject({
+    name: name.optional(),
+    canteenId: id.optional(),
+    isActive: z.boolean().optional(),
+  })
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     error: 'Nothing to update',
   });
@@ -43,7 +47,7 @@ const staffQuery = paginationQuery.extend({
 const requestQuery = paginationQuery.extend({
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
 });
-const reviewBody = z.object({ notes: optionalText(500) });
+const reviewBody = z.strictObject({ notes: optionalText(500) });
 const orderQuery = paginationQuery.extend({
   canteenId: id.optional(),
   status: z
@@ -103,7 +107,7 @@ export function createAdminRouter(ctx: AppContext, services: Services): Router {
     res.json({ data: await admin.getStaff(parse(idParams, req.params).id) });
   });
   router.patch('/staff/:id/assignment', async (req, res) => {
-    const { canteenId } = parse(z.object({ canteenId: id }), req.body);
+    const { canteenId } = parse(z.strictObject({ canteenId: id }), req.body);
     res.json({
       data: await admin.assignStaff(currentAdmin(req), parse(idParams, req.params).id, canteenId),
     });

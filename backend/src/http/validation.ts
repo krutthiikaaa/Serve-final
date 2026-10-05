@@ -21,12 +21,12 @@ export const email = z
   .toLowerCase()
   .pipe(z.email({ error: 'Must be a valid email address' }));
 
-/** Price in integer paise: ₹1 – ₹1,00,000. */
+/** Price in integer paise: ₹1 – ₹10,000. */
 export const pricePaise = z
   .number({ error: 'Must be an integer number of paise' })
   .int({ error: 'Must be an integer number of paise' })
   .min(100, { error: 'Must be at least 100 paise (₹1)' })
-  .max(10_000_000, { error: 'Must be at most ₹1,00,000' });
+  .max(1_000_000, { error: 'Must be at most ₹10,000 (1000000 paise)' });
 
 export const quantity = z
   .number({ error: 'Quantity must be a whole number' })

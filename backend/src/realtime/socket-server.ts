@@ -8,12 +8,22 @@ import type { PrismaClient } from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { resolvePrincipal, type Principal } from '../modules/auth/principal.js';
 import { canSeeCanteen } from '../modules/canteens/canteens.service.js';
-import { rooms, type EventPublisher, type RealtimeEvent, type RoomCommand } from './events.js';
+import {
+  rooms,
+  type EventPublisher,
+  type RealtimeEnvelope,
+  type RealtimeEvent,
+  type RoomCommand,
+} from './events.js';
 
 interface SocketData {
   uid: string;
   principal: Principal;
+  tokenExpiresAt: number;
 }
+
+/** Longest timer Node supports (~24.8 days); Firebase tokens last 1 hour. */
+const MAX_TIMER_MS = 2_147_483_647;
 
 const dataOf = (socket: Socket) => socket.data as SocketData;
 
@@ -78,7 +88,11 @@ export function createRealtimeServer(
         return connectError('ACCOUNT_NOT_REGISTERED', 'Complete your SERVE registration first.');
       }
       if (!principal.isActive) return connectError('ACCOUNT_DISABLED', 'This account is disabled.');
-      socket.data = { uid: identity.uid, principal } satisfies SocketData;
+      socket.data = {
+        uid: identity.uid,
+        principal,
+        tokenExpiresAt: identity.expiresAt.getTime(),
+      } satisfies SocketData;
       return null;
     } catch (err) {
       if (err instanceof AppError) return connectError(err.code, err.message);
@@ -92,8 +106,24 @@ export function createRealtimeServer(
   });
 
   io.on('connection', (socket) => {
-    const { principal, uid } = dataOf(socket);
+    const { principal, uid, tokenExpiresAt } = dataOf(socket);
     void socket.join(roomsFor(principal));
+
+    // A socket never outlives the ID token it was opened with. At expiry the
+    // client is told why and disconnected; it reconnects with a fresh token
+    // (socket.io-client `auth` callback) and is re-verified from scratch.
+    const expiryTimer = setTimeout(
+      () => {
+        socket.emit('auth.expired', {
+          type: 'auth.expired',
+          occurredAt: new Date().toISOString(),
+          data: { reason: 'TOKEN_EXPIRED' },
+        });
+        socket.disconnect(true);
+      },
+      Math.min(Math.max(tokenExpiresAt - Date.now(), 0), MAX_TIMER_MS),
+    );
+    socket.on('disconnect', () => clearTimeout(expiryTimer));
 
     // Public menu/status updates for one canteen at a time (server-validated).
     socket.on('menu:subscribe', async (payload: unknown, ack?: Ack) => {
@@ -139,7 +169,12 @@ export function createRealtimeServer(
     publish(events: RealtimeEvent[]) {
       for (const event of events) {
         if (event.rooms.length === 0) continue;
-        io.to(event.rooms).emit(event.name, event.payload);
+        const envelope: RealtimeEnvelope = {
+          type: event.name,
+          occurredAt: new Date().toISOString(),
+          data: event.payload,
+        };
+        io.to(event.rooms).emit(event.name, envelope);
       }
     },
     apply(commands: RoomCommand[]) {

@@ -26,18 +26,25 @@ afterAll(() => prisma.$disconnect());
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-/** An unsigned emulator-format token (alg "none") for a UID that does not exist. */
-function forgedToken(uid: string): string {
+/**
+ * An unsigned emulator-format token (alg "none"). The Admin SDK accepts
+ * unsigned tokens ONLY in emulator mode — which production configuration
+ * forbids — but still enforces issuer, audience, expiry and user existence.
+ */
+function forgedToken(
+  uid: string,
+  overrides: { iss?: string; aud?: string; exp?: number; iat?: number } = {},
+): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   const now = Math.floor(Date.now() / 1000);
   return [
     encode({ alg: 'none', typ: 'JWT' }),
     encode({
-      iss: `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`,
-      aud: env.FIREBASE_PROJECT_ID,
-      auth_time: now,
-      iat: now,
-      exp: now + 3600,
+      iss: overrides.iss ?? `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`,
+      aud: overrides.aud ?? env.FIREBASE_PROJECT_ID,
+      auth_time: overrides.iat ?? now,
+      iat: overrides.iat ?? now,
+      exp: overrides.exp ?? now + 3600,
       sub: uid,
       user_id: uid,
       email: 'forged@example.edu',
@@ -67,6 +74,28 @@ describe('token verification', () => {
       .set(bearer(forgedToken('ghost-user')))
       .expect(401);
     expect(res.body.error.code).toBe('AUTH_TOKEN_INVALID');
+  });
+
+  it('rejects expired tokens and tokens for another project or issuer', async () => {
+    const user = await createFirebaseUser();
+    const now = Math.floor(Date.now() / 1000);
+    const expired = await request(app)
+      .get('/api/auth/me')
+      .set(bearer(forgedToken(user.uid, { iat: now - 7200, exp: now - 3600 })))
+      .expect(401);
+    expect(expired.body.error.code).toBe('AUTH_TOKEN_EXPIRED');
+
+    for (const overrides of [
+      { aud: 'some-other-project' },
+      { iss: 'https://securetoken.google.com/some-other-project' },
+      { iss: 'https://evil.example.com' },
+    ]) {
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set(bearer(forgedToken(user.uid, overrides)))
+        .expect(401);
+      expect(res.body.error.code).toBe('AUTH_TOKEN_INVALID');
+    }
   });
 
   it('rejects revoked tokens', async () => {
@@ -195,20 +224,32 @@ describe('student registration', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('ignores client attempts to choose a role or identity', async () => {
+  it('rejects client attempts to choose a role or identity, creating nothing', async () => {
     const user = await createFirebaseUser();
+    for (const extra of [
+      { role: 'ADMIN' },
+      { status: 'APPROVED' },
+      { canteenId: krishnaCanteenId },
+      { firebaseUid: 'someone-else' },
+      { studentId: '00000000-0000-4000-8000-000000000000' },
+    ]) {
+      const res = await request(app)
+        .post('/api/auth/student/register')
+        .set(bearer(user.idToken))
+        .send({ name: 'Sneaky', email: user.email, hostelId: krishnaHostelId, ...extra })
+        .expect(422);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    for (const table of [prisma.admin, prisma.staff, prisma.student] as const) {
+      expect(await (table as typeof prisma.admin).count({ where: { firebaseUid: user.uid } })).toBe(
+        0,
+      );
+    }
+    // The legitimate request still works and can only produce a Student.
     const res = await request(app)
       .post('/api/auth/student/register')
       .set(bearer(user.idToken))
-      .send({
-        name: 'Sneaky',
-        email: user.email,
-        hostelId: krishnaHostelId,
-        role: 'ADMIN',
-        status: 'APPROVED',
-        canteenId: krishnaCanteenId,
-        firebaseUid: 'someone-else',
-      })
+      .send({ name: 'Sneaky', email: user.email, hostelId: krishnaHostelId })
       .expect(201);
     expect(res.body.data.role).toBe('STUDENT');
     expect(res.body.data.firebaseUid).toBe(user.uid);
@@ -258,9 +299,9 @@ describe('student registration', () => {
 });
 
 describe('staff registration', () => {
-  it('creates a PENDING staff account with no canteen', async () => {
+  it('creates a PENDING staff account with no canteen (self-assignment rejected)', async () => {
     const user = await createFirebaseUser();
-    const res = await request(app)
+    const sneaky = await request(app)
       .post('/api/auth/staff/register')
       .set(bearer(user.idToken))
       .send({
@@ -269,6 +310,14 @@ describe('staff registration', () => {
         canteenId: krishnaCanteenId,
         status: 'APPROVED',
       })
+      .expect(422);
+    expect(sneaky.body.error.code).toBe('VALIDATION_ERROR');
+    expect(await prisma.staff.count({ where: { firebaseUid: user.uid } })).toBe(0);
+
+    const res = await request(app)
+      .post('/api/auth/staff/register')
+      .set(bearer(user.idToken))
+      .send({ name: 'Ravi Staff', email: user.email })
       .expect(201);
     expect(res.body.data).toMatchObject({
       role: 'STAFF',
@@ -302,6 +351,24 @@ describe('staff registration', () => {
     const notes = await prisma.notification.findMany({ where: { adminId: adminRow.id } });
     expect(notes).toHaveLength(1);
     expect(notes[0]?.type).toBe('STAFF_ACCESS_REQUESTED');
+  });
+});
+
+describe('admin account status', () => {
+  it('a deactivated admin loses access to admin APIs', async () => {
+    const user = await createFirebaseUser(uniqueEmail('inactive-admin'));
+    const { adminId } = await bootstrapAdmin(
+      { auth: firebaseAuth, prisma },
+      { email: user.email, name: 'Soon Inactive', allowCreateFirebaseUser: false },
+    );
+    await request(app).get('/api/admin/dashboard').set(bearer(user.idToken)).expect(200);
+    await prisma.admin.update({ where: { id: adminId }, data: { isActive: false } });
+    const res = await request(app)
+      .get('/api/admin/dashboard')
+      .set(bearer(user.idToken))
+      .expect(403);
+    expect(res.body.error.code).toBe('ACCOUNT_DISABLED');
+    await request(app).get('/api/notifications').set(bearer(user.idToken)).expect(403);
   });
 });
 

@@ -3,11 +3,12 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../lib/prisma.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
-import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
+import { Outbox, type EventPublisher } from '../../realtime/events.js';
 import type { StudentPrincipal } from '../auth/principal.js';
 import { writeNotifications } from '../notifications/notification.writer.js';
 import { canteenTakesOrders } from '../canteens/canteen.dto.js';
-import { orderInclude, statusEventPayload, toOrderDto } from '../orders/order.dto.js';
+import { orderInclude, toOrderDto } from '../orders/order.dto.js';
+import { queueOrderEvent } from '../orders/order.events.js';
 import { MockPaymentProvider } from './mock.provider.js';
 import type { PaymentConfirmation, PaymentProvider } from './provider.js';
 
@@ -116,16 +117,8 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
     });
 
     if (!result.duplicate) {
-      const order = result.order;
-      outbox.emit(
-        'order:status_updated',
-        [rooms.student(order.studentId), rooms.canteen(order.canteenId), rooms.admins()],
-        statusEventPayload(order, 'PLACED'),
-      );
-      // A paid order is a NEW order for the kitchen.
-      outbox.emit('order:created', [rooms.canteen(order.canteenId), rooms.admins()], {
-        order: toOrderDto(order, 'staff'),
-      });
+      // order.payment_confirmed doubles as the kitchen's "new order" signal.
+      queueOrderEvent(outbox, result.order, 'PLACED');
       outbox.flush(events);
     }
     return result;
@@ -175,7 +168,10 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
     }
 
     // Never trust the client about what was captured: ask the provider.
-    const captured = await payments.fetchPayment(confirmation.providerPaymentId);
+    const captured = await payments.fetchPayment(
+      confirmation.providerPaymentId,
+      confirmation.providerOrderId,
+    );
     if (captured.providerOrderId !== confirmation.providerOrderId) {
       throw new ValidationError(
         'Payment does not belong to this order.',
@@ -289,6 +285,7 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
       }
       const checkout = payments.simulateCheckout(order.payment.providerOrderId, {
         outcome: options.outcome,
+        amountPaise: order.payment.amountPaise,
         ...(options.capturedAmountPaise !== undefined
           ? { capturedAmountPaise: options.capturedAmountPaise }
           : {}),

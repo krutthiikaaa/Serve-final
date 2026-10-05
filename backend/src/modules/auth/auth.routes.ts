@@ -7,8 +7,8 @@ import { email, id, name, parse } from '../../http/validation.js';
 import type { Services } from '../../services.js';
 import { resolvePrincipal } from './principal.js';
 
-const studentRegistrationBody = z.object({ name, email, hostelId: id });
-const staffRegistrationBody = z.object({ name, email, requestedCanteenId: id.optional() });
+const studentRegistrationBody = z.strictObject({ name, email, hostelId: id });
+const staffRegistrationBody = z.strictObject({ name, email, requestedCanteenId: id.optional() });
 
 /**
  * /api/auth — registration and identity. Registration endpoints accept a

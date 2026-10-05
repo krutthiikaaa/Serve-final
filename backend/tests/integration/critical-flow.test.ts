@@ -117,7 +117,7 @@ describe('critical flow: admin -> staff -> student -> payment -> realtime pickup
     expect((await subscribeMenu(socket, kg.id)).ok).toBe(true);
     const live = nextEvent<{ itemId: string; pricePaise: number }>(
       socket,
-      'menu:price_updated',
+      'menu.item_price_changed',
       (p) => p.itemId === itemId,
     );
 
@@ -176,16 +176,26 @@ describe('critical flow: admin -> staff -> student -> payment -> realtime pickup
       .send({ isAvailable: true })
       .expect(200);
 
-    const res = await request(server.app)
+    // A manipulated client price/total is rejected outright — nothing is written.
+    const ordersBefore = await server.prisma.order.count();
+    const tampered = await request(server.app)
       .post('/api/orders')
       .set(bearer(student.token))
       .set('Idempotency-Key', idempotencyKey())
-      // A manipulated client total is ignored.
       .send({
         canteenId: kg.id,
         totalPaise: 100,
         items: [{ menuItemId: itemId, quantity: 2, pricePaise: 1 }],
       })
+      .expect(422);
+    expect(tampered.body.error.code).toBe('VALIDATION_ERROR');
+    expect(await server.prisma.order.count()).toBe(ordersBefore);
+
+    const res = await request(server.app)
+      .post('/api/orders')
+      .set(bearer(student.token))
+      .set('Idempotency-Key', idempotencyKey())
+      .send({ canteenId: kg.id, items: [{ menuItemId: itemId, quantity: 2 }] })
       .expect(201);
     orderId = res.body.data.id;
     expect(res.body.data).toMatchObject({ status: 'PLACED', totalPaise: 24_000 });
@@ -208,9 +218,10 @@ describe('critical flow: admin -> staff -> student -> payment -> realtime pickup
 
   it('7. mock payment succeeds; the order is PAYMENT_CONFIRMED and staff receive it in realtime', async () => {
     const staffSocket = await server.connect(staff.token);
+    // For staff, order.payment_confirmed is the "new order" signal.
     const newOrder = nextEvent<{ order: { id: string; totalPaise: number; status: string } }>(
       staffSocket,
-      'order:created',
+      'order.payment_confirmed',
       (p) => p.order.id === orderId,
     );
 
@@ -243,23 +254,27 @@ describe('critical flow: admin -> staff -> student -> payment -> realtime pickup
     const studentSocket = await server.connect(student.token);
     const notifications: { type: string; message: string }[] = [];
     studentSocket.on(
-      'notification:created',
-      (p: { notification: { type: string; message: string } }) =>
-        notifications.push(p.notification),
+      'notification.created',
+      (envelope: { data: { notification: { type: string; message: string } } }) =>
+        notifications.push(envelope.data.notification),
     );
 
-    for (const status of ['PREPARING', 'READY', 'COLLECTED'] as const) {
-      const update = nextEvent<{ orderId: string; status: string }>(
+    for (const [status, event] of [
+      ['PREPARING', 'order.preparing'],
+      ['READY', 'order.ready'],
+      ['COLLECTED', 'order.collected'],
+    ] as const) {
+      const update = nextEvent<{ order: { id: string; status: string } }>(
         studentSocket,
-        'order:status_updated',
-        (p) => p.orderId === orderId && p.status === status,
+        event,
+        (p) => p.order.id === orderId,
       );
       await request(server.app)
         .patch(`/api/staff/orders/${orderId}/status`)
         .set(bearer(staff.token))
         .send({ status })
         .expect(200);
-      expect((await update).status).toBe(status);
+      expect((await update).order.status).toBe(status);
       expect((await server.prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe(
         status,
       );

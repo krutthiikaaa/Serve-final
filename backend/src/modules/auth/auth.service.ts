@@ -6,6 +6,10 @@ import { isUniqueViolation } from '../../lib/prisma-errors.js';
 import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
 import { activeAdminRecipients, writeNotifications } from '../notifications/notification.writer.js';
 import { isFirebaseUidRegistered, type Principal } from './principal.js';
+import {
+  changeRequestInclude,
+  toChangeRequestDto,
+} from '../change-requests/change-requests.service.js';
 
 export interface StudentRegistration {
   name: string;
@@ -127,7 +131,7 @@ export function createAuthService({ prisma, env, events }: Deps) {
           if (input.requestedCanteenId) {
             const request = await tx.canteenChangeRequest.create({
               data: { staffId: staff.id, requestedCanteenId: input.requestedCanteenId },
-              include: { requestedCanteen: { select: { id: true, name: true } } },
+              include: changeRequestInclude,
             });
             await writeNotifications(tx, outbox, await activeAdminRecipients(tx), {
               type: 'STAFF_ACCESS_REQUESTED',
@@ -135,15 +139,8 @@ export function createAuthService({ prisma, env, events }: Deps) {
               message: `${staff.name} requested access to ${request.requestedCanteen.name}.`,
               data: { changeRequestId: request.id, staffId: staff.id },
             });
-            outbox.emit('change_request:created', [rooms.admins()], {
-              changeRequest: {
-                id: request.id,
-                status: request.status,
-                staff: { id: staff.id, name: staff.name, email: staff.email },
-                requestedCanteen: request.requestedCanteen,
-                fromCanteen: null,
-                createdAt: request.createdAt,
-              },
+            outbox.emit('change_request.created', [rooms.admins()], {
+              changeRequest: toChangeRequestDto(request),
             });
           }
         });

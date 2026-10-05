@@ -1,8 +1,9 @@
 # SERVE — Architecture
 
-_Status: the backend is implemented through Phase 5 (database,
+_Status: the backend is implemented and its contract is frozen (database,
 authentication, REST API, payments, realtime). The three client apps are
-planned for later phases and are described here as integration targets._
+planned; [frontend-integration.md](frontend-integration.md) describes how they
+connect._
 
 ## 1. System overview
 
@@ -99,13 +100,16 @@ verify   ──► provider.verifyPaymentSignature()                         HMA
          ──► after commit: order:status_updated (student), order:created (kitchen)
 ```
 
-- **MockPaymentProvider:** development and test only. It is rejected in production, and `mock-complete` is only mounted in mock mode outside production.
+- **MockPaymentProvider:** development and test only. It is rejected in production, and `mock-complete` is only mounted in mock mode outside production. It is stateless: the captured amount and outcome are encoded in the HMAC-signed mock payment id, so a restart between initiate and complete strands nothing.
+- **Refund ordering:** a staff cancellation of a paid order commits `CANCELLED` first and refunds afterwards. A concurrent `PREPARING` can therefore never end with money refunded for an order still being cooked. If the provider refund fails, the payment stays `SUCCESS` with `failureReason = "Refund pending…"` and the error is logged.
 - **RazorpayPaymentProvider:** signature verification is implemented as documented by Razorpay. API calls are pending and return `503 PAYMENT_PROVIDER_NOT_IMPLEMENTED`; they never fake success.
 - **Webhooks:** verified over the raw body, and replay-safe through `ProcessedPaymentEvent`.
 
 ## 7. Realtime
 
-- Services record changes in an `Outbox` during the transaction. `outbox.flush(events)` runs **after commit**, so no event can describe uncommitted state.
+- Services record changes in an `Outbox` during the transaction. `outbox.flush(events)` runs **after commit**, so no event can describe uncommitted state. A rolled-back transaction emits nothing. Events are published before room commands, so a deactivated staff member still receives `staff.deactivated` before the disconnect.
+- Wire format: every event is `{ type, occurredAt, data }`, with dot-style names (`order.ready`, `menu.item_price_changed`, `staff.canteen_assigned`, …). Order events carry the full order in the representation for each room's audience (student view vs staff/admin view). Staff only ever see paid orders; `order.payment_confirmed` is their new-order signal.
+- Token expiry: the socket remembers the expiry of its handshake token. At expiry it emits `auth.expired` and disconnects. The client reconnects with a fresh token and is re-verified, and its rooms are re-derived, from scratch.
 - Socket.IO authenticates the handshake exactly like REST and assigns rooms on the server: `student:<id>`, `staff:<id>`, `canteen:<id>` (approved staff), `admin:<id>` and `admin`. The one client-initiated room is the read-only `canteen-public:<id>`, joined through a validated `menu:subscribe`.
 - Room commands follow committed assignment changes. Approval or reassignment moves the staff member's live sockets to the new canteen room; deactivation disconnects them.
 - `RealtimeBridge` lets Express be created before Socket.IO attaches to the same HTTP server.

@@ -56,7 +56,13 @@ export function createApp(ctx: AppContext): Express {
       credentials: false, // Bearer tokens, not cookies.
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'X-Request-Id'],
-      exposedHeaders: ['X-Request-Id', 'RateLimit', 'RateLimit-Policy', 'Retry-After'],
+      exposedHeaders: [
+        'X-Request-Id',
+        'Idempotent-Replayed',
+        'RateLimit',
+        'RateLimit-Policy',
+        'Retry-After',
+      ],
       maxAge: 600,
     }),
   );

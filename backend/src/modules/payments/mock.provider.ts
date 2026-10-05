@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type {
   CreateProviderOrderInput,
   PaymentConfirmation,
@@ -12,48 +12,44 @@ import { NotFoundError } from '../../lib/errors.js';
 /**
  * Development/test payment provider that simulates a gateway.
  *
- * It behaves like Razorpay's checkout contract: an order is created for the
- * server amount, the "gateway" captures a payment and returns
+ * It follows Razorpay's checkout contract: an order is created for the server
+ * amount, the "gateway" captures a payment and returns
  * (orderId, paymentId, HMAC signature), and the backend verifies the signature
- * AND the captured amount before confirming. Gateway state is in-memory; this
- * provider is rejected by configuration in production.
+ * AND the captured amount before confirming.
+ *
+ * Stateless: the captured amount and outcome are encoded in the mock payment
+ * id, which is covered by the HMAC signature, so a server restart between
+ * initiation and completion does not strand a payment. Rejected by
+ * configuration in production.
  */
+const MOCK_PAYMENT_ID = /^mock_pay_(\d+)_(captured|failed)_[0-9a-f]{16}$/;
+
 export class MockPaymentProvider implements PaymentProvider {
   readonly name = 'MOCK' as const;
-  private readonly orders = new Map<string, ProviderOrder>();
-  private readonly payments = new Map<string, ProviderPayment>();
 
   constructor(private readonly secret: string) {}
 
   createOrder(input: CreateProviderOrderInput): Promise<ProviderOrder> {
-    const order: ProviderOrder = {
+    return Promise.resolve({
       providerOrderId: `mock_order_${randomUUID().replaceAll('-', '')}`,
       amountPaise: input.amountPaise,
       currency: input.currency,
-    };
-    this.orders.set(order.providerOrderId, order);
-    return Promise.resolve(order);
+    });
   }
 
   /**
-   * Simulates the customer completing checkout on the gateway.
-   * `capturedAmountPaise` lets tests simulate a gateway reporting a different
-   * captured amount (which the backend must reject).
+   * Simulates the customer completing checkout on the gateway for
+   * `amountPaise` (the provider order amount). `capturedAmountPaise` lets tests
+   * simulate a gateway reporting a different captured amount, which the
+   * backend must reject.
    */
   simulateCheckout(
     providerOrderId: string,
-    options: { outcome: 'success' | 'failure'; capturedAmountPaise?: number },
+    options: { outcome: 'success' | 'failure'; amountPaise: number; capturedAmountPaise?: number },
   ): PaymentConfirmation & { status: 'captured' | 'failed' } {
-    const order = this.orders.get(providerOrderId);
-    if (!order) throw new NotFoundError('Payment session not found.', 'PAYMENT_SESSION_NOT_FOUND');
-    const providerPaymentId = `mock_pay_${randomUUID().replaceAll('-', '')}`;
     const status = options.outcome === 'success' ? 'captured' : 'failed';
-    this.payments.set(providerPaymentId, {
-      providerPaymentId,
-      providerOrderId,
-      amountPaise: options.capturedAmountPaise ?? order.amountPaise,
-      status,
-    });
+    const captured = options.capturedAmountPaise ?? options.amountPaise;
+    const providerPaymentId = `mock_pay_${captured}_${status}_${randomBytes(8).toString('hex')}`;
     return {
       providerOrderId,
       providerPaymentId,
@@ -73,11 +69,16 @@ export class MockPaymentProvider implements PaymentProvider {
     );
   }
 
-  fetchPayment(providerPaymentId: string): Promise<ProviderPayment> {
-    const payment = this.payments.get(providerPaymentId);
-    if (!payment)
-      return Promise.reject(new NotFoundError('Payment not found.', 'PAYMENT_NOT_FOUND'));
-    return Promise.resolve(payment);
+  /** Callers verify the signature (which binds paymentId to orderId) first. */
+  fetchPayment(providerPaymentId: string, providerOrderId: string): Promise<ProviderPayment> {
+    const match = MOCK_PAYMENT_ID.exec(providerPaymentId);
+    if (!match) return Promise.reject(new NotFoundError('Payment not found.', 'PAYMENT_NOT_FOUND'));
+    return Promise.resolve({
+      providerPaymentId,
+      providerOrderId,
+      amountPaise: Number(match[1]),
+      status: match[2] as 'captured' | 'failed',
+    });
   }
 
   refund(): Promise<{ refundId: string }> {

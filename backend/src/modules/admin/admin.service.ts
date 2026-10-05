@@ -48,7 +48,7 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
   function emitOrderTaking(canteen: Parameters<typeof orderTakingPayload>[0]) {
     const outbox = new Outbox();
     outbox.emit(
-      'canteen:order_taking_updated',
+      'canteen.status_changed',
       [rooms.canteenPublic(canteen.id), rooms.canteen(canteen.id), rooms.admins()],
       orderTakingPayload(canteen),
     );
@@ -56,28 +56,72 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
   }
 
   return {
+    /** Platform overview, computed from live data (one round of parallel aggregate queries). */
     async dashboard() {
       const since = startOfIstDay();
-      const [canteens, activeCanteens, accepting, pendingRequests, staffByStatus, today] =
+      const [canteenRows, pendingRequests, staffByStatus, activeOrders, today, todayByStatus] =
         await Promise.all([
-          prisma.canteen.count(),
-          prisma.canteen.count({ where: { isActive: true } }),
-          prisma.canteen.count({ where: { isActive: true, isAcceptingOrders: true } }),
+          prisma.canteen.findMany({ select: { isActive: true, isAcceptingOrders: true } }),
           prisma.canteenChangeRequest.count({ where: { status: 'PENDING' } }),
           prisma.staff.groupBy({ by: ['status'], _count: { _all: true } }),
+          prisma.order.groupBy({
+            by: ['status'],
+            where: { status: { in: ['PAYMENT_CONFIRMED', 'PREPARING', 'READY'] } },
+            _count: { _all: true },
+          }),
           prisma.order.aggregate({
             where: { paidAt: { gte: since }, status: { notIn: ['PLACED', 'CANCELLED'] } },
             _count: { _all: true },
             _sum: { totalPaise: true },
           }),
+          prisma.order.groupBy({
+            by: ['status'],
+            where: { createdAt: { gte: since } },
+            _count: { _all: true },
+          }),
         ]);
       const staffCount = (status: StaffStatus) =>
         staffByStatus.find((row) => row.status === status)?._count._all ?? 0;
+      const activeCount = (status: string) =>
+        activeOrders.find((row) => row.status === status)?._count._all ?? 0;
+      const placedToday = Object.fromEntries(
+        (
+          ['PLACED', 'PAYMENT_CONFIRMED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'] as const
+        ).map((status) => [
+          status,
+          todayByStatus.find((row) => row.status === status)?._count._all ?? 0,
+        ]),
+      );
       return {
-        canteens: { total: canteens, active: activeCanteens, acceptingOrders: accepting },
-        staff: { active: staffCount('APPROVED'), pending: staffCount('PENDING') },
+        canteens: {
+          total: canteenRows.length,
+          active: canteenRows.filter((c) => c.isActive).length,
+          acceptingOrders: canteenRows.filter((c) => c.isActive && c.isAcceptingOrders).length,
+          paused: canteenRows.filter((c) => c.isActive && !c.isAcceptingOrders).length,
+          inactive: canteenRows.filter((c) => !c.isActive).length,
+        },
+        staff: {
+          active: staffCount('APPROVED'),
+          pending: staffCount('PENDING'),
+          rejected: staffCount('REJECTED'),
+          deactivated: staffCount('DEACTIVATED'),
+        },
         pendingChangeRequests: pendingRequests,
-        today: { since, orderCount: today._count._all, revenuePaise: today._sum.totalPaise ?? 0 },
+        orders: {
+          active:
+            activeCount('PAYMENT_CONFIRMED') + activeCount('PREPARING') + activeCount('READY'),
+          awaitingPreparation: activeCount('PAYMENT_CONFIRMED'),
+          preparing: activeCount('PREPARING'),
+          ready: activeCount('READY'),
+        },
+        today: {
+          since,
+          /** Paid, non-cancelled orders (by payment time). */
+          orderCount: today._count._all,
+          revenuePaise: today._sum.totalPaise ?? 0,
+          /** Orders created today, by current status. */
+          createdByStatus: placedToday,
+        },
       };
     },
 
@@ -342,8 +386,8 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
         canteen: { id: canteen.id, name: canteen.name },
       };
       outbox.command({ type: 'staff-canteen-changed', staffId, canteenId });
-      if (!wasApproved) outbox.emit('staff:approved', targets, payload);
-      outbox.emit('staff:canteen_assignment_updated', targets, payload);
+      if (!wasApproved) outbox.emit('staff.approved', targets, payload);
+      outbox.emit('staff.canteen_assigned', targets, payload);
       outbox.flush(events);
       return updated;
     },
@@ -380,7 +424,7 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
         });
         return result;
       });
-      outbox.emit('staff:deactivated', [rooms.staff(staffId), rooms.admins()], {
+      outbox.emit('staff.deactivated', [rooms.staff(staffId), rooms.admins()], {
         staffId,
         status: 'DEACTIVATED',
       });

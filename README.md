@@ -6,8 +6,9 @@
 > PostgreSQL schema, Firebase authentication, the REST API (canteens, menus,
 > cart quotes, orders, mock payments, staff and admin operations,
 > notifications) and authenticated Socket.IO realtime, all covered by
-> automated tests. The Student App, Staff Dashboard and Admin Portal **are not
-> implemented yet**. Wherever this README describes them, it describes the
+> automated tests. The backend contract has been audited and frozen for the
+> client apps (see [docs/frontend-integration.md](docs/frontend-integration.md)).
+> The Student App, Staff Dashboard and Admin Portal **are not implemented yet**. Wherever this README describes them, it describes the
 > approved design, not working software. See
 > [Current Development Status](#17-current-development-status).
 
@@ -346,6 +347,7 @@ payments and realtime into backend Phases 2–5. The client apps follow.
 | 3 | Firebase authentication, roles, authorization | **Complete** |
 | 4 | REST APIs: canteens, menus, cart, orders, mock payments, staff, admin, notifications | **Complete** |
 | 5 | Socket.IO realtime and the critical end-to-end backend flow | **Complete** |
+| — | Backend audit and contract freeze | **Complete** |
 | — | Student App (Flutter) | Not started |
 | — | Staff Dashboard (React) | Not started |
 | — | Admin Portal (React) | Not started |
@@ -385,3 +387,4 @@ history.
 - [docs/api.md](docs/api.md)
 - [docs/database.md](docs/database.md)
 - [docs/development.md](docs/development.md)
+- [docs/frontend-integration.md](docs/frontend-integration.md)

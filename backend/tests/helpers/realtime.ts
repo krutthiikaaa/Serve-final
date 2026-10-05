@@ -68,11 +68,15 @@ export async function startTestServer() {
 
 export type TestServer = Awaited<ReturnType<typeof startTestServer>>;
 
-/** Wait for the next matching event on a socket. */
+/**
+ * Wait for the next matching event on a socket. Every server event uses the
+ * envelope { type, occurredAt, data }; this checks the envelope and resolves
+ * with `data`.
+ */
 export function nextEvent<T = Record<string, unknown>>(
   socket: Socket,
   name: string,
-  predicate: (payload: T) => boolean = () => true,
+  predicate: (data: T) => boolean = () => true,
   timeoutMs = 5_000,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -80,11 +84,17 @@ export function nextEvent<T = Record<string, unknown>>(
       socket.off(name, handler);
       reject(new Error(`Timed out waiting for "${name}"`));
     }, timeoutMs);
-    const handler = (payload: T) => {
-      if (!predicate(payload)) return;
+    const handler = (envelope: { type: string; occurredAt: string; data: T }) => {
+      if (envelope.type !== name || Number.isNaN(Date.parse(envelope.occurredAt))) {
+        clearTimeout(timer);
+        socket.off(name, handler);
+        reject(new Error(`Malformed envelope for "${name}": ${JSON.stringify(envelope)}`));
+        return;
+      }
+      if (!predicate(envelope.data)) return;
       clearTimeout(timer);
       socket.off(name, handler);
-      resolve(payload);
+      resolve(envelope.data);
     };
     socket.on(name, handler);
   });
@@ -92,9 +102,9 @@ export function nextEvent<T = Record<string, unknown>>(
 
 /** Records every event a socket receives (for "must NOT receive" assertions). */
 export function recordEvents(socket: Socket) {
-  const received: { name: string; payload: Record<string, unknown> }[] = [];
-  socket.onAny((name: string, payload: Record<string, unknown>) =>
-    received.push({ name, payload }),
+  const received: { name: string; data: Record<string, unknown> }[] = [];
+  socket.onAny((name: string, envelope: { data: Record<string, unknown> }) =>
+    received.push({ name, data: envelope.data }),
   );
   return received;
 }

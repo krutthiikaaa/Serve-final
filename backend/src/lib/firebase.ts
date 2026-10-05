@@ -8,6 +8,8 @@ export interface VerifiedIdentity {
   uid: string;
   email: string | null;
   emailVerified: boolean;
+  /** When the ID token stops being valid. */
+  expiresAt: Date;
 }
 
 export interface IdentityVerifier {
@@ -95,6 +97,7 @@ export class FirebaseIdentityVerifier implements IdentityVerifier {
         uid: decoded.uid,
         email: decoded.email ? decoded.email.toLowerCase() : null,
         emailVerified: decoded.email_verified === true,
+        expiresAt: new Date(decoded.exp * 1000),
       };
     } catch (err) {
       const code = (err as { code?: unknown }).code;

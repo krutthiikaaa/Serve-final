@@ -380,6 +380,87 @@ describe('orders, items and payments', () => {
     ).rejects.toThrow(/immutable/);
   });
 
+  it('lets a menu item be hard-deleted while its order snapshots survive unchanged', async () => {
+    const canteen = await makeCanteen();
+    const student = await makeStudent(canteen.id);
+    const { item } = await makeMenu(canteen.id, 4_500);
+    const order = await prisma.order.create({
+      data: {
+        studentId: student.id,
+        canteenId: canteen.id,
+        totalPaise: 4_500,
+        idempotencyKey: 'hard-delete-key',
+        requestHash: 'h',
+        items: {
+          create: [
+            {
+              menuItemId: item.id,
+              itemName: item.name,
+              unitPricePaise: 4_500,
+              quantity: 1,
+              lineTotalPaise: 4_500,
+            },
+          ],
+        },
+      },
+      include: { items: true },
+    });
+    await prisma.menuItem.delete({ where: { id: item.id } });
+    const snapshot = await prisma.orderItem.findUniqueOrThrow({
+      where: { id: order.items[0]!.id },
+    });
+    expect(snapshot).toMatchObject({
+      menuItemId: null,
+      itemName: item.name,
+      unitPricePaise: 4_500,
+      quantity: 1,
+    });
+  });
+
+  it('rejects an order item that references another canteen’s menu item', async () => {
+    const [a, b] = [await makeCanteen(), await makeCanteen()];
+    const student = await makeStudent(a.id);
+    const { item: foreign } = await makeMenu(b.id, 1_000);
+    await expect(
+      prisma.order.create({
+        data: {
+          studentId: student.id,
+          canteenId: a.id,
+          totalPaise: 1_000,
+          idempotencyKey: 'cross-canteen-key',
+          requestHash: 'h',
+          items: {
+            create: [
+              {
+                menuItemId: foreign.id,
+                itemName: 'X',
+                unitPricePaise: 1_000,
+                quantity: 1,
+                lineTotalPaise: 1_000,
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'P2003' });
+  });
+
+  it('caps order totals at ₹10,00,000', async () => {
+    const canteen = await makeCanteen();
+    const student = await makeStudent(canteen.id);
+    await expect(
+      prisma.order.create({
+        data: {
+          studentId: student.id,
+          canteenId: canteen.id,
+          totalPaise: 100_000_001,
+          idempotencyKey: 'too-big-key-1',
+          requestHash: 'h',
+        },
+      }),
+    ).rejects.toThrow(/Order_total_max_check/);
+  });
+
   it('enforces quantity range and line-total arithmetic', async () => {
     const canteen = await makeCanteen();
     const student = await makeStudent(canteen.id);

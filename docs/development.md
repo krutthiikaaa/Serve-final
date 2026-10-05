@@ -160,7 +160,7 @@ npm run test:emulator
 
 | Suite | What it covers |
 |---|---|
-| `tests/unit/` | env validation rules, log redaction, role guards |
+| `tests/unit/` | env validation rules, log redaction, role guards, the full order state-machine table |
 | `tests/integration/health`, `app` | health checks (including database down), security headers, CORS, request ids, error contract, rate limiting |
 | `database` | constraints, cascades, snapshots, partial unique index, seed idempotency |
 | `auth` | Firebase token verification (malformed, forged, revoked, disabled), registration rules, admin bootstrap |
@@ -168,7 +168,8 @@ npm run test:emulator
 | `orders` | quotes, server totals, snapshots, idempotency, paused/inactive canteens, state machine, IDOR |
 | `payments` | mock flow, amount mismatch, replay, signature checks, webhook replay protection |
 | `staff-admin` | approval lifecycle, admin canteen/hostel/staff management, notifications, recommendations |
-| `realtime` | Socket.IO auth, room isolation, menu subscriptions, post-commit events, assignment moves |
+| `realtime` | Socket.IO auth, token-expiry disconnect, room isolation, malicious joins, menu subscriptions, post-commit events, assignment moves |
+| `contract-smoke` | the three clients end to end, every response validated against the strict contract in `tests/helpers/contract.ts` |
 | `critical-flow` | the full admin → staff → student → payment → realtime pickup scenario |
 | `security` | 401/403 sweep over every protected route, malformed ids, no leaked internals |
 

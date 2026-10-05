@@ -41,8 +41,11 @@ export interface PaymentProvider {
   createOrder(input: CreateProviderOrderInput): Promise<ProviderOrder>;
   /** Verify the signature returned to the client after checkout. */
   verifyPaymentSignature(confirmation: PaymentConfirmation): boolean;
-  /** Server-to-server lookup of what was actually captured. */
-  fetchPayment(providerPaymentId: string): Promise<ProviderPayment>;
+  /**
+   * Server-to-server lookup of what was actually captured. `providerOrderId`
+   * is the order the (already signature-verified) payment claims to belong to.
+   */
+  fetchPayment(providerPaymentId: string, providerOrderId: string): Promise<ProviderPayment>;
   refund(providerPaymentId: string, amountPaise: number): Promise<{ refundId: string }>;
   /** Verify a webhook body signature (raw bytes, as received). */
   verifyWebhookSignature(rawBody: Buffer, signature: string): boolean;

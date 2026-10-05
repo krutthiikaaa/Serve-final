@@ -87,7 +87,7 @@ export function createChangeRequestsService(prisma: PrismaClient, events: EventP
         throw err;
       }
       const dto = toChangeRequestDto(request);
-      outbox.emit('change_request:created', [rooms.admins()], { changeRequest: dto });
+      outbox.emit('change_request.created', [rooms.admins()], { changeRequest: dto });
       outbox.flush(events);
       return dto;
     },
@@ -189,7 +189,7 @@ export function createChangeRequestsService(prisma: PrismaClient, events: EventP
 
       const dto = toChangeRequestDto(request);
       const targets = [rooms.staff(existing.staffId), rooms.admins()];
-      outbox.emit('change_request:updated', targets, { changeRequest: dto });
+      outbox.emit('change_request.updated', targets, { changeRequest: dto });
       if (decision === 'APPROVED') {
         const canteen = { id: existing.requestedCanteen.id, name: existing.requestedCanteen.name };
         outbox.command({
@@ -197,20 +197,20 @@ export function createChangeRequestsService(prisma: PrismaClient, events: EventP
           staffId: existing.staffId,
           canteenId: canteen.id,
         });
-        outbox.emit(wasApproved ? 'staff:canteen_assignment_updated' : 'staff:approved', targets, {
+        outbox.emit(wasApproved ? 'staff.canteen_assigned' : 'staff.approved', targets, {
           staffId: existing.staffId,
           status: 'APPROVED',
           canteen,
         });
         if (!wasApproved) {
-          outbox.emit('staff:canteen_assignment_updated', targets, {
+          outbox.emit('staff.canteen_assigned', targets, {
             staffId: existing.staffId,
             status: 'APPROVED',
             canteen,
           });
         }
       } else if (!wasApproved) {
-        outbox.emit('staff:rejected', targets, { staffId: existing.staffId, status: 'REJECTED' });
+        outbox.emit('staff.rejected', targets, { staffId: existing.staffId, status: 'REJECTED' });
       }
       outbox.flush(events);
       return dto;
