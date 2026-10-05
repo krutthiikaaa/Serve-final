@@ -49,18 +49,3 @@ export async function signIn(email: string): Promise<string> {
   });
   return String(json.idToken);
 }
-
-export async function emulatorReachable(): Promise<boolean> {
-  try {
-    const res = await fetch(`http://${host}/`);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function clearFirebaseUsers(): Promise<void> {
-  await fetch(`http://${host}/emulator/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts`, {
-    method: 'DELETE',
-  });
-}

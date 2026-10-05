@@ -31,11 +31,20 @@ const auth = createFirebaseAuth(env);
 const prisma = createPrismaClient(env.DATABASE_URL);
 
 async function firebaseUid(authClient: Auth, email: string, displayName: string): Promise<string> {
+  let uid: string;
   try {
-    return (await authClient.getUserByEmail(email)).uid;
+    uid = (await authClient.getUserByEmail(email)).uid;
   } catch {
-    return (await authClient.createUser({ email, password, displayName })).uid;
+    uid = (await authClient.createUser({ email, password, displayName })).uid;
   }
+  // The emulator keeps accounts in memory: after a restart the demo users get
+  // new UIDs. Re-link existing demo rows (development only).
+  await Promise.all([
+    prisma.admin.updateMany({ where: { email }, data: { firebaseUid: uid } }),
+    prisma.staff.updateMany({ where: { email }, data: { firebaseUid: uid } }),
+    prisma.student.updateMany({ where: { email }, data: { firebaseUid: uid } }),
+  ]);
+  return uid;
 }
 
 try {
@@ -43,6 +52,7 @@ try {
   const yn = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'yamuna-narmada' } });
   const krishna = await prisma.hostel.findUniqueOrThrow({ where: { name: 'Krishna' } });
 
+  await firebaseUid(auth, 'admin@serve.dev', 'Dev Admin');
   await bootstrapAdmin(
     { auth, prisma },
     { email: 'admin@serve.dev', name: 'Dev Admin', password, allowCreateFirebaseUser: true },

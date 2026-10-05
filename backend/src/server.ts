@@ -4,7 +4,7 @@ import { createLogger } from './config/logger.js';
 import { createPrismaClient } from './lib/prisma.js';
 import { createFirebaseAuth, FirebaseIdentityVerifier } from './lib/firebase.js';
 import { createPaymentProvider } from './modules/payments/index.js';
-import { noopPublisher } from './realtime/events.js';
+import { createRealtimeServer, RealtimeBridge } from './realtime/socket-server.js';
 import { createApp } from './app.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -26,8 +26,11 @@ function main(): void {
   const prisma = createPrismaClient(env.DATABASE_URL);
   const verifier = new FirebaseIdentityVerifier(createFirebaseAuth(env));
   const payments = createPaymentProvider(env);
-  const app = createApp({ env, logger, prisma, verifier, payments, events: noopPublisher });
+  const events = new RealtimeBridge();
+  const app = createApp({ env, logger, prisma, verifier, payments, events });
   const server = createServer(app);
+  const realtime = createRealtimeServer(server, { env, logger, prisma, verifier });
+  events.attach(realtime.publisher);
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     logger.fatal(
@@ -56,6 +59,7 @@ function main(): void {
     }, SHUTDOWN_TIMEOUT_MS);
     force.unref();
 
+    void realtime.close();
     server.close((closeErr) => {
       prisma
         .$disconnect()

@@ -47,7 +47,4 @@ export default async function setup(): Promise<void> {
         'or run the suite with `npm run test:emulator` from the repository root.',
     );
   }
-  await fetch(`http://${host}/emulator/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts`, {
-    method: 'DELETE',
-  });
 }
