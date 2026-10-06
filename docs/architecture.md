@@ -2,8 +2,9 @@
 
 _Status: the backend is implemented and its contract is frozen (database,
 authentication, REST API, payments, realtime). The three client apps are
-planned; [frontend-integration.md](frontend-integration.md) describes how they
-connect._
+implemented on top of it; [frontend-architecture.md](frontend-architecture.md)
+describes them and [frontend-integration.md](frontend-integration.md) the
+contract they use._
 
 ## 1. System overview
 
@@ -127,10 +128,10 @@ The event catalogue is in [api.md](api.md#realtime-socketio).
 | Payments | mock | mock | Razorpay (adapter API calls pending) |
 | CORS | localhost allowed | localhost allowed | https only, no localhost |
 
-## 9. Clients (planned phases)
+## 9. Clients
 
 | Client | Uses |
 |---|---|
-| Student app (Flutter) | `/auth/*`, `/hostels`, `/canteens/*`, `/menu/*`, `/cart/quote`, `/orders/*`, `/payments/*`, `/students/me/recommendations`, `/notifications/*`; socket rooms `student:*` + `menu:subscribe` |
-| Staff dashboard (React) | `/auth/*`, `/staff/*`, `/notifications/*`; rooms `staff:*`, `canteen:*` |
-| Admin portal (React) | `/auth/me`, `/admin/*`, `/notifications/*`; rooms `admin`, `admin:*` |
+| Student app (Flutter, `apps/student`) | `/auth/*`, `/hostels`, `/canteens/*`, `/menu/*`, `/cart/quote`, `/orders/*`, `/payments/*`, `/students/me/recommendations`, `/notifications/*`; socket rooms `student:*` + `menu:subscribe` |
+| Staff dashboard (React, `apps/staff`) | `/auth/*`, `/staff/*`, `/notifications/*`; rooms `staff:*`, `canteen:*` |
+| Admin portal (React, `apps/admin`) | `/auth/me`, `/admin/*`, `/notifications/*`; rooms `admin`, `admin:*` |

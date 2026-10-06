@@ -27,7 +27,7 @@ captured from the running backend. The full reference is
 
 ## 2. Configuration
 
-| Setting | Student (Flutter `--dart-define`) | Staff / Admin (Vite `.env.local`) |
+| Setting | Student (Flutter `--dart-define`) | Staff / Admin (Vite `.env.development.local`) |
 |---|---|---|
 | API base URL | `API_URL=http://localhost:5001` | `VITE_API_URL=http://localhost:5001` |
 | Firebase project | `FIREBASE_PROJECT_ID=demo-serve` | `VITE_FIREBASE_PROJECT_ID=demo-serve` |
@@ -139,7 +139,7 @@ Errors to handle:
 
 - **Current canteen:** `defaultCanteen` from `/me`, or the student's selection.
 - `GET /api/canteens` lists the canteens for the selector. Use `status` to show **Accepting** / **Paused**.
-- `GET /api/students/me/recommendations?canteenId=…` returns `{ basis, items }`. Show "Your Most Ordered" when `basis = MOST_ORDERED`, otherwise "Popular with Students".
+- `GET /api/students/me/recommendations?canteenId=…` returns `{ basis, items }`. Show "Your Most Ordered" when `basis = MOST_ORDERED` and "Popular with Students" when `basis = POPULAR`. (`MENU` means there is no order history yet; the app labels it "From the Menu", see [frontend-architecture.md](frontend-architecture.md#12-notes-and-deviations).)
 - **Switching canteens with a non-empty cart:** confirm with the user, then clear the cart. This is client-side; the server rejects mixed-canteen orders anyway.
 - Active order card: `GET /api/orders?status=active&limit=1`.
 
