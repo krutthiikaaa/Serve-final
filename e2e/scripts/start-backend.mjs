@@ -26,7 +26,7 @@ const env = {
   ...process.env,
   NODE_ENV: 'test',
   PORT: String(E2E.apiPort),
-  CORS_ORIGINS: `${E2E.staffUrl},${E2E.adminUrl}`,
+  CORS_ORIGINS: `${E2E.staffUrl},${E2E.adminUrl},${E2E.studentUrl}`,
   LOG_LEVEL: 'warn',
   ADMIN_BOOTSTRAP_PASSWORD: E2E.password,
 };

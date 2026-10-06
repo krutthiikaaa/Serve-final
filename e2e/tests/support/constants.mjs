@@ -4,6 +4,7 @@ export const E2E = {
   apiUrl: 'http://localhost:5101',
   staffUrl: 'http://localhost:5273',
   adminUrl: 'http://localhost:5274',
+  studentUrl: 'http://localhost:5455',
   emulatorUrl: 'http://127.0.0.1:9099',
   firebaseProjectId: 'demo-serve',
   firebaseApiKey: 'demo-api-key',

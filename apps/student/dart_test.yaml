@@ -1,0 +1,4 @@
+tags:
+  integration:
+    # Talks to a running backend + Firebase Auth Emulator; see README.
+    timeout: 2x

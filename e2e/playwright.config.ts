@@ -7,6 +7,9 @@ import { E2E } from './tests/support/constants.mjs';
  * backend/.env.test present, and the emulator (`npm run emulators`).
  * The suite shares one database, so it runs serially.
  */
+/** The Flutter web build is slow, so it runs only on request (E2E_STUDENT_WEB=1). */
+const studentWeb = process.env.E2E_STUDENT_WEB === '1';
+
 const frontendEnv = {
   VITE_API_URL: E2E.apiUrl,
   VITE_FIREBASE_API_KEY: E2E.firebaseApiKey,
@@ -50,5 +53,15 @@ export default defineConfig({
       timeout: 60_000,
       reuseExistingServer: false,
     },
+    ...(studentWeb
+      ? [
+          {
+            command: 'node scripts/serve-student-web.mjs',
+            url: E2E.studentUrl,
+            timeout: 600_000,
+            reuseExistingServer: false,
+          },
+        ]
+      : []),
   ],
 });
