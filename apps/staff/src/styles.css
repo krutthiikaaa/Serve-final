@@ -1,0 +1,149 @@
+/* Staff dashboard — order board. Shared tokens and components live in @serve/web-shared. */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: #f1f0ea;
+  min-height: 240px;
+}
+.board-column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px;
+}
+.board-column-header h2 {
+  font-size: 15px;
+}
+.board-payment_confirmed .board-column-header {
+  color: #a9461a;
+}
+.board-preparing .board-column-header {
+  color: #7a5a00;
+}
+.board-ready .board-column-header {
+  color: var(--olive-dark);
+}
+.board-column-header h2 {
+  color: var(--ink);
+}
+.board-count {
+  margin-left: auto;
+  min-width: 26px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+.board-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.order-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: rise 0.2s ease-out;
+}
+.order-card-new {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px var(--orange-tint);
+}
+.order-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.order-card-main:hover .order-number {
+  text-decoration: underline;
+}
+.order-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.order-card-top .order-number {
+  font-size: 20px;
+}
+.order-card-items {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.order-card-total {
+  font-weight: 700;
+  font-size: 14px;
+}
+.order-card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px 12px;
+}
+.order-card-actions .btn-accent,
+.order-card-actions .btn-primary {
+  flex: 1;
+}
+
+.order-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.order-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+}
+
+.menu-table {
+  table-layout: fixed;
+  min-width: 720px;
+}
+.menu-table .col-price {
+  width: 100px;
+}
+.menu-table .col-status {
+  width: 130px;
+}
+.menu-table .col-available {
+  width: 110px;
+}
+.menu-table .col-actions {
+  width: 200px;
+}
