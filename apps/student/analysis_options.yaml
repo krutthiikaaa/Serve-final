@@ -1,0 +1,23 @@
+# Static analysis for the SERVE student app: `flutter analyze` (CI gate).
+include: package:flutter_lints/flutter.yaml
+
+formatter:
+  page_width: 140
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+  language:
+    strict-casts: true
+    strict-raw-types: true
+
+linter:
+  rules:
+    - avoid_print
+    - prefer_single_quotes
+    - prefer_final_locals
+    - unawaited_futures
+    - always_declare_return_types
