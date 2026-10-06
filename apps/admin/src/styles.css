@@ -1,0 +1,146 @@
+/* Admin portal — a slightly more administrative look on top of @serve/web-shared. */
+
+:root {
+  --sidebar-w: 248px;
+}
+
+.sidebar {
+  background: #151614;
+  border-right-color: #151614;
+}
+.sidebar .logo-wordmark {
+  color: var(--white);
+}
+.sidebar .product-name {
+  color: #a7aa9f;
+}
+.sidebar-context {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--white);
+}
+.sidebar-context small {
+  color: #a7aa9f;
+}
+.sidebar .nav a,
+.sidebar .nav button {
+  color: #c9cbc2;
+}
+.sidebar .nav a:hover,
+.sidebar .nav button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--white);
+}
+.sidebar .nav a.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--white);
+  box-shadow: inset 3px 0 0 var(--olive);
+}
+.sidebar .nav-count {
+  color: #ffb489;
+}
+.topbar {
+  background: var(--white);
+}
+
+.dashboard-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.group-title {
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.stat-value {
+  font-size: 26px;
+}
+
+.breadcrumb {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.breadcrumb a {
+  color: var(--muted);
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.plain-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+}
+.plain-list li:first-child {
+  border-top: 0;
+}
+.modal .plain-list li {
+  padding: 10px 0;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.inline-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.inline-select .input {
+  width: auto;
+  min-width: 240px;
+}
+
+.callout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--orange-tint);
+}
+.row-actions.start {
+  justify-content: flex-start;
+}
+.assign-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: end;
+}
+.subheading {
+  margin-bottom: 4px;
+}
+.danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 960px) {
+  .dashboard-columns,
+  .assign-row {
+    grid-template-columns: 1fr;
+  }
+}
