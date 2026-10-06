@@ -34,7 +34,7 @@ ui-debug.log*
 .firebase/
 
 # ---------------------------------------------------------------
-# Flutter / Dart (student-app)
+# Flutter / Dart (apps/student)
 # ---------------------------------------------------------------
 .dart_tool/
 .flutter-plugins
@@ -42,9 +42,9 @@ ui-debug.log*
 .packages
 .pub-cache/
 .pub/
-student-app/build/
-student-app/**/Generated.xcconfig
-student-app/**/flutter_export_environment.sh
+apps/student/build/
+apps/student/**/Generated.xcconfig
+apps/student/**/flutter_export_environment.sh
 
 # ---------------------------------------------------------------
 # Playwright

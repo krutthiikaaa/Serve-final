@@ -1,0 +1,13 @@
+{
+  "name": "@serve/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SERVE frozen API contract: zod schemas + inferred TypeScript types",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  }
+}

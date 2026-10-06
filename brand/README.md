@@ -16,14 +16,14 @@ Rules:
 - Until the official files arrive, each app shows a clearly marked
   placeholder (the text wordmark "SERVE"), and nothing that imitates the logo.
 
-Each frontend copies the logo from here into its own asset folder (added in
-the matching phase):
+Each frontend copies the PNG from here into its own asset slot. The slots
+exist already; each app falls back to the text wordmark while a slot is empty:
 
 | App | Destination |
 |---|---|
-| Student app (Flutter) | `student-app/assets/brand/` |
-| Staff dashboard | `staff-dashboard/public/brand/` |
-| Admin portal | `admin-portal/public/brand/` |
+| Student app (Flutter) | `apps/student/assets/images/serve_logo.png` |
+| Staff dashboard | `apps/staff/public/brand/serve-logo.png` |
+| Admin portal | `apps/admin/public/brand/serve-logo.png` |
 
 ## Palette
 
