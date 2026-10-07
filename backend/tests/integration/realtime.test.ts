@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { truncateAll } from '../helpers/db.js';
 import { createFirebaseUser } from '../helpers/firebase.js';
+import { testEnv } from '../helpers/test-app.js';
 import {
   bearer,
   canteenBySlug,
@@ -37,6 +38,11 @@ let staffYN: Actor;
 let kg: { id: string };
 let yn: { id: string };
 
+type OrderEvent = {
+  order: { id: string; status: string; student?: { id: string }; totalPaise: number };
+  previousStatus: string | null;
+};
+
 beforeAll(async () => {
   server = await startTestServer();
   const { app, prisma, ctx } = server;
@@ -52,6 +58,9 @@ beforeAll(async () => {
 });
 afterAll(() => server.close());
 
+const orderEvents = (events: { name: string }[]) =>
+  events.filter((e) => e.name.startsWith('order.'));
+
 describe('socket authentication', () => {
   it('rejects connections without a valid token or account', async () => {
     expect(await server.rejectedConnect(null)).toBe('AUTH_REQUIRED');
@@ -65,10 +74,39 @@ describe('socket authentication', () => {
     expect(socket.connected).toBe(true);
     socket.disconnect();
   });
+
+  it('disconnects a socket when its ID token expires', async () => {
+    // Emulator-format token (unsigned; accepted only by the emulator) for a
+    // real user, expiring in 2 seconds.
+    const env = testEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const shortLived = [
+      encode({ alg: 'none', typ: 'JWT' }),
+      encode({
+        iss: `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`,
+        aud: env.FIREBASE_PROJECT_ID,
+        auth_time: now,
+        iat: now,
+        exp: now + 2,
+        sub: studentA.uid,
+        user_id: studentA.uid,
+        email: studentA.email,
+        firebase: { identities: {}, sign_in_provider: 'password' },
+      }),
+      '',
+    ].join('.');
+    const socket = await server.connect(shortLived);
+    const expired = nextEvent<{ reason: string }>(socket, 'auth.expired', () => true, 6_000);
+    const disconnected = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+    expect((await expired).reason).toBe('TOKEN_EXPIRED');
+    expect(await disconnected).toBe('io server disconnect');
+    expect(await server.rejectedConnect(shortLived)).toBe('AUTH_TOKEN_EXPIRED');
+  });
 });
 
 describe('order events and room isolation', () => {
-  it('delivers a new paid order only to that canteen’s staff, and status updates only to the owner', async () => {
+  it('sends each lifecycle event only to the owner, that canteen’s staff and admins', async () => {
     const [kgStaff, ynStaff, owner, otherStudent, adminSocket] = await Promise.all([
       server.connect(staffKG.token),
       server.connect(staffYN.token),
@@ -76,55 +114,59 @@ describe('order events and room isolation', () => {
       server.connect(studentB.token),
       server.connect(admin.token),
     ]);
+    const kgEvents = recordEvents(kgStaff);
     const ynEvents = recordEvents(ynStaff);
     const otherEvents = recordEvents(otherStudent);
 
     const roll = await itemByName(server.prisma, kg.id, 'Chicken Roll');
+    const created = nextEvent<OrderEvent>(owner, 'order.created');
+    const adminCreated = nextEvent<OrderEvent>(adminSocket, 'order.created');
     const order = await placeOrder(server.app, studentA, kg.id, [
       { menuItemId: roll.id, quantity: 1 },
     ]);
-    const created = nextEvent<{ order: { id: string; status: string } }>(
+    expect((await created).order).toMatchObject({ id: order.id, status: 'PLACED' });
+    expect((await created).order.student).toBeUndefined(); // student view
+    expect((await adminCreated).order.student).toMatchObject({ id: studentA.id }); // admin view
+    await settle();
+    expect(orderEvents(kgEvents)).toEqual([]); // the kitchen never sees unpaid orders
+
+    const paidForKitchen = nextEvent<OrderEvent>(
       kgStaff,
-      'order:created',
-      (p) => p.order.id === order.id,
+      'order.payment_confirmed',
+      (d) => d.order.id === order.id,
     );
-    const adminCreated = nextEvent<{ order: { id: string } }>(
-      adminSocket,
-      'order:created',
-      (p) => p.order.id === order.id,
-    );
-    const confirmed = nextEvent<{ orderId: string; status: string }>(
+    const paidForOwner = nextEvent<OrderEvent>(
       owner,
-      'order:status_updated',
-      (p) => p.orderId === order.id,
+      'order.payment_confirmed',
+      (d) => d.order.id === order.id,
     );
     await payOrder(server.app, studentA, order.id);
-
-    expect((await created).order.status).toBe('PAYMENT_CONFIRMED');
-    await adminCreated;
-    expect((await confirmed).status).toBe('PAYMENT_CONFIRMED');
-
-    const preparing = nextEvent<{ orderId: string; status: string }>(
-      owner,
-      'order:status_updated',
-      (p) => p.status === 'PREPARING',
-    );
-    await request(server.app)
-      .patch(`/api/staff/orders/${order.id}/status`)
-      .set(bearer(staffKG.token))
-      .send({ status: 'PREPARING' })
-      .expect(200);
-    const event = await preparing;
-    expect(event).toMatchObject({
-      orderId: order.id,
-      previousStatus: 'PAYMENT_CONFIRMED',
-      canteenId: kg.id,
+    expect(await paidForKitchen).toMatchObject({
+      previousStatus: 'PLACED',
+      order: { status: 'PAYMENT_CONFIRMED', student: { id: studentA.id } },
     });
+    expect((await paidForOwner).order.status).toBe('PAYMENT_CONFIRMED');
+
+    for (const [status, event] of [
+      ['PREPARING', 'order.preparing'],
+      ['READY', 'order.ready'],
+      ['COLLECTED', 'order.collected'],
+    ] as const) {
+      const toOwner = nextEvent<OrderEvent>(owner, event, (d) => d.order.id === order.id);
+      const toKitchen = nextEvent<OrderEvent>(kgStaff, event, (d) => d.order.id === order.id);
+      await request(server.app)
+        .patch(`/api/staff/orders/${order.id}/status`)
+        .set(bearer(staffKG.token))
+        .send({ status })
+        .expect(200);
+      expect((await toOwner).order.status).toBe(status);
+      expect((await toKitchen).order.status).toBe(status);
+    }
 
     await settle();
-    expect(ynEvents.filter((e) => e.name.startsWith('order:'))).toEqual([]);
+    expect(orderEvents(ynEvents)).toEqual([]);
     expect(
-      otherEvents.filter((e) => e.name.startsWith('order:') || e.name === 'notification:created'),
+      otherEvents.filter((e) => e.name.startsWith('order.') || e.name === 'notification.created'),
     ).toEqual([]);
     for (const socket of [kgStaff, ynStaff, owner, otherStudent, adminSocket]) socket.disconnect();
   });
@@ -139,9 +181,9 @@ describe('order events and room isolation', () => {
     await payOrder(server.app, studentA, order.id);
 
     // The committed state is visible to anyone reacting to the event.
-    const ready = new Promise<string>((resolve) => {
-      owner.on('order:status_updated', (payload: { orderId: string; status: string }) => {
-        if (payload.orderId !== order.id || payload.status !== 'PREPARING') return;
+    const committed = new Promise<string>((resolve) => {
+      owner.on('order.preparing', (envelope: { data: OrderEvent }) => {
+        if (envelope.data.order.id !== order.id) return;
         void server.prisma.order
           .findUniqueOrThrow({ where: { id: order.id } })
           .then((row) => resolve(row.status));
@@ -152,7 +194,7 @@ describe('order events and room isolation', () => {
       .set(bearer(staffKG.token))
       .send({ status: 'PREPARING' })
       .expect(200);
-    expect(await ready).toBe('PREPARING');
+    expect(await committed).toBe('PREPARING');
 
     const before = events.length;
     await request(server.app)
@@ -161,38 +203,64 @@ describe('order events and room isolation', () => {
       .send({ status: 'COLLECTED' })
       .expect(409);
     await settle();
-    expect(events.slice(before).filter((e) => e.name.startsWith('order:'))).toEqual([]);
+    expect(orderEvents(events.slice(before))).toEqual([]);
     owner.disconnect();
   });
 
-  it('delivers notification:created to the recipient only', async () => {
+  it('delivers notification.created to the recipient only, matching the stored row', async () => {
     const owner = await server.connect(studentA.token);
     const other = await server.connect(studentB.token);
     const otherEvents = recordEvents(other);
     const coffee = await itemByName(server.prisma, kg.id, 'Coffee');
-    const note = nextEvent<{ notification: { type: string } }>(owner, 'notification:created');
+    const note = nextEvent<{ notification: { id: string; type: string; readAt: null } }>(
+      owner,
+      'notification.created',
+    );
     await placeOrder(server.app, studentA, kg.id, [{ menuItemId: coffee.id, quantity: 1 }]);
-    expect((await note).notification.type).toBe('ORDER_PLACED');
+    const received = (await note).notification;
+    expect(received.type).toBe('ORDER_PLACED');
+    const stored = await server.prisma.notification.findUniqueOrThrow({
+      where: { id: received.id },
+    });
+    expect(stored).toMatchObject({ studentId: studentA.id, type: 'ORDER_PLACED', readAt: null });
     await settle();
     expect(otherEvents).toEqual([]);
     owner.disconnect();
     other.disconnect();
   });
 
-  it('ignores client attempts to join arbitrary rooms', async () => {
+  it('ignores every client attempt to join privileged rooms', async () => {
     const intruder = await server.connect(studentB.token);
     const events = recordEvents(intruder);
-    intruder.emit('join', `canteen:${kg.id}`);
-    intruder.emit('join', { room: 'admin' });
-    intruder.emit('subscribe', `student:${studentA.id}`);
+    for (const room of [
+      `canteen:${kg.id}`,
+      'admin',
+      `student:${studentA.id}`,
+      `staff:${staffKG.id}`,
+    ]) {
+      intruder.emit('join', room);
+      intruder.emit('join', { room });
+      intruder.emit('subscribe', room);
+      intruder.emit('menu:subscribe', { canteenId: room });
+    }
 
     const roll = await itemByName(server.prisma, kg.id, 'Veg Roll');
     const order = await placeOrder(server.app, studentA, kg.id, [
       { menuItemId: roll.id, quantity: 1 },
     ]);
     await payOrder(server.app, studentA, order.id);
+    await request(server.app)
+      .patch(`/api/staff/orders/${order.id}/status`)
+      .set(bearer(staffKG.token))
+      .send({ status: 'PREPARING' })
+      .expect(200);
+    await request(server.app)
+      .patch(`/api/admin/canteens/${yn.id}`)
+      .set(bearer(admin.token))
+      .send({ isAcceptingOrders: true })
+      .expect(200);
     await settle();
-    expect(events.filter((e) => e.name.startsWith('order:'))).toEqual([]);
+    expect(events).toEqual([]);
     intruder.disconnect();
   });
 });
@@ -206,39 +274,39 @@ describe('menu events', () => {
     const ynEvents = recordEvents(browsingYN);
 
     const dosa = await itemByName(server.prisma, kg.id, 'Egg Dosa');
-    const price = nextEvent<{ itemId: string; pricePaise: number }>(
+    const price = nextEvent<{ itemId: string; pricePaise: number; previousPricePaise: number }>(
       browsingKG,
-      'menu:price_updated',
-      (p) => p.itemId === dosa.id,
+      'menu.item_price_changed',
+      (d) => d.itemId === dosa.id,
     );
-    const item = nextEvent<{ item: { id: string; pricePaise: number } }>(
+    const item = nextEvent<{ item: { id: string; pricePaise: number; availability: string } }>(
       browsingKG,
-      'menu:item_updated',
-      (p) => p.item.id === dosa.id,
+      'menu.item_updated',
+      (d) => d.item.id === dosa.id,
     );
     await request(server.app)
       .patch(`/api/staff/menu/items/${dosa.id}/price`)
       .set(bearer(staffKG.token))
       .send({ pricePaise: 5_500 })
       .expect(200);
-    expect((await price).pricePaise).toBe(5_500);
-    expect((await item).item.pricePaise).toBe(5_500);
+    expect(await price).toMatchObject({ pricePaise: 5_500, previousPricePaise: 5_000 });
+    expect((await item).item).toMatchObject({ pricePaise: 5_500, availability: 'AVAILABLE' });
 
-    const availability = nextEvent<{ itemId: string; isAvailable: boolean; isOrderable: boolean }>(
+    const availability = nextEvent<{ itemId: string; availability: string; isOrderable: boolean }>(
       browsingKG,
-      'menu:availability_updated',
-      (p) => p.itemId === dosa.id,
+      'menu.item_availability_changed',
+      (d) => d.itemId === dosa.id,
     );
     await request(server.app)
       .patch(`/api/staff/menu/items/${dosa.id}/availability`)
       .set(bearer(staffKG.token))
       .send({ isAvailable: false })
       .expect(200);
-    expect(await availability).toMatchObject({ isAvailable: false, isOrderable: false });
+    expect(await availability).toMatchObject({ availability: 'UNAVAILABLE', isOrderable: false });
 
     const paused = nextEvent<{ canteenId: string; status: string }>(
       browsingKG,
-      'canteen:order_taking_updated',
+      'canteen.status_changed',
     );
     await request(server.app)
       .patch('/api/staff/canteen/status')
@@ -254,7 +322,7 @@ describe('menu events', () => {
 
     await settle();
     expect(
-      ynEvents.filter((e) => e.name.startsWith('menu:') || e.name.startsWith('canteen:')),
+      ynEvents.filter((e) => e.name.startsWith('menu.') || e.name.startsWith('canteen.')),
     ).toEqual([]);
     browsingKG.disconnect();
     browsingYN.disconnect();
@@ -277,13 +345,13 @@ describe('staff assignment events', () => {
     const socket = await server.connect(staff.token);
     const events = recordEvents(socket);
 
-    const approved = nextEvent<{ staffId: string; canteen: { id: string } }>(
+    const approved = nextEvent<{ staffId: string; status: string; canteen: { id: string } }>(
       socket,
-      'staff:approved',
+      'staff.approved',
     );
-    const assigned = nextEvent<{ canteen: { id: string } }>(
+    const assigned = nextEvent<{ canteen: { id: string; name: string } }>(
       socket,
-      'staff:canteen_assignment_updated',
+      'staff.canteen_assigned',
     );
     const pending = await server.prisma.canteenChangeRequest.findFirstOrThrow({
       where: { staffId: staff.id, status: 'PENDING' },
@@ -293,25 +361,35 @@ describe('staff assignment events', () => {
       .set(bearer(admin.token))
       .send({})
       .expect(200);
-    expect((await approved).canteen.id).toBe(yn.id);
-    expect((await assigned).canteen.id).toBe(yn.id);
-    expect(events.map((e) => e.name)).toContain('notification:created');
+    expect(await approved).toMatchObject({
+      staffId: staff.id,
+      status: 'APPROVED',
+      canteen: { id: yn.id },
+    });
+    expect((await assigned).canteen).toMatchObject({
+      id: yn.id,
+      name: 'Yamuna & Narmada Night Canteen',
+    });
+    await settle(100);
+    expect(events.map((e) => e.name)).toEqual(
+      expect.arrayContaining(['change_request.updated', 'notification.created']),
+    );
 
     // Same connection now receives Yamuna & Narmada orders.
     const coffee = await itemByName(server.prisma, yn.id, 'Coffee');
     const order = await placeOrder(server.app, studentB, yn.id, [
       { menuItemId: coffee.id, quantity: 1 },
     ]);
-    const created = nextEvent<{ order: { id: string } }>(
+    const newOrder = nextEvent<OrderEvent>(
       socket,
-      'order:created',
-      (p) => p.order.id === order.id,
+      'order.payment_confirmed',
+      (d) => d.order.id === order.id,
     );
     await payOrder(server.app, studentB, order.id);
-    await created;
+    await newOrder;
 
     // Reassignment moves the live socket out of the old canteen room.
-    const moved = nextEvent(socket, 'staff:canteen_assignment_updated');
+    const moved = nextEvent(socket, 'staff.canteen_assigned');
     await request(server.app)
       .patch(`/api/admin/staff/${staff.id}/assignment`)
       .set(bearer(admin.token))
@@ -325,7 +403,23 @@ describe('staff assignment events', () => {
     ]);
     await payOrder(server.app, studentB, order2.id);
     await settle();
-    expect(events.slice(before).filter((e) => e.name === 'order:created')).toEqual([]);
+    expect(orderEvents(events.slice(before))).toEqual([]);
+    socket.disconnect();
+  });
+
+  it('rejection reaches the applicant live', async () => {
+    const staff = await newPendingStaff(server.app, kg.id);
+    const socket = await server.connect(staff.token);
+    const rejected = nextEvent<{ staffId: string; status: string }>(socket, 'staff.rejected');
+    const pending = await server.prisma.canteenChangeRequest.findFirstOrThrow({
+      where: { staffId: staff.id, status: 'PENDING' },
+    });
+    await request(server.app)
+      .post(`/api/admin/change-requests/${pending.id}/reject`)
+      .set(bearer(admin.token))
+      .send({})
+      .expect(200);
+    expect(await rejected).toMatchObject({ staffId: staff.id, status: 'REJECTED' });
     socket.disconnect();
   });
 
@@ -333,21 +427,23 @@ describe('staff assignment events', () => {
     const adminSocket = await server.connect(admin.token);
     const createdEvent = nextEvent<{ changeRequest: { requestedCanteen: { id: string } } }>(
       adminSocket,
-      'change_request:created',
+      'change_request.created',
     );
     const staff = await newPendingStaff(server.app, kg.id);
     expect((await createdEvent).changeRequest.requestedCanteen.id).toBe(kg.id);
 
-    const staffSocket = await server.connect(staff.token);
-    const disconnected = new Promise<string>((resolve) =>
-      staffSocket.once('disconnect', (reason) => resolve(reason)),
-    );
+    const approvedStaff = await newApprovedStaff(server.app, admin, kg.id);
+    const staffSocket = await server.connect(approvedStaff.token);
+    const deactivatedEvent = nextEvent<{ staffId: string }>(staffSocket, 'staff.deactivated');
+    const disconnected = new Promise<string>((resolve) => staffSocket.once('disconnect', resolve));
     await request(server.app)
-      .post(`/api/admin/staff/${staff.id}/deactivate`)
+      .post(`/api/admin/staff/${approvedStaff.id}/deactivate`)
       .set(bearer(admin.token))
       .expect(200);
+    expect((await deactivatedEvent).staffId).toBe(approvedStaff.id);
     expect(await disconnected).toBe('io server disconnect');
-    expect(await server.rejectedConnect(staff.token)).toBe('ACCOUNT_DISABLED');
+    expect(await server.rejectedConnect(approvedStaff.token)).toBe('ACCOUNT_DISABLED');
+    expect(staff.id).toBeTruthy();
     adminSocket.disconnect();
   });
 
@@ -356,7 +452,7 @@ describe('staff assignment events', () => {
     first.disconnect();
     const again = await server.connect(studentA.token);
     const coffee = await itemByName(server.prisma, kg.id, 'Coffee');
-    const note = nextEvent(again, 'notification:created');
+    const note = nextEvent(again, 'notification.created');
     await placeOrder(server.app, studentA, kg.id, [{ menuItemId: coffee.id, quantity: 1 }]);
     await note;
     again.disconnect();

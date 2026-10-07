@@ -3,5 +3,5 @@ dist
 coverage
 backend/src/generated
 backend/prisma/migrations
-student-app
+apps/student
 *.md

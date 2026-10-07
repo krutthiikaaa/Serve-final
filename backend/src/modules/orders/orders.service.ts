@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { OrderStatus, Prisma } from '../../generated/prisma/client.js';
+import type { Logger } from 'pino';
 import type { PrismaClient } from '../../lib/prisma.js';
 import {
   BadRequestError,
@@ -8,7 +9,7 @@ import {
   ValidationError,
 } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
-import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
+import { Outbox, type EventPublisher } from '../../realtime/events.js';
 import type { PaymentProvider } from '../payments/provider.js';
 import { writeNotifications } from '../notifications/notification.writer.js';
 import type { StudentPrincipal } from '../auth/principal.js';
@@ -23,12 +24,8 @@ import {
   assertTransition,
   type StaffSettableStatus,
 } from './order-state.js';
-import {
-  orderInclude,
-  statusEventPayload,
-  toOrderDto,
-  type OrderWithDetails,
-} from './order.dto.js';
+import { orderInclude, toOrderDto, type OrderWithDetails } from './order.dto.js';
+import { queueOrderEvent } from './order.events.js';
 
 export interface CreateOrderInput {
   canteenId: string;
@@ -76,24 +73,42 @@ const STATUS_COPY: Partial<
   },
 };
 
-/** Rooms that follow an order: the student, the canteen's staff, and admins. */
-const orderRooms = (order: { studentId: string; canteenId: string }) => [
-  rooms.student(order.studentId),
-  rooms.canteen(order.canteenId),
-  rooms.admins(),
-];
-
 export function createOrdersService(deps: {
   prisma: PrismaClient;
   events: EventPublisher;
   payments: PaymentProvider;
+  logger: Logger;
 }) {
-  const { prisma, events, payments } = deps;
+  const { prisma, events, payments, logger } = deps;
 
   async function loadOrder(where: Prisma.OrderWhereInput): Promise<OrderWithDetails> {
     const order = await prisma.order.findFirst({ where, include: orderInclude });
     if (!order) throw new NotFoundError('Order not found.', 'ORDER_NOT_FOUND');
     return order;
+  }
+
+  /**
+   * Refund a committed cancellation. If the provider fails, the order stays
+   * CANCELLED and the payment stays SUCCESS with a failure note so the refund
+   * can be retried; the failure is logged, never hidden.
+   */
+  async function refundCancelledOrder(order: OrderWithDetails): Promise<OrderWithDetails> {
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { orderId: order.id } });
+    if (payment.status !== 'SUCCESS' || !payment.providerPaymentId) return order;
+    try {
+      await payments.refund(payment.providerPaymentId, payment.amountPaise);
+      await prisma.payment.updateMany({
+        where: { id: payment.id, status: 'SUCCESS' },
+        data: { status: 'REFUNDED', refundedAt: new Date(), failureReason: null },
+      });
+    } catch (err) {
+      logger.error({ err, orderId: order.id }, 'Refund failed for cancelled order');
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { failureReason: 'Refund pending: the payment provider refund failed' },
+      });
+    }
+    return prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
   }
 
   async function replayOrConflict(studentId: string, key: string, hash: string) {
@@ -160,7 +175,7 @@ export function createOrdersService(deps: {
               items: {
                 create: priced.items.map((line) => ({
                   menuItemId: line.menuItemId,
-                  itemName: line.name,
+                  itemName: line.itemName,
                   unitPricePaise: line.unitPricePaise,
                   quantity: line.quantity,
                   lineTotalPaise: line.lineTotalPaise,
@@ -177,6 +192,7 @@ export function createOrdersService(deps: {
             orderId: created.id,
             data: { orderNumber: created.orderNumber, status: created.status },
           });
+          queueOrderEvent(outbox, created, null);
           return created;
         });
       } catch (err) {
@@ -242,13 +258,13 @@ export function createOrdersService(deps: {
           where: { orderId: order.id, status: 'PENDING' },
           data: { status: 'FAILED', failureReason: 'Order cancelled before payment' },
         });
-        return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
+        const fresh = await tx.order.findUniqueOrThrow({
+          where: { id: order.id },
+          include: orderInclude,
+        });
+        queueOrderEvent(outbox, fresh, order.status);
+        return fresh;
       });
-      outbox.emit(
-        'order:cancelled',
-        [rooms.student(order.studentId), rooms.admins()],
-        statusEventPayload(updated, order.status),
-      );
       outbox.flush(events);
       return toOrderDto(updated, 'student');
     },
@@ -319,19 +335,9 @@ export function createOrdersService(deps: {
       });
       assertTransition(order.status, target);
 
-      // Cancelling a paid order refunds it through the provider first.
-      let refunded = false;
-      if (target === 'CANCELLED' && order.payment?.status === 'SUCCESS') {
-        const payment = await prisma.payment.findUniqueOrThrow({ where: { orderId: order.id } });
-        if (payment.providerPaymentId) {
-          await payments.refund(payment.providerPaymentId, payment.amountPaise);
-          refunded = true;
-        }
-      }
-
       const outbox = new Outbox();
       const timestampColumn = STATUS_TIMESTAMP[target];
-      const updated = await prisma.$transaction(async (tx) => {
+      let updated = await prisma.$transaction(async (tx) => {
         const changed = await tx.order.updateMany({
           where: { id: order.id, canteenId: staff.canteenId, status: order.status },
           data: {
@@ -345,12 +351,6 @@ export function createOrdersService(deps: {
             'The order changed. Refresh and try again.',
             'ORDER_STATE_CHANGED',
           );
-        }
-        if (refunded) {
-          await tx.payment.update({
-            where: { orderId: order.id },
-            data: { status: 'REFUNDED', refundedAt: new Date() },
-          });
         }
         const fresh = await tx.order.findUniqueOrThrow({
           where: { id: order.id },
@@ -366,16 +366,16 @@ export function createOrdersService(deps: {
             data: { orderNumber: fresh.orderNumber, status: fresh.status },
           });
         }
+        queueOrderEvent(outbox, fresh, order.status);
         return fresh;
       });
-
-      const payload = statusEventPayload(updated, order.status);
-      outbox.emit(
-        target === 'CANCELLED' ? 'order:cancelled' : 'order:status_updated',
-        orderRooms(updated),
-        payload,
-      );
       outbox.flush(events);
+
+      // Refund only AFTER the cancellation is committed, so money is never
+      // returned for an order that a concurrent update kept in preparation.
+      if (target === 'CANCELLED' && updated.payment?.status === 'SUCCESS') {
+        updated = await refundCancelledOrder(updated);
+      }
       return toOrderDto(updated, 'staff');
     },
   };

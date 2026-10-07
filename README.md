@@ -2,13 +2,12 @@
 
 ### Order. Track. Collect.
 
-> **Under active development.** The **backend platform is implemented**:
-> PostgreSQL schema, Firebase authentication, the REST API (canteens, menus,
-> cart quotes, orders, mock payments, staff and admin operations,
-> notifications) and authenticated Socket.IO realtime, all covered by
-> automated tests. The Student App, Staff Dashboard and Admin Portal **are not
-> implemented yet**. Wherever this README describes them, it describes the
-> approved design, not working software. See
+> **Under active development.** The **backend** (PostgreSQL, Firebase
+> authentication, REST API, mock payments, Socket.IO realtime) and **all three
+> client apps** (Flutter Student App, React Staff Dashboard, React Admin
+> Portal) are implemented and integrated, with unit, widget, integration and
+> end-to-end tests. Not done yet: real Razorpay payments, push notifications
+> and production deployment. See
 > [Current Development Status](#17-current-development-status).
 
 ---
@@ -64,16 +63,26 @@ Implemented in the backend (API + realtime):
   deactivation.
 - Persistent notifications for order and staff events.
 
-Planned in the client apps: the mobile ordering experience, the cart switch
-confirmation, and the staff and admin dashboards.
+Implemented in the client apps:
+
+- **Student App:** registration with hostel, canteen selection, menu with
+  live availability, one-canteen cart with a switch confirmation, server
+  quotes, pickup-only checkout, mock payment, a large order number, live
+  order tracking, order history, notifications and profile.
+- **Staff Dashboard:** onboarding and approval states, live counters, an
+  order board (New → Preparing → Ready → Collected) fed by paid orders only,
+  menu management with prices in rupees, pause/resume, notifications.
+- **Admin Portal:** platform dashboard, canteen activation and pausing,
+  staff change-request review, staff assignment and deactivation,
+  notifications.
 
 ## 6. Three Interfaces
 
 | Interface | Users | Form factor | Status |
 |---|---|---|---|
-| **Student App** | Students | Mobile only (Flutter). Bottom navigation: Home · Menu · Orders · Profile; cart in the header | Planned |
-| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation | Planned |
-| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation | Planned |
+| **Student App** | Students | Mobile (Flutter: Android, iOS; web build for testing). Bottom navigation: Home · Menu · Orders · Profile; cart in the header | **Implemented** |
+| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation | **Implemented** |
+| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation | **Implemented** |
 
 All three talk to **one shared backend**.
 
@@ -106,9 +115,10 @@ Details: [docs/architecture.md](docs/architecture.md).
 
 | Layer | Technology | Status |
 |---|---|---|
-| Student App | Flutter 3.47.4 + Dart 3.13.3 | Planned |
-| Staff Dashboard | React 19 + TypeScript + Vite | Planned |
-| Admin Portal | React 19 + TypeScript + Vite | Planned |
+| Student App | Flutter 3.47.4 + Dart 3.13.3 (provider, http, socket_io_client) | **Implemented** |
+| Staff Dashboard | React 19 + TypeScript + Vite 8 | **Implemented** |
+| Admin Portal | React 19 + TypeScript + Vite 8 | **Implemented** |
+| Shared web code | `packages/contracts` (zod contract + types), `packages/web-shared` | **Implemented** |
 | Backend | Node.js + TypeScript + Express + Socket.IO | **Implemented** |
 | Database | PostgreSQL + Prisma | **Implemented** (schema, migration, seed) |
 | Authentication | Firebase Authentication + Firebase Admin | **Implemented** (Auth Emulator in development; a real project is configuration-only) |
@@ -159,21 +169,24 @@ past orders.
 
 ## 12. Project Structure
 
-The monorepo layout. Entries marked *(planned)* don't exist yet.
+The monorepo layout:
 
 ```
 serve/
-├── backend/            Node.js + TypeScript + Express + Socket.IO + Prisma   (present)
-├── student-app/        Flutter mobile app                                    (planned)
-├── staff-dashboard/    React + TypeScript + Vite                             (planned)
-├── admin-portal/       React + TypeScript + Vite                             (planned)
-├── e2e/                Cross-application end-to-end tests                    (planned)
-├── docs/               Architecture, API, database, development              (present)
-├── brand/              Official logo location and palette                    (present; logo pending)
-├── firebase.json       Firebase Auth Emulator configuration                  (present)
-├── .env.example        Documented environment variables                      (present)
-├── .gitignore
-├── package.json        npm workspaces
+├── backend/              Node.js + TypeScript + Express + Socket.IO + Prisma
+├── apps/
+│   ├── student/          Flutter student app (Android, iOS, web)
+│   ├── staff/            React staff dashboard (Vite, port 5173)
+│   └── admin/            React admin portal (Vite, port 5174)
+├── packages/
+│   ├── contracts/        Frozen API contract: zod schemas + TypeScript types
+│   └── web-shared/       API client, auth, realtime, UI kit shared by staff + admin
+├── e2e/                  Playwright end-to-end tests (isolated stack)
+├── docs/                 Architecture, API, database, development, frontend
+├── brand/                Official logo location and palette (logo pending)
+├── firebase.json         Firebase Auth Emulator configuration
+├── .env.example          Documented backend environment variables
+├── package.json          npm workspaces
 └── README.md
 ```
 
@@ -197,13 +210,12 @@ backend/
 
 ## 13. Local Development Setup
 
-Only the backend can be run at this stage.
-
 ### Prerequisites
 
 - Node.js 22.12 or newer (see `.nvmrc`) and npm 10+
 - PostgreSQL 16 running locally on port 5432
 - Java 21 and the Firebase CLI (`npm install -g firebase-tools`) for the Auth Emulator
+- Flutter 3.47 (Dart 3.13) for the student app
 
 ### Steps
 
@@ -237,6 +249,24 @@ npm run dev:backend
 curl http://localhost:5001/api/health
 curl http://localhost:5001/api/health/db
 ```
+
+Then the client apps (each in its own terminal):
+
+```bash
+# Staff dashboard (http://localhost:5173) and admin portal (http://localhost:5174)
+cp apps/staff/.env.example apps/staff/.env.development.local
+cp apps/admin/.env.example apps/admin/.env.development.local
+npm run dev:staff
+npm run dev:admin
+
+# Student app (see apps/student/README.md for Android/iOS hosts)
+cd apps/student && flutter pub get
+flutter run -d chrome --web-port 5555 \
+  --dart-define=API_URL=http://localhost:5001 \
+  --dart-define=FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+```
+
+Flutter web needs `http://localhost:5555` in the backend's `CORS_ORIGINS`.
 
 Provision an admin explicitly (there is no public admin registration):
 
@@ -308,8 +338,26 @@ covers:
 - a security sweep over every protected route
 - a critical end-to-end flow (admin approval through to realtime pickup)
 
-HTTP, the database and authentication are not mocked. Cross-application
-end-to-end tests with the client apps come later.
+HTTP, the database and authentication are not mocked.
+
+Client apps and end-to-end:
+
+```bash
+npm run test --workspace @serve/web-shared   # shared API client, realtime, formatting
+npm run test --workspace @serve/staff        # staff dashboard components
+npm run test --workspace @serve/admin        # admin portal components
+(cd apps/student && flutter analyze && flutter test)
+npm run test:e2e                             # Playwright: isolated backend on serve_test + both web apps
+E2E_STUDENT_WEB=1 npm run test:e2e           # also builds and drives the Flutter web app
+```
+
+The end-to-end suite starts its own backend on `serve_test` (reset and seeded
+per run) and its own copies of the web apps, so development data is never
+touched. It covers the critical flow (staff onboarding, admin approval, paid
+order, live kitchen progress, pickup), realtime isolation between canteens and
+students, live menu changes, canteen pausing, staff deactivation, cancellation
+with refund, cross-portal access control, and visual captures of every
+screen.
 
 ## 16. Security
 
@@ -332,12 +380,24 @@ Implemented:
   internals.
 - `.gitignore` rules for env files, private keys and service-account JSON.
 
+Client apps:
+
+- Routing is decided only by `/api/auth/me`; no client trusts a role from the
+  token, the URL or local storage.
+- Clients never send prices, totals, user ids or canteen assignments; totals
+  shown come from the backend quote or order.
+- Only public configuration (API URL, Firebase web key) is built into the
+  apps. Production builds refuse emulator settings, demo projects and
+  localhost/plain-http API URLs.
+- Socket.IO clients never name rooms.
+
 Planned: a full production security audit and the real Razorpay integration.
 
 ## 17. Current Development Status
 
 The backend master task combined database, authentication, REST APIs,
-payments and realtime into backend Phases 2–5. The client apps follow.
+payments and realtime into backend Phases 2–5. Phase 6 built and integrated
+the three client apps.
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -346,10 +406,11 @@ payments and realtime into backend Phases 2–5. The client apps follow.
 | 3 | Firebase authentication, roles, authorization | **Complete** |
 | 4 | REST APIs: canteens, menus, cart, orders, mock payments, staff, admin, notifications | **Complete** |
 | 5 | Socket.IO realtime and the critical end-to-end backend flow | **Complete** |
-| — | Student App (Flutter) | Not started |
-| — | Staff Dashboard (React) | Not started |
-| — | Admin Portal (React) | Not started |
-| — | Cross-application end-to-end tests | Not started |
+| — | Backend audit and contract freeze | **Complete** |
+| 6 | Student App (Flutter) | **Complete** |
+| 6 | Staff Dashboard (React) | **Complete** |
+| 6 | Admin Portal (React) | **Complete** |
+| 6 | Cross-application end-to-end tests | **Complete** |
 | — | Real Razorpay integration | Not started |
 | — | Production security audit and deployment preparation | Not started |
 
@@ -364,8 +425,9 @@ payments and realtime into backend Phases 2–5. The client apps follow.
 ## Brand
 
 The official SERVE logo is a transparent, hand-drawn food/leaf mark supplied
-by the project owner and stored in [`brand/`](brand/). It is pending; the apps
-will use only the official asset. Palette: olive `#879F2D`, dark olive
+by the project owner and stored in [`brand/`](brand/). It is pending. Every
+app has an empty logo slot and shows the plain text wordmark "SERVE" until the
+official file is added; nothing imitates the logo. Palette: olive `#879F2D`, dark olive
 `#6F8425`, orange `#E86A2E`, black `#111111`, warm off-white `#F8F7F2`,
 white `#FFFFFF`, muted grey `#5F6258`.
 
@@ -385,3 +447,6 @@ history.
 - [docs/api.md](docs/api.md)
 - [docs/database.md](docs/database.md)
 - [docs/development.md](docs/development.md)
+- [docs/frontend-integration.md](docs/frontend-integration.md)
+- [docs/frontend-architecture.md](docs/frontend-architecture.md)
+- [apps/student/README.md](apps/student/README.md)

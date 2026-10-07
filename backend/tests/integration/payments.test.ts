@@ -71,6 +71,43 @@ describe('mock payment flow', () => {
     expect(payment.paidAt).toBeTruthy();
   });
 
+  it('survives a server restart between initiation and completion (stateless mock)', async () => {
+    const order = await placeOrder(app, student, kg.id, [{ menuItemId: roll.id, quantity: 1 }]);
+    await initiate(order.id).expect(200);
+    // A brand-new application instance (fresh provider) completes the payment.
+    const restarted = buildTestApp();
+    try {
+      const done = await request(restarted.app)
+        .post(`/api/payments/${order.id}/mock-complete`)
+        .set(bearer(student.token))
+        .send({})
+        .expect(200);
+      expect(done.body.data.order.status).toBe('PAYMENT_CONFIRMED');
+    } finally {
+      await restarted.prisma.$disconnect();
+    }
+  });
+
+  it('rejects a tampered mock payment id (signature binds amount and outcome)', async () => {
+    const order = await placeOrder(app, student, kg.id, [{ menuItemId: roll.id, quantity: 1 }]);
+    const init = await initiate(order.id).expect(200);
+    const failed = await mockComplete(order.id, { outcome: 'failure' }).expect(422);
+    expect(failed.body.error.code).toBe('PAYMENT_FAILED');
+    await initiate(order.id).expect(200);
+    const res = await request(app)
+      .post(`/api/payments/${order.id}/verify`)
+      .set(bearer(student.token))
+      .send({
+        providerOrderId: (await prisma.payment.findUniqueOrThrow({ where: { orderId: order.id } }))
+          .providerOrderId,
+        providerPaymentId: 'mock_pay_9000_captured_0123456789abcdef',
+        signature: 'ab'.repeat(32),
+      })
+      .expect(422);
+    expect(res.body.error.code).toBe('PAYMENT_SIGNATURE_INVALID');
+    expect(init.body.data.providerOrderId).toBeTruthy();
+  });
+
   it('requires initiation before completion', async () => {
     const order = await placeOrder(app, student, kg.id, [{ menuItemId: roll.id, quantity: 1 }]);
     const res = await mockComplete(order.id).expect(409);

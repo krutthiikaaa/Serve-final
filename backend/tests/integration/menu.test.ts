@@ -141,11 +141,18 @@ describe('staff menu management', () => {
   });
 
   it('creates a category and item in the staff member’s own canteen and students see it', async () => {
+    // A client-supplied canteenId is rejected: the canteen comes from the database.
+    await request(app)
+      .post('/api/staff/menu/categories')
+      .set(bearer(staffKG.token))
+      .send({ name: 'Test Category', canteenId: yn.id })
+      .expect(422);
+    expect(await prisma.menuCategory.count({ where: { name: 'Test Category' } })).toBe(0);
+
     const category = await request(app)
       .post('/api/staff/menu/categories')
       .set(bearer(staffKG.token))
-      // A client-supplied canteenId is ignored: the canteen comes from the database.
-      .send({ name: 'Test Category', canteenId: yn.id })
+      .send({ name: 'Test Category' })
       .expect(201);
     expect(category.body.data.canteenId).toBe(kg.id);
 

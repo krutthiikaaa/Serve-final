@@ -238,6 +238,28 @@ describe('staff approval lifecycle', () => {
   });
 });
 
+describe('hostel mapping API', () => {
+  it('returns all eight hostels with the correct default canteens', async () => {
+    const res = await request(app).get('/api/hostels').expect(200);
+    const mapping = Object.fromEntries(
+      (res.body.data as { name: string; canteen: { name: string } }[]).map((h) => [
+        h.name,
+        h.canteen.name,
+      ]),
+    );
+    expect(mapping).toMatchObject({
+      Krishna: 'Krishna & Godavari Night Canteen',
+      Godavari: 'Krishna & Godavari Night Canteen',
+      Yamuna: 'Yamuna & Narmada Night Canteen',
+      Narmada: 'Yamuna & Narmada Night Canteen',
+      'New Hostel': 'New Hostel Night Canteen',
+      Vedavathi: 'Vedavathi Night Canteen',
+      'Ganga A': 'Ganga A & Ganga B Night Canteen',
+      'Ganga B': 'Ganga A & Ganga B Night Canteen',
+    });
+  });
+});
+
 describe('admin canteen and hostel management', () => {
   it('creates, updates, activates and deactivates canteens', async () => {
     const created = await request(app)
@@ -319,6 +341,16 @@ describe('admin canteen and hostel management', () => {
       await prisma.staff.count({ where: { status: 'APPROVED' } }),
     );
     expect(res.body.data.today.orderCount).toBeGreaterThanOrEqual(1);
+    expect(res.body.data.canteens).toMatchObject({
+      paused: await prisma.canteen.count({ where: { isActive: true, isAcceptingOrders: false } }),
+      inactive: await prisma.canteen.count({ where: { isActive: false } }),
+    });
+    expect(res.body.data.orders.active).toBe(
+      await prisma.order.count({
+        where: { status: { in: ['PAYMENT_CONFIRMED', 'PREPARING', 'READY'] } },
+      }),
+    );
+    expect(Object.keys(res.body.data.today.createdByStatus)).toHaveLength(6);
   });
 
   it('rejects non-admins on every admin route', async () => {

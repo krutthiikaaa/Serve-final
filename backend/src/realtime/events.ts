@@ -26,21 +26,35 @@ export const rooms = {
 };
 
 export type RealtimeEventName =
-  | 'order:created'
-  | 'order:status_updated'
-  | 'order:cancelled'
-  | 'menu:item_updated'
-  | 'menu:availability_updated'
-  | 'menu:price_updated'
-  | 'menu:category_updated'
-  | 'canteen:order_taking_updated'
-  | 'change_request:created'
-  | 'change_request:updated'
-  | 'staff:approved'
-  | 'staff:rejected'
-  | 'staff:canteen_assignment_updated'
-  | 'staff:deactivated'
-  | 'notification:created';
+  | 'order.created'
+  | 'order.payment_confirmed'
+  | 'order.preparing'
+  | 'order.ready'
+  | 'order.collected'
+  | 'order.cancelled'
+  | 'menu.item_updated'
+  | 'menu.item_price_changed'
+  | 'menu.item_availability_changed'
+  | 'menu.category_updated'
+  | 'canteen.status_changed'
+  | 'change_request.created'
+  | 'change_request.updated'
+  | 'staff.approved'
+  | 'staff.rejected'
+  | 'staff.canteen_assigned'
+  | 'staff.deactivated'
+  | 'notification.created';
+
+/**
+ * Wire format of every server-to-client event:
+ *   socket.on('<type>', (event) => event.data)
+ */
+export interface RealtimeEnvelope<T = Record<string, unknown>> {
+  type: RealtimeEventName;
+  /** ISO timestamp, taken when the event is published (after commit). */
+  occurredAt: string;
+  data: T;
+}
 
 export interface RealtimeEvent {
   name: RealtimeEventName;
@@ -77,8 +91,13 @@ export class Outbox {
     this.commands.push(command);
   }
 
+  /**
+   * Call only after the transaction committed. Events are published before
+   * room commands run, so e.g. a deactivated staff member still receives
+   * `staff.deactivated` before being disconnected.
+   */
   flush(publisher: EventPublisher): void {
-    publisher.apply(this.commands);
     publisher.publish(this.events);
+    publisher.apply(this.commands);
   }
 }

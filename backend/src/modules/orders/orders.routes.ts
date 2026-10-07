@@ -7,13 +7,14 @@ import { sensitiveLimiter } from '../../middleware/rate-limit.js';
 import { id, idParams, paginationQuery, parse, quantity } from '../../http/validation.js';
 
 /**
- * Cart/order body. Only ids and quantities are accepted — unknown fields
- * (price, lineTotal, total, studentId, …) are stripped and never read.
+ * Cart/order body. Only ids and quantities are accepted. Any other field
+ * (price, lineTotal, total, studentId, …) is rejected with 422 so client bugs
+ * surface immediately; prices always come from PostgreSQL.
  */
-export const cartBody = z.object({
+export const cartBody = z.strictObject({
   canteenId: id,
   items: z
-    .array(z.object({ menuItemId: id, quantity }))
+    .array(z.strictObject({ menuItemId: id, quantity }))
     .min(1, { error: 'Add at least one item' })
     .max(50, { error: 'Too many different items' }),
 });

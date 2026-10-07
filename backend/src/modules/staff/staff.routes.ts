@@ -25,8 +25,11 @@ const orderListQuery = paginationQuery.extend({
     .enum(['active', 'PAYMENT_CONFIRMED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'])
     .optional(),
 });
-const statusBody = z.object({ status: z.enum(STAFF_SETTABLE_STATUSES), reason: optionalText(200) });
-const changeRequestBody = z.object({ requestedCanteenId: id, notes: optionalText(500) });
+const statusBody = z.strictObject({
+  status: z.enum(STAFF_SETTABLE_STATUSES),
+  reason: optionalText(200),
+});
+const changeRequestBody = z.strictObject({ requestedCanteenId: id, notes: optionalText(500) });
 
 /**
  * /api/staff — canteen operations. The canteen is ALWAYS the one assigned to
@@ -61,7 +64,10 @@ export function createStaffRouter(ctx: AppContext, services: Services): Router {
     res.json({ data: await services.staff.dashboard(currentApprovedStaff(req)) });
   });
   router.patch('/canteen/status', async (req, res) => {
-    const { isAcceptingOrders } = parse(z.object({ isAcceptingOrders: z.boolean() }), req.body);
+    const { isAcceptingOrders } = parse(
+      z.strictObject({ isAcceptingOrders: z.boolean() }),
+      req.body,
+    );
     res.json({
       data: await services.staff.setAcceptingOrders(currentApprovedStaff(req), isAcceptingOrders),
     });

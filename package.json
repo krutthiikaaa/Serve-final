@@ -2,9 +2,13 @@
   "name": "serve",
   "version": "0.1.0",
   "private": true,
-  "description": "SERVE \u2014 university night-canteen ordering platform. Order. Track. Collect.",
+  "description": "SERVE — university night-canteen ordering platform. Order. Track. Collect.",
   "workspaces": [
-    "backend"
+    "backend",
+    "packages/*",
+    "apps/staff",
+    "apps/admin",
+    "e2e"
   ],
   "engines": {
     "node": ">=22.12.0"
@@ -19,7 +23,10 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "emulators": "firebase emulators:start --only auth --project demo-serve",
-    "test:emulator": "firebase emulators:exec --only auth --project demo-serve \"npm test\""
+    "test:emulator": "firebase emulators:exec --only auth --project demo-serve \"npm test\"",
+    "dev:staff": "npm run dev --workspace @serve/staff",
+    "dev:admin": "npm run dev --workspace @serve/admin",
+    "test:e2e": "npm run test --workspace @serve/e2e"
   },
   "devDependencies": {
     "prettier": "3.9.9"

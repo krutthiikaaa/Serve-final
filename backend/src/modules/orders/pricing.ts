@@ -9,7 +9,7 @@ export interface CartLineInput {
 
 export interface PricedLine {
   menuItemId: string;
-  name: string;
+  itemName: string;
   unitPricePaise: number;
   quantity: number;
   lineTotalPaise: number;
@@ -18,9 +18,24 @@ export interface PricedLine {
 export interface PricedCart {
   canteen: { id: string; name: string };
   items: PricedLine[];
+  /** Total number of units across all lines. */
+  itemCount: number;
+  /** Sum of line totals. */
+  subtotalPaise: number;
+  /** Amount payable. Equal to subtotal (no fees, no delivery). */
   totalPaise: number;
   currency: 'INR';
 }
+
+export type CartIssueReason = 'NOT_IN_CANTEEN' | 'INACTIVE' | 'UNAVAILABLE';
+
+export interface CartIssue {
+  menuItemId: string;
+  reason: CartIssueReason;
+}
+
+/** Upper bound for one order (₹10,00,000); also enforced by a CHECK constraint. */
+export const MAX_ORDER_TOTAL_PAISE = 100_000_000;
 
 /**
  * Authoritative cart pricing. Prices come ONLY from PostgreSQL; any price,
@@ -73,23 +88,24 @@ export async function priceCart(
   });
   const byId = new Map(items.map((item) => [item.id, item]));
 
-  const missing = ids.filter((id) => byId.get(id)?.canteenId !== canteenId);
-  if (missing.length > 0) {
-    throw new ValidationError(
-      'Some items are not on this canteen’s menu.',
-      { menuItemIds: missing },
-      'ITEM_NOT_FOUND',
-    );
+  const issues: CartIssue[] = [];
+  for (const id of ids) {
+    const item = byId.get(id);
+    if (!item || item.canteenId !== canteenId)
+      issues.push({ menuItemId: id, reason: 'NOT_IN_CANTEEN' });
+    else if (!item.isActive || !item.category.isActive)
+      issues.push({ menuItemId: id, reason: 'INACTIVE' });
+    else if (!item.isAvailable) issues.push({ menuItemId: id, reason: 'UNAVAILABLE' });
   }
-  const unavailable = ids.filter((id) => {
-    const item = byId.get(id)!;
-    return !item.isActive || !item.category.isActive || !item.isAvailable;
-  });
-  if (unavailable.length > 0) {
+  if (issues.length > 0) {
+    // Every problem is reported at once so the client can fix the whole cart.
+    const notOnMenu = issues.some((issue) => issue.reason === 'NOT_IN_CANTEEN');
     throw new ValidationError(
-      'This item is currently unavailable.',
-      { menuItemIds: unavailable },
-      'ITEM_UNAVAILABLE',
+      notOnMenu
+        ? 'Some items are not on this canteen’s menu.'
+        : 'This item is currently unavailable.',
+      { items: issues },
+      notOnMenu ? 'ITEM_NOT_FOUND' : 'ITEM_UNAVAILABLE',
     );
   }
 
@@ -97,16 +113,26 @@ export async function priceCart(
     const item = byId.get(line.menuItemId)!;
     return {
       menuItemId: item.id,
-      name: item.name,
+      itemName: item.name,
       unitPricePaise: item.pricePaise,
       quantity: line.quantity,
       lineTotalPaise: item.pricePaise * line.quantity,
     };
   });
+  const subtotalPaise = priced.reduce((sum, line) => sum + line.lineTotalPaise, 0);
+  if (subtotalPaise > MAX_ORDER_TOTAL_PAISE) {
+    throw new ValidationError(
+      'This order is too large.',
+      { maxTotalPaise: MAX_ORDER_TOTAL_PAISE },
+      'ORDER_TOTAL_TOO_LARGE',
+    );
+  }
   return {
     canteen: { id: canteen.id, name: canteen.name },
     items: priced,
-    totalPaise: priced.reduce((sum, line) => sum + line.lineTotalPaise, 0),
+    itemCount: priced.reduce((sum, line) => sum + line.quantity, 0),
+    subtotalPaise,
+    totalPaise: subtotalPaise,
     currency: 'INR',
   };
 }

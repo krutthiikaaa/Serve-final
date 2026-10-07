@@ -42,6 +42,17 @@ export interface CategoryRow {
   updatedAt: Date;
 }
 
+/** AVAILABLE: orderable item; UNAVAILABLE: temporarily off (e.g. sold out); INACTIVE: removed. */
+export type ItemAvailability = 'AVAILABLE' | 'UNAVAILABLE' | 'INACTIVE';
+
+export function itemAvailability(
+  item: Pick<MenuItemRow, 'isActive' | 'isAvailable'>,
+  categoryActive: boolean,
+): ItemAvailability {
+  if (!item.isActive || !categoryActive) return 'INACTIVE';
+  return item.isAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
+}
+
 /**
  * Item as clients see it. `isOrderable` combines item and canteen state, so UIs
  * can show unavailable items (disabled) without guessing; the server still
@@ -61,6 +72,7 @@ export function toMenuItemDto(
     imageUrl: item.imageUrl,
     isAvailable: item.isAvailable,
     isActive: item.isActive,
+    availability: itemAvailability(item, context.categoryActive),
     isOrderable:
       item.isActive && item.isAvailable && context.categoryActive && context.canteenTakesOrders,
     updatedAt: item.updatedAt,

@@ -3,9 +3,9 @@ import { id, imageUrl, name, optionalText, pricePaise } from '../../http/validat
 
 const sortOrder = z.number().int().min(0).max(10_000);
 
-export const createCategoryBody = z.object({ name, sortOrder: sortOrder.optional() });
+export const createCategoryBody = z.strictObject({ name, sortOrder: sortOrder.optional() });
 export const updateCategoryBody = z
-  .object({
+  .strictObject({
     name: name.optional(),
     sortOrder: sortOrder.optional(),
     isActive: z.boolean().optional(),
@@ -14,7 +14,7 @@ export const updateCategoryBody = z
     error: 'Nothing to update',
   });
 
-export const createItemBody = z.object({
+export const createItemBody = z.strictObject({
   categoryId: id,
   name,
   description: optionalText(500),
@@ -23,7 +23,7 @@ export const createItemBody = z.object({
   isAvailable: z.boolean().optional(),
 });
 export const updateItemBody = z
-  .object({
+  .strictObject({
     categoryId: id.optional(),
     name: name.optional(),
     description: optionalText(500),
@@ -35,5 +35,5 @@ export const updateItemBody = z
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     error: 'Nothing to update',
   });
-export const availabilityBody = z.object({ isAvailable: z.boolean() });
-export const priceBody = z.object({ pricePaise });
+export const availabilityBody = z.strictObject({ isAvailable: z.boolean() });
+export const priceBody = z.strictObject({ pricePaise });

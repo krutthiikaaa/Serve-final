@@ -31,7 +31,12 @@ export function createStaffService(prisma: PrismaClient, events: EventPublisher)
       const ready = count('READY');
       return {
         canteen: toCanteenDto(canteen),
-        orders: { active: pending + preparing + ready, pending, preparing, ready },
+        orders: {
+          active: pending + preparing + ready,
+          awaitingPreparation: pending,
+          preparing,
+          ready,
+        },
         today: { since, orderCount: today._count._all, revenuePaise: today._sum.totalPaise ?? 0 },
       };
     },
@@ -49,7 +54,7 @@ export function createStaffService(prisma: PrismaClient, events: EventPublisher)
       });
       const outbox = new Outbox();
       outbox.emit(
-        'canteen:order_taking_updated',
+        'canteen.status_changed',
         [rooms.canteenPublic(canteen.id), rooms.canteen(canteen.id), rooms.admins()],
         orderTakingPayload(canteen),
       );

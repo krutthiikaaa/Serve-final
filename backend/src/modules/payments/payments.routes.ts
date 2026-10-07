@@ -7,12 +7,12 @@ import { sensitiveLimiter } from '../../middleware/rate-limit.js';
 import { id, parse } from '../../http/validation.js';
 
 const orderParams = z.object({ orderId: id });
-const confirmationBody = z.object({
+const confirmationBody = z.strictObject({
   providerOrderId: z.string().min(1).max(100),
   providerPaymentId: z.string().min(1).max(100),
   signature: z.string().min(1).max(256),
 });
-const mockCompleteBody = z.object({
+const mockCompleteBody = z.strictObject({
   outcome: z.enum(['success', 'failure']).default('success'),
   /** Simulates the gateway capturing a different amount (tests amount verification). */
   capturedAmountPaise: z.number().int().positive().optional(),

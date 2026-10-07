@@ -142,7 +142,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
         conflictOnName(err, 'category');
       }
       const outbox = new Outbox();
-      outbox.emit('menu:category_updated', menuRooms(canteenId), {
+      outbox.emit('menu.category_updated', menuRooms(canteenId), {
         category: toCategoryDto(category),
       });
       outbox.flush(events);
@@ -162,7 +162,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
         conflictOnName(err, 'category');
       }
       const outbox = new Outbox();
-      outbox.emit('menu:category_updated', menuRooms(category.canteenId), {
+      outbox.emit('menu.category_updated', menuRooms(category.canteenId), {
         category: toCategoryDto(category),
       });
       outbox.flush(events);
@@ -197,7 +197,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
       }
       const dto = await itemDto(item);
       const outbox = new Outbox();
-      outbox.emit('menu:item_updated', menuRooms(canteenId), { item: dto, change: 'created' });
+      outbox.emit('menu.item_updated', menuRooms(canteenId), { item: dto, change: 'created' });
       outbox.flush(events);
       return dto;
     },
@@ -227,9 +227,9 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
       const dto = await itemDto(item);
       const targets = menuRooms(item.canteenId);
       const outbox = new Outbox();
-      outbox.emit('menu:item_updated', targets, { item: dto, change: 'updated' });
+      outbox.emit('menu.item_updated', targets, { item: dto, change: 'updated' });
       if (item.pricePaise !== before.pricePaise) {
-        outbox.emit('menu:price_updated', targets, {
+        outbox.emit('menu.item_price_changed', targets, {
           itemId: item.id,
           canteenId: item.canteenId,
           pricePaise: item.pricePaise,
@@ -237,11 +237,12 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
         });
       }
       if (item.isAvailable !== before.isAvailable || item.isActive !== before.isActive) {
-        outbox.emit('menu:availability_updated', targets, {
+        outbox.emit('menu.item_availability_changed', targets, {
           itemId: item.id,
           canteenId: item.canteenId,
           isAvailable: item.isAvailable,
           isActive: item.isActive,
+          availability: dto.availability,
           isOrderable: dto.isOrderable,
         });
       }
