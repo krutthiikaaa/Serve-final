@@ -48,7 +48,7 @@ cp .env.example backend/.env.test
 NODE_ENV=development
 PORT=5001
 DATABASE_URL=postgresql://serve:<password>@localhost:5432/serve_dev?schema=public
-CORS_ORIGINS=http://localhost:5173,http://localhost:5174
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5555
 FIREBASE_PROJECT_ID=demo-serve
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 PAYMENT_MODE=mock
@@ -62,7 +62,7 @@ LOG_LEVEL=debug
 NODE_ENV=test
 PORT=5101
 DATABASE_URL=postgresql://serve:<password>@localhost:5432/serve_test?schema=public
-CORS_ORIGINS=http://localhost:5173,http://localhost:5174
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5555
 FIREBASE_PROJECT_ID=demo-serve
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 PAYMENT_MODE=mock
@@ -169,18 +169,18 @@ VITE_API_URL=https://api.example.edu VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PRO
 Student app (details in [apps/student/README.md](../apps/student/README.md)):
 
 ```bash
-cd apps/student
-flutter pub get
-flutter run -d chrome --web-port 5555 \
-  --dart-define=API_URL=http://localhost:5001 \
-  --dart-define=FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
-  --dart-define=STAFF_DASHBOARD_URL=http://localhost:5173 \
-  --dart-define=ADMIN_PORTAL_URL=http://localhost:5174
-# Android emulator: use 10.0.2.2 instead of localhost / 127.0.0.1
+npm run dev:student                        # Chrome, http://localhost:5555
+npm run dev:student -- -d emulator-5554    # Android emulator or any `flutter devices` id
 ```
 
-Flutter **web** needs its origin in the backend `CORS_ORIGINS`
-(`…,http://localhost:5555`). Mobile builds send no `Origin`.
+No `--dart-define` flags are needed for local development: the app defaults to
+the backend on `:5001` and the Auth Emulator on `:9099` (`10.0.2.2` from an
+Android emulator). Flutter **web** needs `http://localhost:5555` in the backend
+`CORS_ORIGINS` (already in `.env.example`; restart the backend after changing
+it). Mobile builds send no `Origin`. A physical phone needs your computer's LAN
+address, e.g. `-- -d <phone> --dart-define=API_URL=http://192.168.1.20:5001
+--dart-define=FIREBASE_AUTH_EMULATOR_HOST=192.168.1.20:9099` (and the emulator
+started with `--host 0.0.0.0`).
 
 Demo logins (after `db:seed:dev-users`): `student@serve.dev` in the student
 app, `staff.kg@serve.dev` / `staff.pending@serve.dev` in the staff dashboard,

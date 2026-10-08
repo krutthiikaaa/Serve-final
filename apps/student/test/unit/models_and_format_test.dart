@@ -43,6 +43,53 @@ void main() {
     expect(keys.first, matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')));
   });
 
+  group('development defaults (a plain `flutter run` works against the local stack)', () {
+    test('web / iOS / desktop use localhost and the Auth Emulator', () {
+      final c = AppConfig.resolve(isRelease: false, isAndroidDevice: false);
+      expect(c.apiUrl, 'http://localhost:5001');
+      expect(c.authEmulatorHost, '127.0.0.1:9099');
+      expect(c.firebaseProjectId, 'demo-serve');
+      expect(c.staffDashboardUrl, 'http://localhost:5173');
+    });
+
+    test('the Android emulator reaches the host as 10.0.2.2', () {
+      final c = AppConfig.resolve(isRelease: false, isAndroidDevice: true);
+      expect(c.apiUrl, 'http://10.0.2.2:5001');
+      expect(c.authEmulatorHost, '10.0.2.2:9099');
+    });
+
+    test('explicit --dart-define values always win', () {
+      final c = AppConfig.resolve(
+        apiUrl: 'http://192.168.1.20:5001/',
+        authEmulatorHost: '192.168.1.20:9099',
+        isRelease: false,
+        isAndroidDevice: true,
+      );
+      expect(c.apiUrl, 'http://192.168.1.20:5001');
+      expect(c.authEmulatorHost, '192.168.1.20:9099');
+    });
+
+    test('a real Firebase project never defaults to the emulator', () {
+      final c = AppConfig.resolve(firebaseProjectId: 'serve-prod', isRelease: false, isAndroidDevice: false);
+      expect(c.authEmulatorHost, isNull);
+    });
+
+    test('release builds get no emulator default and still need real settings', () {
+      final c = AppConfig.resolve(isRelease: true, isAndroidDevice: false);
+      expect(c.authEmulatorHost, isNull);
+      expect(() => c.validate(isRelease: true), throwsStateError);
+      final prod = AppConfig.resolve(
+        apiUrl: 'https://api.serve.app',
+        firebaseProjectId: 'serve-prod',
+        firebaseApiKey: 'k',
+        isRelease: true,
+        isAndroidDevice: false,
+      );
+      expect(() => prod.validate(isRelease: true), returnsNormally);
+      expect(prod.staffDashboardUrl, isNull);
+    });
+  });
+
   test('release builds refuse emulator, demo project and plain-http APIs', () {
     const dev = AppConfig(
       apiUrl: 'http://localhost:5001',

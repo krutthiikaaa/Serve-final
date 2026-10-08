@@ -26,6 +26,7 @@
     "test:emulator": "firebase emulators:exec --only auth --project demo-serve \"npm test\"",
     "dev:staff": "npm run dev --workspace @serve/staff",
     "dev:admin": "npm run dev --workspace @serve/admin",
+    "dev:student": "node scripts/dev-student.mjs",
     "test:e2e": "npm run test --workspace @serve/e2e"
   },
   "devDependencies": {
