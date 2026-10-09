@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Build-time configuration, passed with `--dart-define` (see README).
 ///
 /// Only public values belong here: the API origin, the Firebase web API key
@@ -14,12 +16,30 @@ class AppConfig {
   });
 
   factory AppConfig.fromEnvironment() {
-    const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:5001');
-    const apiKey = String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'demo-api-key');
-    const projectId = String.fromEnvironment('FIREBASE_PROJECT_ID', defaultValue: 'demo-serve');
-    const emulator = String.fromEnvironment('FIREBASE_AUTH_EMULATOR_HOST');
-    const staffUrl = String.fromEnvironment('STAFF_DASHBOARD_URL');
-    const adminUrl = String.fromEnvironment('ADMIN_PORTAL_URL');
+    String apiUrl = const String.fromEnvironment('API_URL');
+    String apiKey = const String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'demo-api-key');
+    String projectId = const String.fromEnvironment('FIREBASE_PROJECT_ID', defaultValue: 'demo-serve');
+    String emulator = const String.fromEnvironment('FIREBASE_AUTH_EMULATOR_HOST');
+    String staffUrl = const String.fromEnvironment('STAFF_DASHBOARD_URL');
+    String adminUrl = const String.fromEnvironment('ADMIN_PORTAL_URL');
+
+    final isRelease = const bool.fromEnvironment('dart.vm.product');
+
+    if (!isRelease) {
+      if (emulator.isEmpty) {
+        emulator = kIsWeb || defaultTargetPlatform != TargetPlatform.android 
+            ? '127.0.0.1:9099' 
+            : '10.0.2.2:9099';
+      }
+      if (apiUrl.isEmpty) {
+        apiUrl = kIsWeb || defaultTargetPlatform != TargetPlatform.android
+            ? 'http://127.0.0.1:5001'
+            : 'http://10.0.2.2:5001';
+      }
+    } else {
+      if (apiUrl.isEmpty) apiUrl = 'http://localhost:5001'; // Fallback for release without API_URL, though it should fail validation
+    }
+
     final config = AppConfig(
       apiUrl: apiUrl.endsWith('/') ? apiUrl.substring(0, apiUrl.length - 1) : apiUrl,
       firebaseApiKey: apiKey,
