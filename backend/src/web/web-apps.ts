@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import express, { Router, type RequestHandler } from 'express';
 import helmet, { type HelmetOptions } from 'helmet';
@@ -23,8 +23,15 @@ export const WEB_APPS = [
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const REVALIDATE = 'no-cache';
 
-/** Resolves WEB_ROOT and fails fast when a built app is missing. */
-export function resolveWebRoot(webRoot: string): string {
+/** Marker written by `npm run build:web`: `{ "local": boolean, "builtAt": string }`. */
+const BUILD_MARKER = '.serve-web-build';
+
+/**
+ * Resolves WEB_ROOT and fails fast when a built app is missing, or when a
+ * production server is pointed at a `build:web --local` preview (wired to the
+ * Auth Emulator and the demo project).
+ */
+export function resolveWebRoot(webRoot: string, nodeEnv: Env['NODE_ENV']): string {
   const root = path.resolve(webRoot);
   const missing = WEB_APPS.map((app) => path.join(app.dir, 'index.html')).filter(
     (file) => !existsSync(path.join(root, file)),
@@ -33,6 +40,15 @@ export function resolveWebRoot(webRoot: string): string {
     throw new Error(
       `WEB_ROOT (${root}) is missing ${missing.join(', ')}. Run \`npm run build:web\` and point WEB_ROOT at its output.`,
     );
+  }
+  const marker = path.join(root, BUILD_MARKER);
+  if (nodeEnv === 'production' && existsSync(marker)) {
+    const { local } = JSON.parse(readFileSync(marker, 'utf8')) as { local?: unknown };
+    if (local === true) {
+      throw new Error(
+        `WEB_ROOT (${root}) holds a local preview build (Auth Emulator, demo project). Build for production with \`npm run build:web\` (without --local).`,
+      );
+    }
   }
   return root;
 }

@@ -32,7 +32,7 @@ export function createApp(ctx: AppContext): Express {
   const { env, logger, prisma } = ctx;
   const app = express();
   // Single-domain deployment: this process also serves the web apps.
-  const webRoot = env.WEB_ROOT ? resolveWebRoot(env.WEB_ROOT) : null;
+  const webRoot = env.WEB_ROOT ? resolveWebRoot(env.WEB_ROOT, env.NODE_ENV) : null;
   // With the web apps mounted, API-only middleware is scoped to /api.
   const useForApi = (handler: express.RequestHandler) =>
     webRoot ? app.use('/api', handler) : app.use(handler);

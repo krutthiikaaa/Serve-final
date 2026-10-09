@@ -142,6 +142,28 @@ describe('web apps on one origin', () => {
       void ctx.prisma.$disconnect();
     }
   });
+
+  it('never serves a `build:web --local` preview in production', () => {
+    const preview = mkdtempSync(path.join(os.tmpdir(), 'serve-web-preview-'));
+    for (const app of ['student', 'staff', 'admin']) {
+      mkdirSync(path.join(preview, app));
+      writeFileSync(path.join(preview, app, 'index.html'), page(app));
+    }
+    writeFileSync(path.join(preview, '.serve-web-build'), '{"local":true}');
+    const ctx = buildTestContext();
+    try {
+      // Tests may serve a preview build...
+      expect(() => createApp({ ...ctx, env: { ...ctx.env, WEB_ROOT: preview } })).not.toThrow();
+      // ...a production server refuses it.
+      const production = { ...ctx.env, NODE_ENV: 'production' as const, WEB_ROOT: preview };
+      expect(() => createApp({ ...ctx, env: production })).toThrow(/local preview build/);
+      writeFileSync(path.join(preview, '.serve-web-build'), '{"local":false}');
+      expect(() => createApp({ ...ctx, env: production })).not.toThrow();
+    } finally {
+      rmSync(preview, { recursive: true, force: true });
+      void ctx.prisma.$disconnect();
+    }
+  });
 });
 
 describe('page CSP by environment', () => {
