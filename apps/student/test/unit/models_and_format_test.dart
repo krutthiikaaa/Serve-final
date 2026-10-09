@@ -90,6 +90,53 @@ void main() {
     });
   });
 
+  group('single-domain web deployment (a built web app is served by the SERVE domain)', () {
+    test('API, staff dashboard and admin portal default to the serving origin', () {
+      final c = AppConfig.resolve(
+        firebaseProjectId: 'serve-prod',
+        firebaseApiKey: 'k',
+        isRelease: true,
+        isAndroidDevice: false,
+        servedFrom: 'https://serve.example',
+      );
+      expect(c.apiUrl, 'https://serve.example');
+      expect(c.staffDashboardUrl, 'https://serve.example/staff/');
+      expect(c.adminPortalUrl, 'https://serve.example/admin/');
+      expect(c.authEmulatorHost, isNull);
+      expect(() => c.validate(isRelease: true), returnsNormally);
+    });
+
+    test('a release build served over plain http is still rejected', () {
+      final c = AppConfig.resolve(
+        firebaseProjectId: 'serve-prod',
+        isRelease: true,
+        isAndroidDevice: false,
+        servedFrom: 'http://serve.example',
+      );
+      expect(() => c.validate(isRelease: true), throwsStateError);
+    });
+
+    test('explicit --dart-define values still win', () {
+      final c = AppConfig.resolve(
+        apiUrl: 'https://api.serve.example',
+        staffDashboardUrl: 'https://staff.serve.example',
+        isRelease: true,
+        isAndroidDevice: false,
+        servedFrom: 'https://serve.example',
+      );
+      expect(c.apiUrl, 'https://api.serve.example');
+      expect(c.staffDashboardUrl, 'https://staff.serve.example');
+      expect(c.adminPortalUrl, 'https://serve.example/admin/');
+    });
+
+    test('a profile build for local testing keeps the emulator for demo projects', () {
+      final c = AppConfig.resolve(isRelease: false, isAndroidDevice: false, servedFrom: 'http://localhost:5199');
+      expect(c.apiUrl, 'http://localhost:5199');
+      expect(c.authEmulatorHost, '127.0.0.1:9099');
+      expect(c.staffDashboardUrl, 'http://localhost:5199/staff/');
+    });
+  });
+
   test('release builds refuse emulator, demo project and plain-http APIs', () {
     const dev = AppConfig(
       apiUrl: 'http://localhost:5001',

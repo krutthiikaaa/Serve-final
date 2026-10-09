@@ -10,9 +10,9 @@ import '../navigation.dart';
 import '../widgets/states.dart';
 import 'order_confirmation_screen.dart';
 
-/// Payment for a PLACED order. In development this drives the backend's mock
-/// gateway (initiate → mock-complete); Razorpay Checkout will replace only the
-/// gateway step (initiate → Razorpay → verify).
+/// Payment for a PLACED order. In development and demo deployments this drives
+/// the backend's mock gateway (initiate → mock-complete); Razorpay Checkout will
+/// replace only the gateway step (initiate → Razorpay → verify).
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key, required this.order, this.quotedTotalPaise});
   final StudentOrder order;
@@ -92,7 +92,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: ListTile(
               leading: Icon(Icons.science_outlined, color: ServeColors.oliveDark),
               title: Text('Test payment', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text('Development mode: no real money is charged. Online payments will use Razorpay.'),
+              subtitle: Text('Demo mode: no real money is charged. Online payments will use Razorpay.'),
             ),
           ),
           if (_error != null) ...[
