@@ -13,5 +13,11 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["tests", "scripts", "playwright.config.ts", "../packages/contracts/src"]
+  "include": [
+    "tests",
+    "scripts",
+    "playwright.config.ts",
+    "playwright.single-domain.config.ts",
+    "../packages/contracts/src"
+  ]
 }

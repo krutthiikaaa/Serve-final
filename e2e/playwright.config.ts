@@ -19,6 +19,8 @@ const frontendEnv = {
 
 export default defineConfig({
   testDir: './tests',
+  // Runs against built apps on one origin: playwright.single-domain.config.ts
+  testIgnore: 'single-domain.spec.ts',
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,
