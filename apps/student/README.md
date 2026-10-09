@@ -8,32 +8,53 @@ Flutter 3.47 / Dart 3.13. Platforms: Android, iOS and web.
 
 ## Run it locally
 
-Start the backend stack first (PostgreSQL, Firebase Auth Emulator, backend on
-`:5001`; see [docs/development.md](../../docs/development.md)), then:
+Follow this copy-pasteable setup guide to start the local development environment. You will need three terminal windows.
+
+### Terminal 1 — Firebase Emulators
+Start the Firebase Auth emulator to handle authentication locally without hitting production servers.
+```bash
+npm run emulators
+```
+*Note: This terminal must remain open while testing locally.*
+
+### Terminal 2 — Backend
+Start the backend API and Socket.IO server.
+```bash
+npm run dev:backend
+```
+The backend should start on port `5001`. You can check its health endpoint by opening `http://localhost:5001/api/health` in your browser.
+
+### Terminal 3 — Student App
+Launch the Flutter Student App in the browser.
+```bash
+npm run dev:student
+```
+Once it builds, open the Student App at **http://localhost:5555**.
+
+---
+
+### Seed Development Accounts
+
+Before you can log in, you must create demo accounts in the emulator and local database. Wait until **both** the Firebase Emulator (Terminal 1) and the Backend (Terminal 2) are running, then open a new terminal and run:
 
 ```bash
-cd apps/student
-flutter pub get
-
-# Android emulator (the host machine is 10.0.2.2 from the emulator)
-flutter run \
-  --dart-define=API_URL=http://10.0.2.2:5001 \
-  --dart-define=FIREBASE_AUTH_EMULATOR_HOST=10.0.2.2:9099
-
-# iOS simulator / desktop browser
-flutter run -d chrome --web-port 5555 \
-  --dart-define=API_URL=http://localhost:5001 \
-  --dart-define=FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
-  --dart-define=STAFF_DASHBOARD_URL=http://localhost:5173 \
-  --dart-define=ADMIN_PORTAL_URL=http://localhost:5174
+DEV_SEED_PASSWORD='dev-password-123' npm run db:seed:dev-users --workspace backend
 ```
+*(This is safe to rerun at any time. It's idempotent and updates existing accounts.)*
 
-Flutter **web** calls the API from the browser, so its origin must be in the
-backend's `CORS_ORIGINS` (for example `http://localhost:5555`). Android and iOS
-send no `Origin` and need no CORS entry.
+This script creates the development student account you can use to sign in to the Student App:
+- **Email:** `student@serve.dev`
+- **Password:** `dev-password-123`
 
-Demo account (emulator only, after `npm run db:seed:dev-users --workspace backend`):
-`student@serve.dev` with your `DEV_SEED_PASSWORD`.
+*(Note: These are local development credentials only. Never use them in production.)*
+
+### Troubleshooting
+
+- **Firebase emulator connection failures:** Ensure Terminal 1 (`npm run emulators`) is running and not failing with port conflicts.
+- **CORS errors:** If the browser console shows CORS errors, make sure you added `http://localhost:5555` to the `CORS_ORIGINS` in your root `.env` (or `backend/.env`) file and restarted the backend.
+- **Port conflicts:** If port `5001`, `9099`, or `5555` is in use, you must stop the conflicting service or macOS feature (e.g., AirPlay Receiver on port `5000` is close, but we use `5001`).
+- **Missing Flutter:** The `dev:student` command requires Flutter to be installed and available in your PATH. If it says Flutter is missing, [install Flutter](https://docs.flutter.dev/get-started/install).
+- **Failed login:** If the login fails but the backend is running, try re-running the seed script. The emulator's memory gets wiped if it was restarted, so you may need to recreate the users.
 
 ## Configuration (`--dart-define`)
 

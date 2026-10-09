@@ -26,6 +26,7 @@
     "test:emulator": "firebase emulators:exec --only auth --project demo-serve \"npm test\"",
     "dev:staff": "npm run dev --workspace @serve/staff",
     "dev:admin": "npm run dev --workspace @serve/admin",
+    "dev:student": "command -v flutter >/dev/null 2>&1 || { echo 'Flutter is not installed. Please install Flutter: https://docs.flutter.dev/get-started/install' >&2; exit 1; }; cd apps/student && flutter run -d chrome --web-port 5555",
     "test:e2e": "npm run test --workspace @serve/e2e"
   },
   "devDependencies": {
@@ -35,5 +36,12 @@
     "mysql2": "3.24.5",
     "deepmerge-ts": "8.0.2",
     "uuid": "11.1.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "prisma@7.10.0": true,
+    "protobufjs@7.6.6": true,
+    "@firebase/util@1.15.3": true,
+    "@prisma/engines@7.10.0": true
   }
 }
