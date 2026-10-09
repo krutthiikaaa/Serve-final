@@ -25,12 +25,15 @@ import { ChangeRequestsPage } from './pages/ChangeRequestsPage';
 import { StaffPage } from './pages/StaffPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 
+/** `/` in development, `/admin` when served under /admin/ (Vite `base`). */
+const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 export function App() {
   const auth = useMemo(() => initFirebaseAuth(config.firebase), []);
   return (
     <ToastProvider>
       <AuthProvider auth={auth} baseUrl={config.apiUrl}>
-        <BrowserRouter>
+        <BrowserRouter basename={routerBasename}>
           <Gate />
         </BrowserRouter>
       </AuthProvider>

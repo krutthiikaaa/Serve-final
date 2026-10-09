@@ -31,7 +31,8 @@ import {
 /**
  * Official SERVE logo slot. Place the transparent asset at
  * `public/brand/serve-logo.png` (see brand/README.md). Until it exists, a plain
- * text wordmark is shown — never a redrawn logo.
+ * text wordmark is shown — never a redrawn logo. The path follows the app's
+ * base URL (`/staff/`, `/admin/` in builds).
  */
 export function Logo({
   size = 32,
@@ -45,7 +46,7 @@ export function Logo({
     <span className="logo" aria-label="SERVE">
       {hasAsset ? (
         <img
-          src="/brand/serve-logo.png"
+          src={`${import.meta.env.BASE_URL}brand/serve-logo.png`}
           alt=""
           width={size}
           height={size}
