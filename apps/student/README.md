@@ -70,11 +70,11 @@ tap "Create an account" in the app.
 
 | Key | Default | Notes |
 |---|---|---|
-| `API_URL` | `http://localhost:5001` (`http://10.0.2.2:5001` on an Android emulator) | Backend origin. REST lives under `/api`, Socket.IO at `/socket.io`. |
+| `API_URL` | `http://localhost:5001` (`http://10.0.2.2:5001` on an Android emulator); a **built** web app uses the origin that serves it | Backend origin. REST lives under `/api`, Socket.IO at `/socket.io`. |
 | `FIREBASE_API_KEY` | `demo-api-key` | Public Firebase web API key. |
 | `FIREBASE_PROJECT_ID` | `demo-serve` | `demo-*` projects only work with the emulator. |
 | `FIREBASE_AUTH_EMULATOR_HOST` | `127.0.0.1:9099` (`10.0.2.2:9099` on Android) for `demo-` projects in development builds | `host:port` of the Auth Emulator. Never used by release builds. |
-| `STAFF_DASHBOARD_URL` / `ADMIN_PORTAL_URL` | `http://localhost:5173` / `:5174` in development builds | Opened from the role-selection screen. |
+| `STAFF_DASHBOARD_URL` / `ADMIN_PORTAL_URL` | `http://localhost:5173` / `:5174` in development builds; `/staff/` and `/admin/` on the serving origin for a built web app | Opened from the role-selection screen. |
 
 Only public values go here. Firebase Admin credentials, database passwords and
 payment secrets exist only on the backend.
@@ -84,6 +84,17 @@ the emulator configured, a `demo-` project, or a non-`https` / localhost
 `API_URL` (see `lib/config/app_config.dart`). Android release builds keep the
 platform default of HTTPS only; plain HTTP is allowed in debug builds for the
 local backend.
+
+## Demo deployment, installing on a phone, APK
+
+On the single SERVE domain the web build is served at `/` and can be added to
+an iPhone's home screen (Safari → Share → Add to Home Screen) or installed
+from Chrome on Android. It is the web build in standalone mode, not a native
+iOS app. `npm run build:web` (repository root) builds it; an optional Android
+APK needs `--dart-define=API_URL=https://YOUR_DOMAIN` and the real Firebase
+values. The web build does not register Flutter's service worker
+(`web/flutter_bootstrap.js`). Details, signing and distribution:
+[docs/deployment.md](../../docs/deployment.md#8-installability).
 
 ## Structure
 

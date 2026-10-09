@@ -158,13 +158,17 @@ npm run dev:admin
 ```
 
 The `.env.development.local` files are gitignored and are never read by
-`vite build`. A production build needs real values from the environment and
-refuses emulator settings or a localhost API URL:
+`vite build`. A production build is served under `/staff/` (or `/admin/`),
+needs the public Firebase values from the environment, and refuses emulator
+settings and a localhost or plain-http API URL. Without `VITE_API_URL` it calls
+the origin that serves it:
 
 ```bash
-VITE_API_URL=https://api.example.edu VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PROJECT_ID=… \
-  npm run build --workspace @serve/staff
+VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PROJECT_ID=… npm run build --workspace @serve/staff
 ```
+
+`npm run build:web` builds all three apps for the single-domain deployment;
+see [deployment.md](deployment.md).
 
 Student app (details in [apps/student/README.md](../apps/student/README.md)):
 

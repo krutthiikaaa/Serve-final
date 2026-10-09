@@ -47,7 +47,7 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5555
 
 - **Flutter on Android/iOS** sends no `Origin`, so no CORS configuration is needed.
 - **Flutter web** (`npm run dev:student`, i.e. `flutter run -d chrome --web-port 5555`) is covered by the `http://localhost:5555` entry. A different web port needs its own entry.
-- Production: list the real `https://` origins only. Localhost and plain `http` origins are rejected at startup, and `*` is never used.
+- Production: list the real `https://` origins only. Localhost and plain `http` origins are rejected at startup, and `*` is never used. On the single-domain deployment the apps call `/api` same-origin, so `CORS_ORIGINS=https://YOUR_DOMAIN` is enough ([deployment.md](deployment.md)).
 - Browsers can read `X-Request-Id`, `Idempotent-Replayed` and `RateLimit*`. There are no cookies (Bearer tokens), so do not use `credentials: 'include'`.
 
 ## 3. Authentication flow

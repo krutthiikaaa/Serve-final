@@ -80,9 +80,9 @@ Implemented in the client apps:
 
 | Interface | Users | Form factor | Status |
 |---|---|---|---|
-| **Student App** | Students | Mobile (Flutter: Android, iOS; web build for testing). Bottom navigation: Home · Menu · Orders · Profile; cart in the header | **Implemented** |
-| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation | **Implemented** |
-| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation | **Implemented** |
+| **Student App** | Students | Mobile (Flutter: Android, iOS). Its web build is installable from the browser (iPhone: Add to Home Screen) on the demo domain. Bottom navigation: Home · Menu · Orders · Profile; cart in the header | **Implemented** |
+| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation; installable from Chrome/Edge | **Implemented** |
+| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation; installable from Chrome/Edge | **Implemented** |
 
 All three talk to **one shared backend**.
 
@@ -108,6 +108,11 @@ All three talk to **one shared backend**.
 - The backend works out who the caller is, and which canteen they may act on,
   from the verified Firebase token. It never trusts IDs, roles, canteen
   assignments, prices or totals sent by a client.
+
+For a deployment, one backend process can also serve the three built apps on
+a single domain: the student app at `/`, the staff dashboard at `/staff/`, the
+admin portal at `/admin/`, with `/api` and `/socket.io` on the same origin.
+See [docs/deployment.md](docs/deployment.md).
 
 Details: [docs/architecture.md](docs/architecture.md).
 
@@ -182,10 +187,13 @@ serve/
 │   ├── contracts/        Frozen API contract: zod schemas + TypeScript types
 │   └── web-shared/       API client, auth, realtime, UI kit shared by staff + admin
 ├── e2e/                  Playwright end-to-end tests (isolated stack)
-├── docs/                 Architecture, API, database, development, frontend
+├── deploy/               Caddy and nginx configs, production env template
+├── scripts/              dev-student, build-web (single-domain build), smoke-deploy
+├── docs/                 Architecture, API, database, development, frontend, deployment
 ├── brand/                Official logo location and palette (logo pending)
 ├── firebase.json         Firebase Auth Emulator configuration
 ├── .env.example          Documented backend environment variables
+├── Dockerfile            Optional single-domain image (backend + prebuilt web apps)
 ├── package.json          npm workspaces
 └── README.md
 ```
@@ -203,6 +211,7 @@ backend/
 │   ├── modules/       auth, canteens, menu, orders, payments, change-requests,
 │   │                  staff, admin, notifications, students, health
 │   ├── realtime/      event outbox + Socket.IO server
+│   ├── web/           single-domain hosting of the built web apps (WEB_ROOT)
 │   ├── app.ts         Express composition
 │   └── server.ts      HTTP + Socket.IO entry point
 └── tests/             unit + integration (PostgreSQL + Firebase Auth Emulator)
@@ -286,6 +295,15 @@ npm run build
 npm run start --workspace backend    # sets NODE_ENV=production; needs production variables
 ```
 
+Deployment on one domain (student `/`, staff `/staff/`, admin `/admin/`, API
+`/api`) with installable web apps and demo payments: see
+[docs/deployment.md](docs/deployment.md). In short:
+
+```bash
+FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… npm run build:web   # → dist/web (WEB_ROOT)
+npm run smoke:deploy -- https://YOUR_DOMAIN                  # read-only checks after deploying
+```
+
 The backend uses port **5001**. Port 5000 is rejected because it conflicts
 with macOS AirPlay Receiver. The full guide is in
 [docs/development.md](docs/development.md).
@@ -306,7 +324,9 @@ error names the variable without printing its value.
 | `FIREBASE_AUTH_EMULATOR_HOST` | no | Development/test only; rejected in production |
 | `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | without emulator | Service-account values (never commit the JSON) |
 | `STUDENT_EMAIL_DOMAINS` | no | Optional university email-domain allowlist; empty disables it |
-| `PAYMENT_MODE` | no | `mock` (default, development/test only) or `razorpay` (required in production) |
+| `PAYMENT_MODE` | no | `mock` (default; in production only with `DEMO_MODE=true`) or `razorpay` |
+| `DEMO_MODE` | no | `true` declares a public demo: mock payments allowed in production, no real money moves; every other production rule still applies |
+| `WEB_ROOT` | no | Folder of built web apps (`npm run build:web`) to serve on the same domain; unset = API only |
 | `PAYMENT_SECRET` | mock mode | At least 32 characters |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | razorpay mode | Placeholders only until the Razorpay integration is completed |
 | `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_*`, `SENSITIVE_RATE_LIMIT_*` | no | See `.env.example` |
@@ -353,6 +373,7 @@ npm run test --workspace @serve/admin        # admin portal components
 (cd apps/student && flutter analyze && flutter test)
 npm run test:e2e                             # Playwright: isolated backend on serve_test + both web apps
 E2E_STUDENT_WEB=1 npm run test:e2e           # also builds and drives the Flutter web app
+npm run test:e2e:single-domain               # built apps + API + Socket.IO on one origin (needs Flutter)
 ```
 
 The end-to-end suite starts its own backend on `serve_test` (reset and seeded
@@ -376,8 +397,9 @@ Implemented:
 - Authenticated Socket.IO with rooms assigned by the server.
 - Startup validation of all configuration. Production rejects localhost or
   plain-http CORS origins, the Firebase emulator, `demo-` projects and the
-  mock payment provider.
-- `helmet` headers with a strict CSP, an exact-origin CORS allowlist, global
+  mock payment provider (unless `DEMO_MODE=true` explicitly declares a demo).
+- `helmet` headers with a strict CSP (`default-src 'none'` on the API; a
+  same-origin script policy on the served web apps), an exact-origin CORS allowlist, global
   and per-user rate limits, request-size limits, and zod validation of all
   input.
 - Redacted structured logs, and a central error handler that never exposes
@@ -415,14 +437,15 @@ the three client apps.
 | 6 | Staff Dashboard (React) | **Complete** |
 | 6 | Admin Portal (React) | **Complete** |
 | 6 | Cross-application end-to-end tests | **Complete** |
+| — | Single-domain demo deployment preparation (routing, installable apps, configs, docs) | **Complete** (not deployed) |
 | — | Real Razorpay integration | Not started |
-| — | Production security audit and deployment preparation | Not started |
+| — | Production security audit | Not started |
 
 ## 18. Future Enhancements
 
 - Razorpay payments in place of the mock provider
 - Firebase Cloud Messaging for background push notifications
-- AWS deployment (containerised backend, managed PostgreSQL, static web hosting)
+- A live deployment on the owner's domain (prepared: [docs/deployment.md](docs/deployment.md))
 - A Socket.IO Redis adapter for running several backend instances
 - Student hostel/canteen change requests (the data model leaves room for this)
 
@@ -453,4 +476,5 @@ history.
 - [docs/development.md](docs/development.md)
 - [docs/frontend-integration.md](docs/frontend-integration.md)
 - [docs/frontend-architecture.md](docs/frontend-architecture.md)
+- [docs/deployment.md](docs/deployment.md)
 - [apps/student/README.md](apps/student/README.md)

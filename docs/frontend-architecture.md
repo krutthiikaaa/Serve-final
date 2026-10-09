@@ -223,13 +223,15 @@ notifications.
 | Dev config | `apps/*/.env.development.local` (copy `.env.example`) | none needed: development builds default to `:5001` and the emulator on `:9099` (`10.0.2.2` on Android); `--dart-define` overrides |
 | API | `VITE_API_URL` | `API_URL` |
 | Firebase | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_AUTH_EMULATOR_URL` (dev) | `FIREBASE_API_KEY`, `FIREBASE_PROJECT_ID`, `FIREBASE_AUTH_EMULATOR_HOST` (dev) |
-| Production guard | `vite build` fails without the required variables, with the emulator set, or with a localhost API URL | release builds throw on emulator, `demo-` project, non-https or localhost API |
+| Built for the single domain | `base` `/staff/` / `/admin/`, router basename to match; no `VITE_API_URL` = same origin | a built web app defaults to its serving origin for the API and the portal links |
+| Production guard | `vite build` fails without the Firebase variables, with the emulator set, or with a localhost or plain-http API URL | release builds throw on emulator, `demo-` project, non-https or localhost API |
 
 The development env file is deliberately named `.env.development.local`:
 Vite never loads it for production builds, so a developer's emulator settings
 cannot leak into a release. CI builds pass real values through the
-environment (for gates: `VITE_API_URL=https://api.serve.example
-VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PROJECT_ID=serve-prod npm run build`).
+environment (for gates: `VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PROJECT_ID=serve-prod
+npm run build`; `npm run build:web` for the deployable set, see
+[deployment.md](deployment.md)).
 
 Browser clients need their exact origin in the backend `CORS_ORIGINS`
 (`:5173`, `:5174`, plus `:5555` for Flutter web). Mobile builds send no origin.
