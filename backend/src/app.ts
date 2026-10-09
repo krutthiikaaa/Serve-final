@@ -22,6 +22,7 @@ import { createStaffRouter } from './modules/staff/staff.routes.js';
 import { createAdminRouter } from './modules/admin/admin.routes.js';
 import { createNotificationsRouter } from './modules/notifications/notifications.routes.js';
 import { createStudentsRouter } from './modules/students/students.routes.js';
+import { createWebAppsRouter, resolveWebRoot } from './web/web-apps.js';
 
 /**
  * Build the Express application. Dependencies are injected so tests can run
@@ -30,6 +31,11 @@ import { createStudentsRouter } from './modules/students/students.routes.js';
 export function createApp(ctx: AppContext): Express {
   const { env, logger, prisma } = ctx;
   const app = express();
+  // Single-domain deployment: this process also serves the web apps.
+  const webRoot = env.WEB_ROOT ? resolveWebRoot(env.WEB_ROOT) : null;
+  // With the web apps mounted, API-only middleware is scoped to /api.
+  const useForApi = (handler: express.RequestHandler) =>
+    webRoot ? app.use('/api', handler) : app.use(handler);
 
   app.set('trust proxy', env.TRUST_PROXY);
   app.disable('x-powered-by');
@@ -37,7 +43,7 @@ export function createApp(ctx: AppContext): Express {
   app.use(requestLogger(logger));
 
   // Security headers. This is a JSON API, so the strictest CSP is appropriate.
-  app.use(
+  useForApi(
     helmet({
       contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
       crossOriginResourcePolicy: { policy: 'same-site' },
@@ -47,8 +53,10 @@ export function createApp(ctx: AppContext): Express {
   // Strict CORS allowlist. Requests without an Origin header (native mobile
   // app, server-to-server, curl) are not subject to CORS and pass through;
   // authorization is enforced separately on every protected route.
+  // On the single domain the apps call /api same-origin, so CORS does not
+  // apply to them; the allowlist matters only for apps on other origins.
   const allowedOrigins = new Set(env.CORS_ORIGINS);
-  app.use(
+  useForApi(
     cors({
       origin(origin, callback) {
         callback(null, origin === undefined || allowedOrigins.has(origin));
@@ -104,6 +112,10 @@ export function createApp(ctx: AppContext): Express {
   app.use('/api/staff', createStaffRouter(ctx, services));
   app.use('/api/admin', createAdminRouter(ctx, services));
   app.use('/api/notifications', createNotificationsRouter(ctx, services));
+
+  // Unknown API routes are JSON 404s, never an HTML page.
+  app.use('/api', notFoundHandler);
+  if (webRoot) app.use(createWebAppsRouter(env, webRoot));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

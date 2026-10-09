@@ -42,9 +42,12 @@ function main(): void {
 
   server.listen(env.PORT, () => {
     logger.info(
-      { port: env.PORT, env: env.NODE_ENV },
+      { port: env.PORT, env: env.NODE_ENV, webApps: env.WEB_ROOT !== undefined },
       `SERVE backend listening on port ${env.PORT}`,
     );
+    if (env.DEMO_MODE) {
+      logger.warn('DEMO_MODE: payments are simulated by the mock provider; no real money is taken');
+    }
   });
 
   let shuttingDown = false;
