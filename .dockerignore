@@ -1,0 +1,26 @@
+# Only what the image needs: package manifests, the backend source and the
+# prebuilt web apps in dist/web. Never send secrets or local state.
+.git
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.jks
+**/*.keystore
+**/key.properties
+**/*service-account*.json
+**/*serviceAccount*.json
+**/*-firebase-adminsdk-*.json
+backend/dist
+backend/src/generated
+backend/coverage
+apps/*/dist
+apps/student
+e2e/test-results
+e2e/playwright-report*
+dist/*
+!dist/web
+dist/web/.serve-web-build
+*.log

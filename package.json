@@ -28,7 +28,10 @@
     "dev:staff": "npm run dev --workspace @serve/staff",
     "dev:admin": "npm run dev --workspace @serve/admin",
     "dev:student": "node scripts/dev-student.mjs",
-    "test:e2e": "npm run test --workspace @serve/e2e"
+    "test:e2e": "npm run test --workspace @serve/e2e",
+    "test:e2e:single-domain": "npm run test:single-domain --workspace @serve/e2e",
+    "build:web": "node scripts/build-web.mjs",
+    "smoke:deploy": "node scripts/smoke-deploy.mjs"
   },
   "devDependencies": {
     "prettier": "3.9.9"
