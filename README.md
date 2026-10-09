@@ -259,14 +259,18 @@ cp apps/admin/.env.example apps/admin/.env.development.local
 npm run dev:staff
 npm run dev:admin
 
-# Student app (see apps/student/README.md for Android/iOS hosts)
-cd apps/student && flutter pub get
-flutter run -d chrome --web-port 5555 \
-  --dart-define=API_URL=http://localhost:5001 \
-  --dart-define=FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+# Student app (mobile; needs Flutter 3.47+). See apps/student/README.md.
+npm run dev:student -- -d emulator-5554       # Android emulator (`flutter devices` lists ids)
+npm run dev:student -- -d <phone-id> --lan    # your own phone (start `npm run emulators:phone` first)
+npm run dev:student                           # quick browser preview on http://localhost:5555
 ```
 
-Flutter web needs `http://localhost:5555` in the backend's `CORS_ORIGINS`.
+The student app's development defaults already point at the local backend and
+the Auth Emulator (Android emulators reach your machine as `10.0.2.2`). The
+backend's `CORS_ORIGINS` must include `http://localhost:5555` for the web
+version (it is in `.env.example`). If the student app doesn't start or can't
+sign in, see the troubleshooting table in
+[apps/student/README.md](apps/student/README.md#troubleshooting).
 
 Provision an admin explicitly (there is no public admin registration):
 

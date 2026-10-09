@@ -4,67 +4,77 @@ The student side of SERVE: browse your night canteen's menu, order, pay
 online, and collect in person when the order is ready. There is no delivery and
 no cash on delivery.
 
-Flutter 3.47 / Dart 3.13. Platforms: Android, iOS and web.
+Flutter 3.47 / Dart 3.13. It is a **mobile app for Android and iOS**. A web
+build of the same code exists only for quick previews in a browser and for the
+automated end-to-end tests.
 
-## Run it locally
+## Run it
 
-Follow this copy-pasteable setup guide to start the local development environment. You will need three terminal windows.
+Requirements: **Flutter 3.47 or newer** (`flutter --version`) and the backend
+stack running on your computer: PostgreSQL, the Firebase Auth Emulator and the
+backend on `:5001` (see [docs/development.md](../../docs/development.md)).
+Commands run from the repository root.
 
-### Terminal 1 — Firebase Emulators
-Start the Firebase Auth emulator to handle authentication locally without hitting production servers.
-```bash
-npm run emulators
-```
-*Note: This terminal must remain open while testing locally.*
+### Android emulator (easiest)
 
-### Terminal 2 — Backend
-Start the backend API and Socket.IO server.
-```bash
-npm run dev:backend
-```
-The backend should start on port `5001`. You can check its health endpoint by opening `http://localhost:5001/api/health` in your browser.
+1. Start an emulator (Android Studio → Device Manager → ▶).
+2. `npm run dev:student -- -d emulator-5554` (the id comes from `flutter devices`).
 
-### Terminal 3 — Student App
-Launch the Flutter Student App in the browser.
-```bash
-npm run dev:student
-```
-Once it builds, open the Student App at **http://localhost:5555**.
+No other settings are needed: the app reaches your computer as `10.0.2.2`.
 
----
+### iOS simulator (Mac)
 
-### Seed Development Accounts
+`npm run dev:student -- -d "iPhone 16"` (any simulator from `flutter devices`).
 
-Before you can log in, you must create demo accounts in the emulator and local database. Wait until **both** the Firebase Emulator (Terminal 1) and the Backend (Terminal 2) are running, then open a new terminal and run:
+### Your own phone (same Wi-Fi as your computer)
 
-```bash
-DEV_SEED_PASSWORD='dev-password-123' npm run db:seed:dev-users --workspace backend
-```
-*(This is safe to rerun at any time. It's idempotent and updates existing accounts.)*
+1. Android: turn on Developer options → USB debugging and connect the phone
+   (USB or wireless debugging). It should appear in `flutter devices`.
+2. Start the emulator with **`npm run emulators:phone`** instead of
+   `npm run emulators`. It listens on your network, not only on your computer.
+3. `npm run dev:student -- -d <phone-id> --lan`. This finds your computer's
+   network address and points the app at it.
+4. If the phone still can't connect, allow ports 5001 and 9099 through your
+   computer's firewall.
 
-This script creates the development student account you can use to sign in to the Student App:
-- **Email:** `student@serve.dev`
-- **Password:** `dev-password-123`
+The debug build allows plain `http://` to your computer; release builds only
+talk to an `https://` backend.
 
-*(Note: These are local development credentials only. Never use them in production.)*
+### In a browser (quick preview only)
+
+`npm run dev:student` opens it in Chrome on http://localhost:5555. The backend's
+`CORS_ORIGINS` must include `http://localhost:5555` (it does in
+`.env.example`).
+
+### Signing in
+
+Demo account (emulator only, after `npm run db:seed:dev-users --workspace backend`):
+`student@serve.dev` with your `DEV_SEED_PASSWORD`. The emulator forgets
+accounts when it restarts, so re-run the seed after each restart. You can also
+tap "Create an account" in the app.
 
 ### Troubleshooting
 
-- **Firebase emulator connection failures:** Ensure Terminal 1 (`npm run emulators`) is running and not failing with port conflicts.
-- **CORS errors:** If the browser console shows CORS errors, make sure you added `http://localhost:5555` to the `CORS_ORIGINS` in your root `.env` (or `backend/.env`) file and restarted the backend.
-- **Port conflicts:** If port `5001`, `9099`, or `5555` is in use, you must stop the conflicting service or macOS feature (e.g., AirPlay Receiver on port `5000` is close, but we use `5001`).
-- **Missing Flutter:** The `dev:student` command requires Flutter to be installed and available in your PATH. If it says Flutter is missing, [install Flutter](https://docs.flutter.dev/get-started/install).
-- **Failed login:** If the login fails but the backend is running, try re-running the seed script. The emulator's memory gets wiped if it was restarted, so you may need to recreate the users.
+| What you see | Cause | Fix |
+|---|---|---|
+| `version solving failed` / `requires SDK version ^3.13.3` | Flutter is older than 3.47 | `flutter upgrade` |
+| `Flutter was not found` (from `npm run dev:student`) | Flutter isn't on your PATH | Install Flutter, or set `FLUTTER_BIN` to the `flutter` executable |
+| `No supported devices connected` | No phone, emulator or simulator is running (desktop isn't a target) | Start an Android emulator / iOS simulator, connect your phone, or use `npm run dev:student` for Chrome |
+| "Unable to connect to SERVE" on the role screen or after sign-in | Backend not running, or the web origin isn't allowed | Start `npm run dev:backend`; add `http://localhost:5555` to `CORS_ORIGINS` in `backend/.env` and restart the backend |
+| "Incorrect email or password" for `student@serve.dev` | The emulator restarted and lost the demo accounts | `DEV_SEED_PASSWORD='…' npm run db:seed:dev-users --workspace backend` |
+| "Unable to reach the sign-in service" | The Auth Emulator isn't running | `npm run emulators` |
+| Works in Chrome but not on an Android emulator | A custom `API_URL` uses `localhost` | Drop the flag (the default is `10.0.2.2`) or use `10.0.2.2` |
+| Your own phone can't connect | `localhost` on the phone is the phone itself, or the emulator only listens on your computer | Run `npm run emulators:phone` and `npm run dev:student -- -d <phone-id> --lan`; same Wi-Fi; allow ports 5001 and 9099 in the firewall |
 
 ## Configuration (`--dart-define`)
 
 | Key | Default | Notes |
 |---|---|---|
-| `API_URL` | `http://localhost:5001` | Backend origin. REST lives under `/api`, Socket.IO at `/socket.io`. |
+| `API_URL` | `http://localhost:5001` (`http://10.0.2.2:5001` on an Android emulator) | Backend origin. REST lives under `/api`, Socket.IO at `/socket.io`. |
 | `FIREBASE_API_KEY` | `demo-api-key` | Public Firebase web API key. |
 | `FIREBASE_PROJECT_ID` | `demo-serve` | `demo-*` projects only work with the emulator. |
-| `FIREBASE_AUTH_EMULATOR_HOST` | — | `host:port` of the Auth Emulator. Development only. |
-| `STAFF_DASHBOARD_URL` / `ADMIN_PORTAL_URL` | — | Opened from the role-selection screen. |
+| `FIREBASE_AUTH_EMULATOR_HOST` | `127.0.0.1:9099` (`10.0.2.2:9099` on Android) for `demo-` projects in development builds | `host:port` of the Auth Emulator. Never used by release builds. |
+| `STAFF_DASHBOARD_URL` / `ADMIN_PORTAL_URL` | `http://localhost:5173` / `:5174` in development builds | Opened from the role-selection screen. |
 
 Only public values go here. Firebase Admin credentials, database passwords and
 payment secrets exist only on the backend.

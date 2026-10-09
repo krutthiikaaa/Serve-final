@@ -220,7 +220,7 @@ notifications.
 
 | | Web | Flutter |
 |---|---|---|
-| Dev config | `apps/*/.env.development.local` (copy `.env.example`) | `--dart-define` |
+| Dev config | `apps/*/.env.development.local` (copy `.env.example`) | none needed: development builds default to `:5001` and the emulator on `:9099` (`10.0.2.2` on Android); `--dart-define` overrides |
 | API | `VITE_API_URL` | `API_URL` |
 | Firebase | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_AUTH_EMULATOR_URL` (dev) | `FIREBASE_API_KEY`, `FIREBASE_PROJECT_ID`, `FIREBASE_AUTH_EMULATOR_HOST` (dev) |
 | Production guard | `vite build` fails without the required variables, with the emulator set, or with a localhost API URL | release builds throw on emulator, `demo-` project, non-https or localhost API |

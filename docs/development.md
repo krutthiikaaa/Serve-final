@@ -48,7 +48,7 @@ cp .env.example backend/.env.test
 NODE_ENV=development
 PORT=5001
 DATABASE_URL=postgresql://serve:<password>@localhost:5432/serve_dev?schema=public
-CORS_ORIGINS=http://localhost:5173,http://localhost:5174
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5555
 FIREBASE_PROJECT_ID=demo-serve
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 PAYMENT_MODE=mock
@@ -62,7 +62,7 @@ LOG_LEVEL=debug
 NODE_ENV=test
 PORT=5101
 DATABASE_URL=postgresql://serve:<password>@localhost:5432/serve_test?schema=public
-CORS_ORIGINS=http://localhost:5173,http://localhost:5174
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5555
 FIREBASE_PROJECT_ID=demo-serve
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 PAYMENT_MODE=mock
@@ -169,18 +169,19 @@ VITE_API_URL=https://api.example.edu VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PRO
 Student app (details in [apps/student/README.md](../apps/student/README.md)):
 
 ```bash
-cd apps/student
-flutter pub get
-flutter run -d chrome --web-port 5555 \
-  --dart-define=API_URL=http://localhost:5001 \
-  --dart-define=FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
-  --dart-define=STAFF_DASHBOARD_URL=http://localhost:5173 \
-  --dart-define=ADMIN_PORTAL_URL=http://localhost:5174
-# Android emulator: use 10.0.2.2 instead of localhost / 127.0.0.1
+npm run dev:student -- -d emulator-5554       # Android emulator (any `flutter devices` id)
+npm run dev:student -- -d <phone-id> --lan    # your own phone; run `npm run emulators:phone` first
+npm run dev:student                           # browser preview, http://localhost:5555
 ```
 
-Flutter **web** needs its origin in the backend `CORS_ORIGINS`
-(`…,http://localhost:5555`). Mobile builds send no `Origin`.
+No `--dart-define` flags are needed for local development: the app defaults to
+the backend on `:5001` and the Auth Emulator on `:9099` (`10.0.2.2` from an
+Android emulator). Flutter **web** needs `http://localhost:5555` in the backend
+`CORS_ORIGINS` (already in `.env.example`; restart the backend after changing
+it). Mobile builds send no `Origin`. A real phone can't use `localhost`: start the
+emulator with `npm run emulators:phone` (it listens on your network via
+`firebase.phone.json`) and add `--lan`, which points the app at your computer's
+network address. Phone and computer must be on the same network.
 
 Demo logins (after `db:seed:dev-users`): `student@serve.dev` in the student
 app, `staff.kg@serve.dev` / `staff.pending@serve.dev` in the staff dashboard,

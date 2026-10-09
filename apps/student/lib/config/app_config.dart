@@ -16,40 +16,54 @@ class AppConfig {
   });
 
   factory AppConfig.fromEnvironment() {
-    String apiUrl = const String.fromEnvironment('API_URL');
-    String apiKey = const String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'demo-api-key');
-    String projectId = const String.fromEnvironment('FIREBASE_PROJECT_ID', defaultValue: 'demo-serve');
-    String emulator = const String.fromEnvironment('FIREBASE_AUTH_EMULATOR_HOST');
-    String staffUrl = const String.fromEnvironment('STAFF_DASHBOARD_URL');
-    String adminUrl = const String.fromEnvironment('ADMIN_PORTAL_URL');
-
-    final isRelease = const bool.fromEnvironment('dart.vm.product');
-
-    if (!isRelease) {
-      if (emulator.isEmpty) {
-        emulator = kIsWeb || defaultTargetPlatform != TargetPlatform.android 
-            ? '127.0.0.1:9099' 
-            : '10.0.2.2:9099';
-      }
-      if (apiUrl.isEmpty) {
-        apiUrl = kIsWeb || defaultTargetPlatform != TargetPlatform.android
-            ? 'http://127.0.0.1:5001'
-            : 'http://10.0.2.2:5001';
-      }
-    } else {
-      if (apiUrl.isEmpty) apiUrl = 'http://localhost:5001'; // Fallback for release without API_URL, though it should fail validation
-    }
-
-    final config = AppConfig(
-      apiUrl: apiUrl.endsWith('/') ? apiUrl.substring(0, apiUrl.length - 1) : apiUrl,
-      firebaseApiKey: apiKey,
-      firebaseProjectId: projectId,
-      authEmulatorHost: emulator.isEmpty ? null : emulator,
-      staffDashboardUrl: staffUrl.isEmpty ? null : staffUrl,
-      adminPortalUrl: adminUrl.isEmpty ? null : adminUrl,
+    final config = AppConfig.resolve(
+      apiUrl: const String.fromEnvironment('API_URL'),
+      firebaseApiKey: const String.fromEnvironment('FIREBASE_API_KEY'),
+      firebaseProjectId: const String.fromEnvironment('FIREBASE_PROJECT_ID'),
+      authEmulatorHost: const String.fromEnvironment('FIREBASE_AUTH_EMULATOR_HOST'),
+      staffDashboardUrl: const String.fromEnvironment('STAFF_DASHBOARD_URL'),
+      adminPortalUrl: const String.fromEnvironment('ADMIN_PORTAL_URL'),
+      isRelease: const bool.fromEnvironment('dart.vm.product'),
+      isAndroidDevice: !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
     );
     config.validate(isRelease: const bool.fromEnvironment('dart.vm.product'));
     return config;
+  }
+
+  /// Applies development defaults to the `--dart-define` values (empty = not set).
+  ///
+  /// A plain `flutter run` must just work against the local stack: the backend
+  /// on port 5001 and the Firebase Auth Emulator on 9099. The Android emulator
+  /// reaches the host machine as 10.0.2.2, everything else as localhost.
+  /// A `demo-` Firebase project only exists in the emulator, so it always uses
+  /// the emulator unless one is named explicitly. Release builds get no
+  /// defaults beyond these and are rejected by [validate] unless configured.
+  factory AppConfig.resolve({
+    String apiUrl = '',
+    String firebaseApiKey = '',
+    String firebaseProjectId = '',
+    String authEmulatorHost = '',
+    String staffDashboardUrl = '',
+    String adminPortalUrl = '',
+    required bool isRelease,
+    required bool isAndroidDevice,
+  }) {
+    final host = isAndroidDevice ? '10.0.2.2' : 'localhost';
+    final projectId = firebaseProjectId.isEmpty ? 'demo-serve' : firebaseProjectId;
+    final api = apiUrl.isEmpty ? 'http://$host:5001' : apiUrl;
+    final emulator = authEmulatorHost.isNotEmpty
+        ? authEmulatorHost
+        : (!isRelease && projectId.startsWith('demo-'))
+        ? '${isAndroidDevice ? '10.0.2.2' : '127.0.0.1'}:9099'
+        : null;
+    return AppConfig(
+      apiUrl: api.endsWith('/') ? api.substring(0, api.length - 1) : api,
+      firebaseApiKey: firebaseApiKey.isEmpty ? 'demo-api-key' : firebaseApiKey,
+      firebaseProjectId: projectId,
+      authEmulatorHost: emulator,
+      staffDashboardUrl: staffDashboardUrl.isEmpty ? (isRelease ? null : 'http://localhost:5173') : staffDashboardUrl,
+      adminPortalUrl: adminPortalUrl.isEmpty ? (isRelease ? null : 'http://localhost:5174') : adminPortalUrl,
+    );
   }
 
   final String apiUrl;

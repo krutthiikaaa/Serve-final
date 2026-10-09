@@ -23,10 +23,11 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "emulators": "firebase emulators:start --only auth --project demo-serve",
+    "emulators:phone": "firebase emulators:start --only auth --project demo-serve --config firebase.phone.json",
     "test:emulator": "firebase emulators:exec --only auth --project demo-serve \"npm test\"",
     "dev:staff": "npm run dev --workspace @serve/staff",
     "dev:admin": "npm run dev --workspace @serve/admin",
-    "dev:student": "command -v flutter >/dev/null 2>&1 || { echo 'Flutter is not installed. Please install Flutter: https://docs.flutter.dev/get-started/install' >&2; exit 1; }; cd apps/student && flutter run -d chrome --web-port 5555",
+    "dev:student": "node scripts/dev-student.mjs",
     "test:e2e": "npm run test --workspace @serve/e2e"
   },
   "devDependencies": {
