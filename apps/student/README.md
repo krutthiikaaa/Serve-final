@@ -4,35 +4,54 @@ The student side of SERVE: browse your night canteen's menu, order, pay
 online, and collect in person when the order is ready. There is no delivery and
 no cash on delivery.
 
-Flutter 3.47 / Dart 3.13. Platforms: Android, iOS and web.
+Flutter 3.47 / Dart 3.13. It is a **mobile app for Android and iOS**. A web
+build of the same code exists only for quick previews in a browser and for the
+automated end-to-end tests.
 
-## Run it locally
+## Run it
 
 Requirements: **Flutter 3.47 or newer** (`flutter --version`) and the backend
-stack running: PostgreSQL, the Firebase Auth Emulator and the backend on
-`:5001` (see [docs/development.md](../../docs/development.md)).
+stack running on your computer: PostgreSQL, the Firebase Auth Emulator and the
+backend on `:5001` (see [docs/development.md](../../docs/development.md)).
+Commands run from the repository root.
 
-```bash
-npm run dev:student                        # from the repository root: Chrome on http://localhost:5555
-npm run dev:student -- -d emulator-5554    # Android emulator (any id from `flutter devices`)
+### Android emulator (easiest)
 
-# The same thing without npm:
-cd apps/student
-flutter run -d chrome --web-port 5555
-```
+1. Start an emulator (Android Studio → Device Manager → ▶).
+2. `npm run dev:student -- -d emulator-5554` (the id comes from `flutter devices`).
 
-No `--dart-define` flags are needed locally. Development builds default to the
-backend on port 5001 and the Firebase Auth Emulator on port 9099, using
-`localhost` on the web, iOS simulator and desktop, and `10.0.2.2` (the host
-machine) on an Android emulator.
+No other settings are needed: the app reaches your computer as `10.0.2.2`.
 
-The web version calls the API from the browser, so the backend's
+### iOS simulator (Mac)
+
+`npm run dev:student -- -d "iPhone 16"` (any simulator from `flutter devices`).
+
+### Your own phone (same Wi-Fi as your computer)
+
+1. Android: turn on Developer options → USB debugging and connect the phone
+   (USB or wireless debugging). It should appear in `flutter devices`.
+2. Start the emulator with **`npm run emulators:phone`** instead of
+   `npm run emulators`. It listens on your network, not only on your computer.
+3. `npm run dev:student -- -d <phone-id> --lan`. This finds your computer's
+   network address and points the app at it.
+4. If the phone still can't connect, allow ports 5001 and 9099 through your
+   computer's firewall.
+
+The debug build allows plain `http://` to your computer; release builds only
+talk to an `https://` backend.
+
+### In a browser (quick preview only)
+
+`npm run dev:student` opens it in Chrome on http://localhost:5555. The backend's
 `CORS_ORIGINS` must include `http://localhost:5555` (it does in
-`.env.example`). If you run the web app on another port, add that origin too.
+`.env.example`).
+
+### Signing in
 
 Demo account (emulator only, after `npm run db:seed:dev-users --workspace backend`):
 `student@serve.dev` with your `DEV_SEED_PASSWORD`. The emulator forgets
-accounts when it restarts, so re-run the seed after each restart.
+accounts when it restarts, so re-run the seed after each restart. You can also
+tap "Create an account" in the app.
 
 ### Troubleshooting
 
@@ -40,12 +59,12 @@ accounts when it restarts, so re-run the seed after each restart.
 |---|---|---|
 | `version solving failed` / `requires SDK version ^3.13.3` | Flutter is older than 3.47 | `flutter upgrade` |
 | `Flutter was not found` (from `npm run dev:student`) | Flutter isn't on your PATH | Install Flutter, or set `FLUTTER_BIN` to the `flutter` executable |
-| `No supported devices connected` | Only desktop devices are available, and this app targets mobile + web | Use `npm run dev:student` (Chrome), or start an Android emulator / iOS simulator first |
+| `No supported devices connected` | No phone, emulator or simulator is running (desktop isn't a target) | Start an Android emulator / iOS simulator, connect your phone, or use `npm run dev:student` for Chrome |
 | "Unable to connect to SERVE" on the role screen or after sign-in | Backend not running, or the web origin isn't allowed | Start `npm run dev:backend`; add `http://localhost:5555` to `CORS_ORIGINS` in `backend/.env` and restart the backend |
 | "Incorrect email or password" for `student@serve.dev` | The emulator restarted and lost the demo accounts | `DEV_SEED_PASSWORD='…' npm run db:seed:dev-users --workspace backend` |
 | "Unable to reach the sign-in service" | The Auth Emulator isn't running | `npm run emulators` |
 | Works in Chrome but not on an Android emulator | A custom `API_URL` uses `localhost` | Drop the flag (the default is `10.0.2.2`) or use `10.0.2.2` |
-| Physical phone can't connect | `localhost` on the phone is the phone itself | Pass your computer's LAN address: `--dart-define=API_URL=http://<ip>:5001 --dart-define=FIREBASE_AUTH_EMULATOR_HOST=<ip>:9099`, and start the emulator with `--host 0.0.0.0` |
+| Your own phone can't connect | `localhost` on the phone is the phone itself, or the emulator only listens on your computer | Run `npm run emulators:phone` and `npm run dev:student -- -d <phone-id> --lan`; same Wi-Fi; allow ports 5001 and 9099 in the firewall |
 
 ## Configuration (`--dart-define`)
 

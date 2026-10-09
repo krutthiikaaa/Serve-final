@@ -23,6 +23,7 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "emulators": "firebase emulators:start --only auth --project demo-serve",
+    "emulators:phone": "firebase emulators:start --only auth --project demo-serve --config firebase.phone.json",
     "test:emulator": "firebase emulators:exec --only auth --project demo-serve \"npm test\"",
     "dev:staff": "npm run dev --workspace @serve/staff",
     "dev:admin": "npm run dev --workspace @serve/admin",

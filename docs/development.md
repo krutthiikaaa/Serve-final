@@ -169,18 +169,19 @@ VITE_API_URL=https://api.example.edu VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PRO
 Student app (details in [apps/student/README.md](../apps/student/README.md)):
 
 ```bash
-npm run dev:student                        # Chrome, http://localhost:5555
-npm run dev:student -- -d emulator-5554    # Android emulator or any `flutter devices` id
+npm run dev:student -- -d emulator-5554       # Android emulator (any `flutter devices` id)
+npm run dev:student -- -d <phone-id> --lan    # your own phone; run `npm run emulators:phone` first
+npm run dev:student                           # browser preview, http://localhost:5555
 ```
 
 No `--dart-define` flags are needed for local development: the app defaults to
 the backend on `:5001` and the Auth Emulator on `:9099` (`10.0.2.2` from an
 Android emulator). Flutter **web** needs `http://localhost:5555` in the backend
 `CORS_ORIGINS` (already in `.env.example`; restart the backend after changing
-it). Mobile builds send no `Origin`. A physical phone needs your computer's LAN
-address, e.g. `-- -d <phone> --dart-define=API_URL=http://192.168.1.20:5001
---dart-define=FIREBASE_AUTH_EMULATOR_HOST=192.168.1.20:9099` (and the emulator
-started with `--host 0.0.0.0`).
+it). Mobile builds send no `Origin`. A real phone can't use `localhost`: start the
+emulator with `npm run emulators:phone` (it listens on your network via
+`firebase.phone.json`) and add `--lan`, which points the app at your computer's
+network address. Phone and computer must be on the same network.
 
 Demo logins (after `db:seed:dev-users`): `student@serve.dev` in the student
 app, `staff.kg@serve.dev` / `staff.pending@serve.dev` in the staff dashboard,

@@ -259,10 +259,10 @@ cp apps/admin/.env.example apps/admin/.env.development.local
 npm run dev:staff
 npm run dev:admin
 
-# Student app in Chrome on http://localhost:5555 (needs Flutter 3.47+)
-npm run dev:student
-# ...or on an Android emulator / other device (see `flutter devices`)
-npm run dev:student -- -d emulator-5554
+# Student app (mobile; needs Flutter 3.47+). See apps/student/README.md.
+npm run dev:student -- -d emulator-5554       # Android emulator (`flutter devices` lists ids)
+npm run dev:student -- -d <phone-id> --lan    # your own phone (start `npm run emulators:phone` first)
+npm run dev:student                           # quick browser preview on http://localhost:5555
 ```
 
 The student app's development defaults already point at the local backend and
