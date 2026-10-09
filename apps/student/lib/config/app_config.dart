@@ -36,6 +36,16 @@ class AppConfig {
             ? 'http://127.0.0.1:5001'
             : 'http://10.0.2.2:5001';
       }
+      if (staffUrl.isEmpty) {
+        staffUrl = kIsWeb || defaultTargetPlatform != TargetPlatform.android
+            ? 'http://localhost:5173'
+            : 'http://10.0.2.2:5173';
+      }
+      if (adminUrl.isEmpty) {
+        adminUrl = kIsWeb || defaultTargetPlatform != TargetPlatform.android
+            ? 'http://localhost:5174'
+            : 'http://10.0.2.2:5174';
+      }
     } else {
       if (apiUrl.isEmpty) apiUrl = 'http://localhost:5001'; // Fallback for release without API_URL, though it should fail validation
     }
