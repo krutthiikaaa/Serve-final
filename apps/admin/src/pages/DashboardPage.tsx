@@ -4,9 +4,15 @@ import { ORDER_EVENT_NAMES } from '@serve/contracts';
 import {
   EmptyState,
   ErrorState,
+  IconBag,
+  IconCheck,
+  IconFlame,
+  IconInbox,
   IconReceipt,
+  KpiStrip,
   SkeletonRows,
   StatusPill,
+  Tag,
   formatRupees,
   formatTime,
   useRealtime,
@@ -54,58 +60,84 @@ export function DashboardPage() {
       {d ? (
         <>
           {d.pendingChangeRequests > 0 ? (
-            <div className="notice notice-info" role="status">
-              {d.pendingChangeRequests} staff{' '}
-              {d.pendingChangeRequests === 1 ? 'request is' : 'requests are'} waiting for review.{' '}
-              <Link to="/change-requests">Review now</Link>
+            <div className="notice notice-info notice-row" role="status">
+              <IconInbox width={18} height={18} />
+              <span>
+                {d.pendingChangeRequests} staff{' '}
+                {d.pendingChangeRequests === 1 ? 'request is' : 'requests are'} waiting for review.
+              </span>
+              <Link to="/change-requests" className="btn btn-primary btn-sm">
+                Review now
+              </Link>
             </div>
           ) : null}
 
-          <section aria-labelledby="orders-heading" className="dashboard-group">
-            <h2 id="orders-heading" className="group-title">
-              Orders tonight
-            </h2>
-            <div className="stats">
-              <Stat label="Active orders" value={d.orders.active} />
-              <Stat
-                label="Awaiting preparation"
-                value={d.orders.awaitingPreparation}
-                accent={d.orders.awaitingPreparation > 0}
-              />
-              <Stat label="Preparing" value={d.orders.preparing} />
-              <Stat label="Ready for pickup" value={d.orders.ready} />
-              <Stat label="Today's orders" value={d.today.orderCount} />
-              <Stat label="Today's revenue" value={formatRupees(d.today.revenuePaise)} />
-            </div>
-          </section>
+          <KpiStrip
+            label="Orders tonight"
+            items={[
+              {
+                label: 'Active orders',
+                value: d.orders.active,
+                icon: <IconReceipt width={16} height={16} />,
+              },
+              {
+                label: 'Awaiting preparation',
+                value: d.orders.awaitingPreparation,
+                icon: <IconBag width={16} height={16} />,
+                attention: d.orders.awaitingPreparation > 0,
+              },
+              {
+                label: 'Preparing',
+                value: d.orders.preparing,
+                icon: <IconFlame width={16} height={16} />,
+              },
+              {
+                label: 'Ready for pickup',
+                value: d.orders.ready,
+                icon: <IconCheck width={16} height={16} />,
+              },
+              { label: "Today's orders", value: d.today.orderCount },
+              { label: "Today's revenue", value: formatRupees(d.today.revenuePaise) },
+            ]}
+          />
 
           <div className="dashboard-columns">
-            <section aria-labelledby="canteens-heading" className="dashboard-group">
-              <h2 id="canteens-heading" className="group-title">
-                Canteens
-              </h2>
-              <div className="stats">
-                <Stat label="Total" value={d.canteens.total} />
-                <Stat label="Accepting orders" value={d.canteens.acceptingOrders} />
-                <Stat label="Paused" value={d.canteens.paused} />
-                <Stat label="Inactive" value={d.canteens.inactive} />
-              </div>
-            </section>
-            <section aria-labelledby="staff-heading" className="dashboard-group">
-              <h2 id="staff-heading" className="group-title">
-                Staff
-              </h2>
-              <div className="stats">
-                <Stat label="Active" value={d.staff.active} />
-                <Stat label="Pending" value={d.staff.pending} accent={d.staff.pending > 0} />
-                <Stat
-                  label="Pending requests"
-                  value={d.pendingChangeRequests}
-                  accent={d.pendingChangeRequests > 0}
-                />
-                <Stat label="Deactivated" value={d.staff.deactivated} />
-              </div>
-            </section>
+            <SummaryPanel
+              title="Canteens"
+              link={{ to: '/canteens', label: 'Manage canteens' }}
+              rows={[
+                {
+                  label: 'Accepting orders',
+                  value: d.canteens.acceptingOrders,
+                  tag: <Tag tone="success">Open</Tag>,
+                },
+                {
+                  label: 'Paused',
+                  value: d.canteens.paused,
+                  tag: d.canteens.paused ? <Tag tone="warning">Paused</Tag> : null,
+                },
+                { label: 'Inactive', value: d.canteens.inactive },
+                { label: 'Total', value: d.canteens.total },
+              ]}
+            />
+            <SummaryPanel
+              title="Staff"
+              link={{ to: '/staff', label: 'Manage staff' }}
+              rows={[
+                { label: 'Active', value: d.staff.active },
+                {
+                  label: 'Pending',
+                  value: d.staff.pending,
+                  tag: d.staff.pending ? <Tag tone="warning">Awaiting approval</Tag> : null,
+                },
+                {
+                  label: 'Pending requests',
+                  value: d.pendingChangeRequests,
+                  tag: d.pendingChangeRequests ? <Tag tone="warning">To review</Tag> : null,
+                },
+                { label: 'Deactivated', value: d.staff.deactivated },
+              ]}
+            />
           </div>
         </>
       ) : (
@@ -163,11 +195,34 @@ export function DashboardPage() {
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: ReactNode; accent?: boolean }) {
+function SummaryPanel({
+  title,
+  link,
+  rows,
+}: {
+  title: string;
+  link: { to: string; label: string };
+  rows: { label: string; value: number; tag?: ReactNode }[];
+}) {
   return (
-    <div className={`stat${accent ? ' stat-accent' : ''}`}>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-    </div>
+    <section className="section" aria-label={title}>
+      <div className="section-header">
+        <h2>{title}</h2>
+        <Link to={link.to} className="btn btn-ghost btn-sm">
+          {link.label}
+        </Link>
+      </div>
+      <ul className="plain-list summary-list">
+        {rows.map((row) => (
+          <li key={row.label} className="summary-row">
+            <span className="summary-label">
+              {row.label}
+              {row.tag}
+            </span>
+            <strong className="num">{row.value}</strong>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

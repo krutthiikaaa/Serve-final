@@ -71,7 +71,7 @@ test('admin pauses and resumes a canteen; students are told live and orders are 
   const item = menu.categories.flatMap((c) => c.items).find((i) => i.isOrderable)!;
 
   await signIn(page, E2E.adminUrl, E2E.adminEmail, E2E.password);
-  await page.getByRole('link', { name: 'Canteens' }).click();
+  await page.getByRole('complementary').getByRole('link', { name: 'Canteens' }).click();
   const row = page.getByRole('row').filter({ hasText: 'New Hostel Night Canteen' });
   await row.getByRole('button', { name: 'Pause' }).click();
   await expect(row.getByText('Paused')).toBeVisible();
@@ -102,7 +102,7 @@ test('admin deactivates a staff member; their dashboard locks immediately', asyn
 
   const admin = await (await browser.newContext()).newPage();
   await signIn(admin, E2E.adminUrl, E2E.adminEmail, E2E.password);
-  await admin.getByRole('link', { name: 'Staff' }).click();
+  await admin.getByRole('complementary').getByRole('link', { name: 'Staff' }).click();
   await admin.getByRole('button', { name: 'Manage Leaving Staff' }).click();
   await admin.getByRole('button', { name: 'Deactivate staff member' }).click();
   await admin.getByRole('button', { name: 'Confirm deactivation' }).click();

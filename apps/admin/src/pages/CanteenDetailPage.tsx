@@ -5,6 +5,7 @@ import {
   EmptyState,
   ErrorState,
   IconEdit,
+  KpiStrip,
   SkeletonRows,
   Tag,
   errorMessage,
@@ -105,24 +106,15 @@ export function CanteenDetailPage() {
         </div>
       </div>
 
-      <div className="stats">
-        <div className="stat">
-          <div className="stat-label">Menu categories</div>
-          <div className="stat-value">{c.menuSummary.categories}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Menu items</div>
-          <div className="stat-value">{c.menuSummary.items}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Available now</div>
-          <div className="stat-value">{c.menuSummary.availableItems}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Hostels served</div>
-          <div className="stat-value">{c.hostels.length}</div>
-        </div>
-      </div>
+      <KpiStrip
+        label="Menu and coverage"
+        items={[
+          { label: 'Menu categories', value: c.menuSummary.categories },
+          { label: 'Menu items', value: c.menuSummary.items },
+          { label: 'Available now', value: c.menuSummary.availableItems },
+          { label: 'Hostels served', value: c.hostels.length },
+        ]}
+      />
 
       <div className="dashboard-columns">
         <section className="section">
