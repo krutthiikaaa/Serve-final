@@ -10,7 +10,7 @@ describe('staff dashboard', () => {
     api.dashboard.mockResolvedValue(dashboard({ awaitingPreparation: 4, preparing: 2, ready: 1 }));
     api.orders.mockResolvedValue({ data: [order('PAYMENT_CONFIRMED')], nextCursor: null });
     renderStaff(<DashboardPage />, { api });
-    const stat = async (label: string) => (await screen.findByText(label)).closest('.stat')!;
+    const stat = async (label: string) => (await screen.findByText(label)).closest('.kpi')!;
     expect(await stat('Awaiting preparation')).toHaveTextContent('4');
     expect(await stat('Preparing')).toHaveTextContent('2');
     expect(await stat('Ready for pickup')).toHaveTextContent('1');

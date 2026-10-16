@@ -12,8 +12,18 @@
   gap: 10px;
   padding: 12px;
   border-radius: var(--radius-lg);
-  background: #f1f0ea;
+  background: var(--surface-muted);
+  border-top: 3px solid var(--line-strong);
   min-height: 240px;
+}
+.board-payment_confirmed {
+  border-top-color: var(--orange);
+}
+.board-preparing {
+  border-top-color: #d9a400;
+}
+.board-ready {
+  border-top-color: var(--olive);
 }
 .board-column-header {
   display: flex;
@@ -23,18 +33,16 @@
 }
 .board-column-header h2 {
   font-size: 15px;
+  color: var(--ink);
 }
 .board-payment_confirmed .board-column-header {
-  color: #a9461a;
+  color: var(--orange-ink);
 }
 .board-preparing .board-column-header {
-  color: #7a5a00;
+  color: #6e5100;
 }
 .board-ready .board-column-header {
-  color: var(--olive-dark);
-}
-.board-column-header h2 {
-  color: var(--ink);
+  color: var(--olive-ink);
 }
 .board-count {
   margin-left: auto;
@@ -48,18 +56,27 @@
   text-align: center;
 }
 .board-empty {
-  padding: 24px 8px;
+  padding: 28px 8px;
   text-align: center;
   color: var(--muted);
   font-size: 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
 }
 
 .order-card {
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   animation: rise 0.2s ease-out;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.order-card:hover {
+  border-color: var(--line-strong);
 }
 .order-card-new {
   border-color: var(--orange);
@@ -146,4 +163,43 @@
 }
 .menu-table .col-actions {
   width: 200px;
+}
+
+/* Dashboard: canteen status at the top of the page. */
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+}
+.status-banner-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+}
+.status-on .status-banner-icon {
+  background: var(--olive-tint);
+  color: var(--olive-ink);
+}
+.status-off .status-banner-icon {
+  background: var(--orange-tint);
+  color: var(--orange-ink);
+}
+.status-off {
+  border-color: #f2c6ae;
+}
+.status-banner-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+@media (max-width: 720px) {
+  .status-banner {
+    flex-wrap: wrap;
+  }
 }
