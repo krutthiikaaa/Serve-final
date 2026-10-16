@@ -1,14 +1,14 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { firebaseErrorMessage } from './firebase';
-import { Button, Field, FormError, Input, Logo } from './ui/components';
+import { Button, Field, FormError, Input, Logo, SERVE_TAGLINE } from './ui/components';
 
 export function AuthLayout({ subtitle, children }: { subtitle: string; children: ReactNode }) {
   return (
     <div className="auth-screen">
       <div className="auth-card">
         <div className="auth-brand">
-          <Logo size={56} />
-          <p className="tagline">Order. Track. Collect.</p>
+          <Logo size={96} stacked />
+          <p className="tagline">{SERVE_TAGLINE}</p>
           <h1>{subtitle}</h1>
         </div>
         {children}
