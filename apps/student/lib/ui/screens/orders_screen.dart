@@ -24,15 +24,19 @@ class OrdersScreen extends StatelessWidget {
         appBar: const ServeHeader(title: 'Orders'),
         body: Column(
           children: [
-            const TabBar(
-              labelColor: ServeColors.ink,
-              unselectedLabelColor: ServeColors.muted,
-              indicatorColor: ServeColors.olive,
-              labelStyle: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-              tabs: [
-                Tab(text: 'Active'),
-                Tab(text: 'Past'),
-              ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 4),
+              child: Container(
+                height: 44,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: ServeColors.surfaceMuted, borderRadius: BorderRadius.circular(ServeSpace.radiusControl)),
+                child: const TabBar(
+                  tabs: [
+                    Tab(text: 'Active'),
+                    Tab(text: 'Past'),
+                  ],
+                ),
+              ),
             ),
             const Expanded(
               child: TabBarView(
@@ -125,11 +129,10 @@ class _OrderListState extends State<_OrderList> with WidgetsBindingObserver, Liv
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_loading && _orders.isEmpty) return const LoadingView(label: 'Loading orders');
+    if (_loading && _orders.isEmpty) return const SkeletonList(label: 'Loading orders', count: 3, header: false);
     if (_error != null && _orders.isEmpty) return ErrorView(error: _error!, onRetry: _load);
     if (_orders.isEmpty) {
       return RefreshIndicator(
-        color: ServeColors.olive,
         onRefresh: _load,
         child: ListView(
           children: [
@@ -153,7 +156,6 @@ class _OrderListState extends State<_OrderList> with WidgetsBindingObserver, Liv
       );
     }
     return RefreshIndicator(
-      color: ServeColors.olive,
       onRefresh: _load,
       child: NotificationListener<ScrollNotification>(
         onNotification: (n) {
@@ -161,14 +163,14 @@ class _OrderListState extends State<_OrderList> with WidgetsBindingObserver, Liv
           return false;
         },
         child: ListView.separated(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(ServeSpace.page, 12, ServeSpace.page, 24),
           itemCount: _orders.length + (_cursor != null ? 1 : 0),
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
             if (i == _orders.length) {
               return const Padding(
                 padding: EdgeInsets.all(12),
-                child: Center(child: CircularProgressIndicator(color: ServeColors.olive)),
+                child: Center(child: CircularProgressIndicator()),
               );
             }
             return OrderCard(order: _orders[i]);
@@ -185,9 +187,13 @@ class OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ready = order.status == OrderStatus.ready;
     return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(ServeSpace.radiusCard),
+        side: BorderSide(color: ready ? ServeColors.oliveStrong : ServeColors.line, width: ready ? 1.5 : 1),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: () => openOrderDetails(context, order.id),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -196,18 +202,23 @@ class OrderCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text(order.orderNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-                  const Spacer(),
+                  Expanded(
+                    child: Text(order.orderNumber, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                  ),
                   OrderStatusChip(status: order.status),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(order.canteen.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Text(order.canteen.name, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 2),
               Text(
                 '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'} · ${formatRupees(order.totalPaise)} · ${formatDateTime(order.createdAt)}',
-                style: const TextStyle(color: ServeColors.muted),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
+              if (order.status.isActive && order.status != OrderStatus.placed) ...[
+                const SizedBox(height: 12),
+                OrderProgressBar(status: order.status),
+              ],
             ],
           ),
         ),

@@ -7,14 +7,14 @@ import '../navigation.dart';
 import 'badge_button.dart';
 import 'serve_logo.dart';
 
-/// App header: logo, notifications (unread badge) and the olive cart button.
-/// There is no hamburger menu — navigation lives in the bottom bar.
+/// App header: the SERVE logo (or a page title), notifications with an unread
+/// badge, and the cart. Navigation lives in the bottom bar (no hamburger).
 class ServeHeader extends StatelessWidget implements PreferredSizeWidget {
   const ServeHeader({super.key, this.title});
   final String? title;
 
   @override
-  Size get preferredSize => const Size.fromHeight(68);
+  Size get preferredSize => const Size.fromHeight(64);
 
   @override
   Widget build(BuildContext context) {
@@ -23,25 +23,28 @@ class ServeHeader extends StatelessWidget implements PreferredSizeWidget {
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(20, 8, 16, 8),
         child: Row(
           children: [
-            if (title == null)
-              const ServeLogo(height: 30)
-            else
-              Expanded(child: Text(title!, style: Theme.of(context).textTheme.headlineSmall)),
-            if (title == null) const Spacer(),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: title == null
+                    ? const ServeLockup(logoHeight: 36)
+                    : Semantics(header: true, child: Text(title!, style: Theme.of(context).textTheme.headlineSmall)),
+              ),
+            ),
             BadgeIconButton(
               icon: Icons.notifications_none_rounded,
               count: unread,
               semanticLabel: 'Notifications',
               onPressed: () => openNotifications(context),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             BadgeIconButton(
               icon: Icons.shopping_bag_outlined,
               count: cartCount,
-              filled: true,
+              highlight: true,
               semanticLabel: 'Cart',
               onPressed: () => openCart(context),
             ),

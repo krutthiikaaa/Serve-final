@@ -10,6 +10,7 @@ import '../live_reload.dart';
 import '../navigation.dart';
 import '../widgets/order_status.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 
 /// Live order tracking. Order events replace the order directly; after a
 /// reconnect or when the app returns to the foreground the order is refetched.
@@ -68,15 +69,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> with WidgetsB
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Row(
-              children: [
-                Icon(Icons.circle, size: 9, color: live == LiveState.connected ? ServeColors.olive : ServeColors.orange),
-                const SizedBox(width: 6),
-                Text(
-                  live == LiveState.connected ? 'Live' : 'Reconnecting…',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-              ],
+            child: Center(
+              child: live == LiveState.connected
+                  ? const StatusPill(label: 'Live', icon: Icons.circle, foreground: ServeColors.oliveInk, background: ServeColors.oliveTint)
+                  : const StatusPill(
+                      label: 'Reconnecting…',
+                      icon: Icons.sync_rounded,
+                      foreground: ServeColors.orangeInk,
+                      background: ServeColors.orangeTint,
+                    ),
             ),
           ),
         ],
@@ -84,16 +85,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> with WidgetsB
       body: order == null
           ? (_error != null ? ErrorView(error: _error!, onRetry: _load) : const LoadingView(label: 'Loading order'))
           : RefreshIndicator(
-              color: ServeColors.olive,
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
                 children: [
                   _StatusHero(order: order),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   Card(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
                       child: OrderTimeline(order: order),
                     ),
                   ),
@@ -104,8 +104,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> with WidgetsB
                   const SizedBox(height: 16),
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.storefront_rounded, color: ServeColors.oliveDark),
-                      title: Text(order.canteen.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      leading: const IconTile(icon: Icons.storefront_rounded, size: 40),
+                      title: Text(order.canteen.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: Text('${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'} · ${formatRupees(order.totalPaise)}'),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => openOrderDetails(context, order.id),
@@ -135,52 +136,56 @@ class _StatusHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final ready = order.status == OrderStatus.ready;
     final style = orderStatusStyle(order.status);
+    final fg = ready ? ServeColors.white : ServeColors.ink;
+    final soft = ready ? ServeColors.white.withValues(alpha: 0.85) : ServeColors.muted;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 350),
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
       decoration: BoxDecoration(
-        color: ready ? ServeColors.olive : ServeColors.white,
+        color: ready ? ServeColors.oliveStrong : ServeColors.white,
         borderRadius: BorderRadius.circular(20),
         border: ready ? null : Border.all(color: ServeColors.line),
       ),
       child: Column(
         children: [
-          Icon(style.icon, size: 36, color: ready ? ServeColors.white : style.fg),
-          const SizedBox(height: 10),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(color: ready ? ServeColors.white.withValues(alpha: 0.16) : style.bg, shape: BoxShape.circle),
+            child: Icon(style.icon, size: 28, color: ready ? ServeColors.white : style.fg),
+          ),
+          const SizedBox(height: 12),
           Semantics(
             liveRegion: true,
             child: Text(
               orderStatusHeadline(order.status),
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: ready ? ServeColors.white : ServeColors.ink),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: fg),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Text(
             'ORDER NUMBER',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-              color: ready ? ServeColors.white.withValues(alpha: 0.85) : ServeColors.muted,
-            ),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: soft),
           ),
           Text(
             order.orderNumber,
-            style: TextStyle(
-              fontSize: ready ? 56 : 40,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2,
-              color: ready ? ServeColors.white : ServeColors.ink,
-            ),
+            style: TextStyle(fontSize: ready ? 52 : 38, fontWeight: FontWeight.w800, letterSpacing: 2, color: fg),
           ),
           if (ready) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Show this number at the ${order.canteen.name} counter.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: ServeColors.white, fontWeight: FontWeight.w600),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(color: ServeColors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(12)),
+              child: Text(
+                'Show this number at the ${order.canteen.name} counter.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: ServeColors.white, fontWeight: FontWeight.w600, height: 1.35),
+              ),
             ),
+          ] else if (order.status != OrderStatus.cancelled) ...[
+            const SizedBox(height: 16),
+            OrderProgressBar(status: order.status),
           ],
         ],
       ),

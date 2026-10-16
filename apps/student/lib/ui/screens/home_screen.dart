@@ -17,6 +17,7 @@ import '../widgets/order_status.dart';
 import '../widgets/quantity_control.dart';
 import '../widgets/serve_header.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 
 class _HomeData {
   const _HomeData(this.menu, this.recommendations, this.activeOrder);
@@ -110,7 +111,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
     return Scaffold(
       appBar: const ServeHeader(),
       body: RefreshIndicator(
-        color: ServeColors.olive,
         onRefresh: _load,
         child: data == null
             ? (_error != null
@@ -122,23 +122,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
                         ),
                       ],
                     )
-                  : const LoadingView(label: 'Loading home'))
+                  : const SkeletonList(label: 'Loading home', count: 4))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                padding: const EdgeInsets.fromLTRB(ServeSpace.page, 8, ServeSpace.page, 32),
                 children: [
                   Text('Hi, ${student?.firstName ?? 'there'}', style: Theme.of(context).textTheme.headlineMedium),
                   const SizedBox(height: 4),
-                  const Text('What are you craving tonight?', style: TextStyle(color: ServeColors.muted, fontSize: 16)),
-                  const SizedBox(height: 18),
+                  Text('What are you craving tonight?', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
+                  const SizedBox(height: 20),
                   _CanteenCard(canteen: data.menu.canteen),
-                  if (data.activeOrder != null) ...[const SizedBox(height: 16), _ActiveOrderCard(order: data.activeOrder!)],
-                  const SizedBox(height: 28),
+                  if (data.activeOrder != null) ...[const SizedBox(height: 14), _ActiveOrderCard(order: data.activeOrder!)],
+                  const SizedBox(height: ServeSpace.section),
                   _Recommendations(data: data),
-                  if (_loading)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: LinearProgressIndicator(color: ServeColors.olive, minHeight: 2),
-                    ),
+                  if (_loading) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator(minHeight: 2)),
                 ],
               ),
       ),
@@ -154,64 +150,38 @@ class _CanteenCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: () => openCanteenSelection(context),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: ServeColors.oliveTint, borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.storefront_rounded, color: ServeColors.oliveDark),
-              ),
+              const IconTile(icon: Icons.storefront_rounded),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Picking up from', style: TextStyle(color: ServeColors.muted, fontSize: 13)),
-                    Text(canteen.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(child: Text('Picking up from', style: Theme.of(context).textTheme.bodySmall)),
+                        const Text(
+                          'Change',
+                          style: TextStyle(color: ServeColors.oliveInk, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 1),
+                    Text(canteen.name, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
                     CanteenStatusLabel(canteen: canteen),
                   ],
                 ),
-              ),
-              const Text(
-                'Change',
-                style: TextStyle(color: ServeColors.oliveDark, fontWeight: FontWeight.w700),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-class CanteenStatusLabel extends StatelessWidget {
-  const CanteenStatusLabel({super.key, required this.canteen});
-  final Canteen canteen;
-
-  @override
-  Widget build(BuildContext context) {
-    final accepting = canteen.acceptingOrders;
-    final color = accepting ? ServeColors.oliveDark : const Color(0xFFA9461A);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(accepting ? Icons.circle : Icons.pause_circle_filled_rounded, size: accepting ? 9 : 14, color: color),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            accepting
-                ? 'Accepting orders${canteen.openingHours != null ? ' · ${canteen.openingHours}' : ''}'
-                : 'Not accepting orders right now',
-            style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -224,50 +194,55 @@ class _ActiveOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ready = order.status == OrderStatus.ready;
     final unpaid = order.status == OrderStatus.placed;
+    final fg = ready ? ServeColors.white : ServeColors.ink;
+    final soft = ready ? ServeColors.white.withValues(alpha: 0.85) : ServeColors.muted;
     return Material(
-      color: ready ? ServeColors.olive : ServeColors.ink,
-      borderRadius: BorderRadius.circular(16),
+      color: ready ? ServeColors.oliveStrong : ServeColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(ServeSpace.radiusCard),
+        side: ready ? BorderSide.none : const BorderSide(color: ServeColors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: () => unpaid ? openOrderDetails(context, order.id) : openTracking(context, order.id),
         child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  Icon(ready ? Icons.shopping_bag_rounded : orderStatusStyle(order.status).icon, size: 18, color: soft),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
                       ready ? 'READY FOR PICKUP' : 'ACTIVE ORDER',
-                      style: TextStyle(
-                        color: ServeColors.white.withValues(alpha: 0.8),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
-                      ),
+                      style: TextStyle(color: soft, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      order.orderNumber,
-                      style: const TextStyle(color: ServeColors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: ready ? ServeColors.white : ServeColors.oliveTint,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      ready ? 'Show this number at the counter' : orderStatusHeadline(order.status),
-                      style: const TextStyle(color: ServeColors.white, fontWeight: FontWeight.w600),
+                    child: Text(
+                      unpaid ? 'Pay now' : 'Track',
+                      style: const TextStyle(color: ServeColors.oliveInk, fontWeight: FontWeight.w700, fontSize: 13),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(color: ServeColors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(24)),
-                child: Text(
-                  unpaid ? 'Pay now' : 'Track',
-                  style: const TextStyle(color: ServeColors.white, fontWeight: FontWeight.w800),
-                ),
+              const SizedBox(height: 6),
+              Text(
+                order.orderNumber,
+                style: TextStyle(color: fg, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 1),
               ),
+              Text(
+                ready ? 'Show this number at the counter' : orderStatusHeadline(order.status),
+                style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+              ),
+              if (!unpaid) ...[const SizedBox(height: 14), OrderProgressBar(status: order.status, onDark: ready)],
             ],
           ),
         ),
@@ -289,11 +264,16 @@ class _Recommendations extends StatelessWidget {
       // No order history anywhere yet: say so honestly instead of claiming popularity.
       RecommendationBasis.menu => 'From the Menu',
     };
+    final subtitle = switch (rec.basis) {
+      RecommendationBasis.mostOrdered => 'Quick to reorder',
+      RecommendationBasis.popular => 'Ordered most at this canteen',
+      RecommendationBasis.menu => 'A few picks to get you started',
+    };
     final items = rec.items.where((i) => i.availability != Availability.inactive).take(4).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        SectionHeader(title: title, subtitle: subtitle),
         const SizedBox(height: 12),
         if (items.isEmpty)
           const Card(
@@ -303,20 +283,15 @@ class _Recommendations extends StatelessWidget {
             ),
           )
         else
-          Card(
-            child: Column(
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  if (i > 0) const Divider(indent: 16, endIndent: 16),
-                  MenuItemRow(item: items[i], canteen: data.menu.canteen, categoryName: data.menu.categoryName(items[i].categoryId)),
-                ],
-              ],
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: MenuItemRow(item: item, canteen: data.menu.canteen, categoryName: data.menu.categoryName(item.categoryId)),
             ),
-          ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 6),
         OutlinedButton.icon(
           onPressed: () => context.read<HomeTabs>().go(HomeTabs.menu),
-          icon: const Icon(Icons.restaurant_menu_rounded),
+          icon: const Icon(Icons.restaurant_menu_rounded, size: 20),
           label: const Text('View Full Menu'),
         ),
       ],
@@ -339,60 +314,63 @@ class MenuItemRow extends StatelessWidget {
   }
 
   Widget _rowBody(BuildContext context, int quantity, bool unavailable) {
-    return InkWell(
-      onTap: () => openFoodDetails(context, item, categoryName: categoryName),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Opacity(
-              opacity: item.isOrderable ? 1 : 0.5,
-              child: FoodImage(imageUrl: item.imageUrl, category: categoryName, size: 64),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: item.isOrderable ? ServeColors.ink : ServeColors.muted,
-                    ),
-                  ),
-                  if (item.description != null) ...[
-                    const SizedBox(height: 2),
+    return Card(
+      child: InkWell(
+        onTap: () => openFoodDetails(context, item, categoryName: categoryName),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Opacity(
+                opacity: item.isOrderable ? 1 : 0.5,
+                child: FoodImage(imageUrl: item.imageUrl, category: categoryName, size: 68),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      item.description!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: ServeColors.muted, fontSize: 13),
+                      item.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        height: 1.25,
+                        color: item.isOrderable ? ServeColors.ink : ServeColors.muted,
+                      ),
+                    ),
+                    if (item.description != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        item.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: ServeColors.muted, fontSize: 13, height: 1.3),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(formatRupees(item.pricePaise), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        if (unavailable) const _Tag('Unavailable'),
+                      ],
                     ),
                   ],
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(formatRupees(item.pricePaise), style: const TextStyle(fontWeight: FontWeight.w800)),
-                      if (unavailable) const _Tag('Unavailable'),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            QuantityControl(
-              quantity: quantity,
-              itemName: item.name,
-              enabled: item.isOrderable,
-              onAdd: () => addToCart(context, item, canteenName: canteen.name),
-              onRemove: () => context.read<CartController>().decrement(item.id),
-            ),
-          ],
+              const SizedBox(width: 8),
+              QuantityControl(
+                quantity: quantity,
+                itemName: item.name,
+                enabled: item.isOrderable,
+                onAdd: () => addToCart(context, item, canteenName: canteen.name),
+                onRemove: () => context.read<CartController>().decrement(item.id),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -409,7 +387,7 @@ class _Tag extends StatelessWidget {
     decoration: BoxDecoration(color: ServeColors.orangeTint, borderRadius: BorderRadius.circular(6)),
     child: Text(
       text,
-      style: const TextStyle(color: Color(0xFFA9461A), fontSize: 12, fontWeight: FontWeight.w700),
+      style: const TextStyle(color: ServeColors.orangeInk, fontSize: 12, fontWeight: FontWeight.w700),
     ),
   );
 }

@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/api_exception.dart';
 import '../../services/auth/auth_controller.dart';
 import '../../theme/serve_theme.dart';
-import '../widgets/serve_logo.dart';
+import '../widgets/auth_brand.dart';
 import '../widgets/states.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -50,20 +50,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        leading: BackButton(onPressed: widget.onBack),
-        title: const ServeLogo(height: 26),
-      ),
+      appBar: AppBar(leading: BackButton(onPressed: widget.onBack)),
       body: SafeArea(
         child: Form(
           key: _form,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             children: [
+              const AuthBrand(),
+              const SizedBox(height: 28),
               Text('Welcome back', style: theme.textTheme.headlineMedium),
               const SizedBox(height: 6),
               Text('Sign in with your student account.', style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               if (_error != null) ...[
                 NoticeBanner(message: _error!, danger: true, icon: Icons.error_outline_rounded),
                 const SizedBox(height: 16),
@@ -92,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               FilledButton(
                 onPressed: _busy ? null : _submit,
                 child: _busy

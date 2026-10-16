@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../theme/serve_theme.dart';
 
-/// Slot for the official SERVE logo (`assets/images/serve_logo.png`, a
-/// transparent PNG supplied by the project owner). Until that file exists a
-/// plain text wordmark is shown — the logo is never redrawn or boxed.
+/// The official SERVE tagline. Used on the splash, role selection and sign-in
+/// screens only.
+const serveTagline = 'Order. Track. Collect.';
+
+/// The official SERVE logo (`assets/images/serve_logo.png`, transparent).
+/// Always shown at its own proportions on a light surface; never boxed,
+/// cropped or recoloured.
 class ServeLogo extends StatelessWidget {
   const ServeLogo({super.key, this.height = 32});
   final double height;
@@ -18,14 +22,44 @@ class ServeLogo extends StatelessWidget {
         'assets/images/serve_logo.png',
         height: height,
         fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
         excludeFromSemantics: true,
-        errorBuilder: (context, error, stack) => ExcludeSemantics(
-          child: Text(
-            'SERVE',
-            style: TextStyle(fontSize: height * 0.62, fontWeight: FontWeight.w900, letterSpacing: height * 0.12, color: ServeColors.ink),
-          ),
-        ),
       ),
     );
   }
+}
+
+/// The "SERVE" name set in type next to (or under) the logo.
+class ServeWordmark extends StatelessWidget {
+  const ServeWordmark({super.key, this.size = 18});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Text(
+      'SERVE',
+      style: TextStyle(fontSize: size, fontWeight: FontWeight.w600, letterSpacing: size * 0.22, height: 1, color: ServeColors.ink),
+    ),
+  );
+}
+
+/// Logo + name, side by side: the compact brand mark used in headers.
+class ServeLockup extends StatelessWidget {
+  const ServeLockup({super.key, this.logoHeight = 34});
+  final double logoHeight;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'SERVE',
+    child: ExcludeSemantics(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ServeLogo(height: logoHeight),
+          SizedBox(width: logoHeight * 0.28),
+          ServeWordmark(size: logoHeight * 0.5),
+        ],
+      ),
+    ),
+  );
 }

@@ -37,22 +37,23 @@ class QuantityControl extends StatelessWidget {
             )
           : Container(
               key: const ValueKey('stepper'),
-              decoration: BoxDecoration(
-                color: ServeColors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: ServeColors.line),
-              ),
+              decoration: BoxDecoration(color: ServeColors.oliveTint, borderRadius: BorderRadius.circular(24)),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _RoundButton(icon: Icons.remove_rounded, tooltip: 'Remove one $itemName', onPressed: onRemove),
                   SizedBox(
-                    width: 28,
-                    child: Text(
-                      '$quantity',
-                      textAlign: TextAlign.center,
-                      semanticsLabel: '$quantity in cart',
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    width: 26,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 150),
+                      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+                      child: Text(
+                        '$quantity',
+                        key: ValueKey(quantity),
+                        textAlign: TextAlign.center,
+                        semanticsLabel: '$quantity in cart',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: ServeColors.oliveInk),
+                      ),
                     ),
                   ),
                   _RoundButton(icon: Icons.add_rounded, filled: true, tooltip: 'Add one more $itemName', onPressed: enabled ? onAdd : null),
@@ -79,10 +80,11 @@ class _RoundButton extends StatelessWidget {
       constraints: const BoxConstraints.tightFor(width: 40, height: 40),
       padding: EdgeInsets.zero,
       style: IconButton.styleFrom(
-        backgroundColor: filled ? (disabled ? ServeColors.line : ServeColors.olive) : Colors.transparent,
-        foregroundColor: filled ? ServeColors.white : ServeColors.ink,
+        backgroundColor: filled ? (disabled ? ServeColors.surfaceMuted : ServeColors.oliveStrong) : Colors.transparent,
+        foregroundColor: filled ? ServeColors.white : ServeColors.oliveInk,
+        disabledForegroundColor: ServeColors.muted,
       ),
-      icon: Icon(icon, size: 22),
+      icon: Icon(icon, size: 20),
     );
   }
 }

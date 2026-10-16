@@ -63,21 +63,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Payment')),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
         children: [
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
               child: Column(
                 children: [
-                  const Text('Amount to pay', style: TextStyle(color: ServeColors.muted)),
+                  Text('Amount to pay', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ServeColors.muted)),
                   const SizedBox(height: 6),
-                  Text(formatRupees(order.totalPaise), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 6),
+                  Text(
+                    formatRupees(order.totalPaise),
+                    style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w800, letterSpacing: -0.5),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     'Order ${order.orderNumber} · ${order.canteen.name}',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: ServeColors.muted),
+                    style: const TextStyle(color: ServeColors.muted, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -88,18 +91,38 @@ class _PaymentScreenState extends State<PaymentScreen> {
             const NoticeBanner(message: 'A price changed since your cart was quoted. This is the confirmed total.'),
           ],
           const SizedBox(height: 14),
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.science_outlined, color: ServeColors.oliveDark),
-              title: Text('Test payment', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text('Demo mode: no real money is charged. Online payments will use Razorpay.'),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: ServeColors.oliveTint, borderRadius: BorderRadius.circular(ServeSpace.radiusCard)),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.science_outlined, color: ServeColors.oliveInk),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Test payment',
+                        style: TextStyle(fontWeight: FontWeight.w700, color: ServeColors.oliveInk),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Demo mode: no real money is charged. Online payments will use Razorpay.',
+                        style: TextStyle(color: ServeColors.oliveInk, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 14),
             NoticeBanner(message: _error!, danger: true, icon: Icons.error_outline_rounded),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           Center(
             child: TextButton(onPressed: _busy ? null : () => _pay(succeed: false), child: const Text('Simulate a failed payment')),
           ),
@@ -119,7 +142,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
             onPressed: _busy ? null : () => _pay(succeed: true),
             child: _busy
                 ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: ServeColors.white))
-                : Text('Pay ${formatRupees(order.totalPaise)}'),
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.lock_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Text('Pay ${formatRupees(order.totalPaise)}'),
+                    ],
+                  ),
           ),
         ),
       ),
