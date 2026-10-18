@@ -16,6 +16,8 @@ export default defineConfig(({ command, mode }) => {
     if (missing.length > 0) throw new Error(`Production build requires: ${missing.join(', ')}`);
     if (env.VITE_FIREBASE_AUTH_EMULATOR_URL)
       throw new Error('VITE_FIREBASE_AUTH_EMULATOR_URL must not be set for production builds');
+    if (env.VITE_FIREBASE_PROJECT_ID?.startsWith('demo-'))
+      throw new Error('VITE_FIREBASE_PROJECT_ID: demo- projects only exist in the Auth Emulator');
     if (env.VITE_API_URL && !env.VITE_API_URL.startsWith('https://'))
       throw new Error('VITE_API_URL must use https in production (or be unset for same-origin)');
     if (/localhost|127\.0\.0\.1/.test(env.VITE_API_URL ?? ''))
