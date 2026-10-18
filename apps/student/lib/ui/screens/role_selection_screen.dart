@@ -6,6 +6,7 @@ import '../../config/app_config.dart';
 import '../../theme/serve_theme.dart';
 import '../widgets/serve_logo.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 
 /// Students continue in the app; staff and admins are sent to their web portals.
 class RoleSelectionScreen extends StatelessWidget {
@@ -27,46 +28,62 @@ class RoleSelectionScreen extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Align(alignment: Alignment.centerLeft, child: ServeLogo(height: 40)),
-              const Spacer(),
-              Text('Late-night food,\nready when you are.', style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 10),
-              Text(
-                'Order from your hostel\'s night canteen, pay in the app, and collect at the counter.',
-                style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Spacer(),
+                    const Center(child: ServeLogo(height: 96)),
+                    const SizedBox(height: 20),
+                    const Center(child: ServeWordmark(size: 28)),
+                    const SizedBox(height: 10),
+                    const Text(
+                      serveTagline,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: ServeColors.muted, fontSize: 15, letterSpacing: 1.2),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Order from your hostel\'s night canteen, pay in the app, and collect at the counter.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(color: ServeColors.muted),
+                    ),
+                    const Spacer(flex: 2),
+                    const SizedBox(height: 28),
+                    Text('Continue as', style: theme.textTheme.labelLarge?.copyWith(color: ServeColors.muted)),
+                    const SizedBox(height: 10),
+                    _RoleCard(
+                      icon: Icons.school_rounded,
+                      title: 'Student',
+                      subtitle: 'Order and track your food',
+                      primary: true,
+                      onTap: onStudent,
+                    ),
+                    const SizedBox(height: 10),
+                    _RoleCard(
+                      icon: Icons.storefront_rounded,
+                      title: 'Canteen staff',
+                      subtitle: 'Opens the staff dashboard',
+                      trailing: Icons.open_in_new_rounded,
+                      onTap: () => _openPortal(context, config.staffDashboardUrl, 'staff dashboard'),
+                    ),
+                    const SizedBox(height: 10),
+                    _RoleCard(
+                      icon: Icons.admin_panel_settings_rounded,
+                      title: 'Administrator',
+                      subtitle: 'Opens the admin portal',
+                      trailing: Icons.open_in_new_rounded,
+                      onTap: () => _openPortal(context, config.adminPortalUrl, 'admin portal'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 32),
-              Text('Continue as', style: theme.textTheme.titleSmall?.copyWith(color: ServeColors.muted)),
-              const SizedBox(height: 12),
-              _RoleCard(
-                icon: Icons.school_rounded,
-                title: 'Student',
-                subtitle: 'Order and track your food',
-                primary: true,
-                onTap: onStudent,
-              ),
-              const SizedBox(height: 12),
-              _RoleCard(
-                icon: Icons.storefront_rounded,
-                title: 'Canteen staff',
-                subtitle: 'Opens the staff dashboard',
-                trailing: Icons.open_in_new_rounded,
-                onTap: () => _openPortal(context, config.staffDashboardUrl, 'staff dashboard'),
-              ),
-              const SizedBox(height: 12),
-              _RoleCard(
-                icon: Icons.admin_panel_settings_rounded,
-                title: 'Administrator',
-                subtitle: 'Opens the admin portal',
-                trailing: Icons.open_in_new_rounded,
-                onTap: () => _openPortal(context, config.adminPortalUrl, 'admin portal'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -92,35 +109,44 @@ class _RoleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fg = primary ? ServeColors.white : ServeColors.ink;
     return Material(
-      color: primary ? ServeColors.olive : ServeColors.white,
+      color: primary ? ServeColors.oliveStrong : ServeColors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(ServeSpace.radiusCard),
         side: primary ? BorderSide.none : const BorderSide(color: ServeColors.line),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(ServeSpace.radiusCard),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              Icon(icon, color: primary ? ServeColors.white : ServeColors.oliveDark, size: 28),
-              const SizedBox(width: 16),
+              IconTile(
+                icon: icon,
+                size: 42,
+                background: primary ? ServeColors.white.withValues(alpha: 0.16) : ServeColors.oliveTint,
+                color: primary ? ServeColors.white : ServeColors.oliveInk,
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: primary ? ServeColors.white : ServeColors.ink),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: fg),
                     ),
                     const SizedBox(height: 2),
-                    Text(subtitle, style: TextStyle(color: primary ? ServeColors.white.withValues(alpha: 0.85) : ServeColors.muted)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 13, color: primary ? ServeColors.white.withValues(alpha: 0.88) : ServeColors.muted),
+                    ),
                   ],
                 ),
               ),
-              Icon(trailing, color: primary ? ServeColors.white : ServeColors.muted),
+              Icon(trailing, size: 20, color: primary ? ServeColors.white : ServeColors.muted),
             ],
           ),
         ),

@@ -1,0 +1,13 @@
+# SERVE behind Caddy — one domain, automatic HTTPS (Let's Encrypt).
+#
+# Replace YOUR_DOMAIN with the real domain (its DNS A/AAAA record must point
+# at this server, ports 80 and 443 open). The backend serves everything:
+# /, /staff/, /admin/, /api and /socket.io (WEB_ROOT set, see
+# docs/deployment.md), so Caddy only terminates TLS and forwards. Caddy passes
+# WebSocket upgrades and X-Forwarded-* headers through by default; run the
+# backend with TRUST_PROXY=1.
+
+YOUR_DOMAIN {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:5001
+}

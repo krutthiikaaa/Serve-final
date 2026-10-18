@@ -6,7 +6,7 @@ import '../../services/api/models.dart';
 import '../../services/api/serve_api.dart';
 import '../../services/auth/auth_controller.dart';
 import '../../theme/serve_theme.dart';
-import '../widgets/serve_logo.dart';
+import '../widgets/auth_brand.dart';
 import '../widgets/states.dart';
 
 /// Student registration: name, email and hostel (which decides the default
@@ -30,6 +30,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Object? _hostelsError;
   String? _hostelId;
   bool _busy = false;
+  bool _obscure = true;
   bool _accountCreated = false;
   String? _error;
 
@@ -95,15 +96,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       appBar: AppBar(
         leading: widget.onBack != null && !_accountCreated ? BackButton(onPressed: widget.onBack) : null,
         automaticallyImplyLeading: false,
-        title: const ServeLogo(height: 26),
         actions: [if (widget.lockedEmail != null) TextButton(onPressed: auth.signOut, child: const Text('Sign out'))],
       ),
       body: SafeArea(
         child: Form(
           key: _form,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             children: [
+              const AuthBrand(),
+              const SizedBox(height: 28),
               Text(_completing ? 'Complete your profile' : 'Create your account', style: theme.textTheme.headlineMedium),
               const SizedBox(height: 6),
               Text('Your hostel decides your default night canteen.', style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
@@ -135,9 +137,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 14),
                 TextFormField(
                   controller: _password,
-                  obscureText: true,
+                  obscureText: _obscure,
                   autofillHints: const [AutofillHints.newPassword],
-                  decoration: const InputDecoration(labelText: 'Password', helperText: 'At least 6 characters'),
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    helperText: 'At least 6 characters',
+                    suffixIcon: IconButton(
+                      tooltip: _obscure ? 'Show password' : 'Hide password',
+                      icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
+                  ),
                   validator: (v) => (v == null || v.length < 6) ? 'Use at least 6 characters' : null,
                 ),
               ],

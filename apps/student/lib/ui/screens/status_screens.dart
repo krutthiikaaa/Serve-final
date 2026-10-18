@@ -14,7 +14,7 @@ class WrongRoleScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.read<AuthController>();
     return Scaffold(
-      appBar: AppBar(title: const ServeLogo(height: 26), automaticallyImplyLeading: false),
+      appBar: AppBar(title: const ServeLockup(), automaticallyImplyLeading: false),
       body: EmptyView(
         icon: Icons.badge_outlined,
         title: role == 'ADMIN' ? 'This is an admin account' : 'This is a staff account',
@@ -39,7 +39,7 @@ class AccountErrorScreen extends StatelessWidget {
     final auth = context.read<AuthController>();
     return Scaffold(
       appBar: AppBar(
-        title: const ServeLogo(height: 26),
+        title: const ServeLockup(),
         automaticallyImplyLeading: false,
         actions: [TextButton(onPressed: auth.signOut, child: const Text('Sign out'))],
       ),

@@ -3,7 +3,8 @@
  * only ever asked to collect the server-calculated order total.
  *
  * Implementations:
- *  - MockPaymentProvider      development/test only (rejected in production)
+ *  - MockPaymentProvider      development/test, and production only with
+ *                             DEMO_MODE=true (no real money moves)
  *  - RazorpayPaymentProvider  signature verification implemented; API calls
  *                             pending (they fail with 503, never fake success)
  */

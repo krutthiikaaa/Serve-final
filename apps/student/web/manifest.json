@@ -1,7 +1,9 @@
 {
+    "id": "./",
     "name": "SERVE",
     "short_name": "SERVE",
-    "start_url": ".",
+    "start_url": "./",
+    "scope": "./",
     "display": "standalone",
     "background_color": "#F8F7F2",
     "theme_color": "#879F2D",

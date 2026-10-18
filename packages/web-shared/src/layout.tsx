@@ -32,8 +32,8 @@ export function Shell({
     <div className="shell">
       <aside className="sidebar" aria-label={`${product} navigation`}>
         <div className="sidebar-brand">
-          <Logo />
-          <div className="small muted product-name">{product}</div>
+          <Logo size={40} />
+          <span className="product-badge">{product}</span>
         </div>
         {context ? <div className="sidebar-context">{context}</div> : null}
         <nav className="nav">

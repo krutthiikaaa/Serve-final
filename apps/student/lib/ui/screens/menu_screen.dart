@@ -11,6 +11,7 @@ import '../live_reload.dart';
 import '../navigation.dart';
 import '../widgets/serve_header.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 import 'home_screen.dart';
 
 /// Full menu of the selected canteen. INACTIVE items are hidden, UNAVAILABLE
@@ -97,7 +98,7 @@ class _MenuScreenState extends State<MenuScreen> with WidgetsBindingObserver, Li
     return Scaffold(
       appBar: const ServeHeader(),
       body: menu == null
-          ? (_error != null ? ErrorView(error: _error!, onRetry: _load) : const LoadingView(label: 'Loading menu'))
+          ? (_error != null ? ErrorView(error: _error!, onRetry: _load) : const SkeletonList(label: 'Loading menu'))
           : _MenuBody(menu: menu, selectedCategory: _category, onCategory: (id) => setState(() => _category = id), onRefresh: _load),
       bottomNavigationBar: _CartBar(canteenId: _canteenId),
     );
@@ -113,27 +114,41 @@ class _MenuBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final categories = menu.visibleCategories;
     final shown = selectedCategory == null ? categories : categories.where((c) => c.id == selectedCategory).toList();
     return RefreshIndicator(
-      color: ServeColors.olive,
       onRefresh: onRefresh,
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: Text(menu.canteen.name, style: Theme.of(context).textTheme.headlineSmall)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Semantics(
+                              header: true,
+                              child: Text(menu.canteen.name, style: theme.textTheme.titleLarge?.copyWith(fontSize: 21)),
+                            ),
+                            if (menu.canteen.location != null) ...[
+                              const SizedBox(height: 2),
+                              Text(menu.canteen.location!, style: theme.textTheme.bodyMedium?.copyWith(color: ServeColors.muted)),
+                            ],
+                          ],
+                        ),
+                      ),
                       TextButton(onPressed: () => openCanteenSelection(context), child: const Text('Change')),
                     ],
                   ),
-                  if (menu.canteen.location != null) Text(menu.canteen.location!, style: const TextStyle(color: ServeColors.muted)),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
                   CanteenStatusLabel(canteen: menu.canteen),
                   if (!menu.canteen.acceptingOrders) ...[
                     const SizedBox(height: 12),
@@ -147,18 +162,14 @@ class _MenuBody extends StatelessWidget {
             ),
           ),
           if (categories.isNotEmpty)
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 48,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  children: [
-                    _CategoryChip(label: 'All', selected: selectedCategory == null, onTap: () => onCategory(null)),
-                    for (final c in categories)
-                      _CategoryChip(label: c.name, selected: selectedCategory == c.id, onTap: () => onCategory(c.id)),
-                  ],
-                ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _CategoryBar(
+                children: [
+                  _CategoryChip(label: 'All', selected: selectedCategory == null, onTap: () => onCategory(null)),
+                  for (final c in categories)
+                    _CategoryChip(label: c.name, selected: selectedCategory == c.id, onTap: () => onCategory(c.id)),
+                ],
               ),
             ),
           if (categories.isEmpty)
@@ -170,23 +181,16 @@ class _MenuBody extends StatelessWidget {
             for (final category in shown) ...[
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-                  child: Text(category.name, style: Theme.of(context).textTheme.titleLarge),
+                  padding: const EdgeInsets.fromLTRB(ServeSpace.page, 20, ServeSpace.page, 10),
+                  child: SectionHeader(title: category.name),
                 ),
               ),
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverToBoxAdapter(
-                  child: Card(
-                    child: Column(
-                      children: [
-                        for (var i = 0; i < category.items.length; i++) ...[
-                          if (i > 0) const Divider(indent: 16, endIndent: 16),
-                          MenuItemRow(item: category.items[i], canteen: menu.canteen, categoryName: category.name),
-                        ],
-                      ],
-                    ),
-                  ),
+                padding: const EdgeInsets.symmetric(horizontal: ServeSpace.page),
+                sliver: SliverList.separated(
+                  itemCount: category.items.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, i) => MenuItemRow(item: category.items[i], canteen: menu.canteen, categoryName: category.name),
                 ),
               ),
             ],
@@ -195,6 +199,37 @@ class _MenuBody extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Category chips that stay at the top while the menu scrolls.
+class _CategoryBar extends SliverPersistentHeaderDelegate {
+  const _CategoryBar({required this.children});
+  final List<Widget> children;
+
+  static const _height = 56.0;
+
+  @override
+  double get minExtent => _height;
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: ServeColors.paper,
+        border: Border(bottom: BorderSide(color: overlapsContent || shrinkOffset > 0 ? ServeColors.line : Colors.transparent)),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: ServeSpace.page, vertical: 8),
+        children: children,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_CategoryBar oldDelegate) => true;
 }
 
 class _CategoryChip extends StatelessWidget {
@@ -211,7 +246,8 @@ class _CategoryChip extends StatelessWidget {
       selected: selected,
       showCheckmark: false,
       onSelected: (_) => onTap(),
-      labelStyle: TextStyle(color: selected ? ServeColors.white : ServeColors.ink, fontWeight: FontWeight.w700),
+      side: BorderSide(color: selected ? ServeColors.oliveStrong : ServeColors.line),
+      labelStyle: TextStyle(color: selected ? ServeColors.white : ServeColors.ink, fontWeight: FontWeight.w600),
     ),
   );
 }
@@ -234,14 +270,16 @@ class _CartBar extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: FilledButton(
+                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 18)),
                   onPressed: () => openCart(context),
                   child: Row(
                     children: [
-                      const Icon(Icons.shopping_bag_outlined),
+                      const Icon(Icons.shopping_bag_outlined, size: 20),
                       const SizedBox(width: 10),
                       Text('${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'}'),
                       const Spacer(),
                       const Text('View cart'),
+                      const SizedBox(width: 2),
                       const Icon(Icons.chevron_right_rounded),
                     ],
                   ),

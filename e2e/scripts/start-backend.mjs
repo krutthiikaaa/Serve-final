@@ -4,6 +4,8 @@
  *   2. applies every migration and the catalogue seed,
  *   3. provisions the E2E admin through the official bootstrap script,
  *   4. runs the backend on E2E_API_PORT with CORS for the E2E frontends.
+ * With E2E_WEB_ROOT set it also serves the built web apps from that folder
+ * (the single-domain deployment, see start-single-domain.mjs).
  * The development database (`serve_dev`) is never touched.
  */
 import { execFileSync, spawn } from 'node:child_process';
@@ -26,9 +28,10 @@ const env = {
   ...process.env,
   NODE_ENV: 'test',
   PORT: String(E2E.apiPort),
-  CORS_ORIGINS: `${E2E.staffUrl},${E2E.adminUrl},${E2E.studentUrl}`,
+  CORS_ORIGINS: `${E2E.staffUrl},${E2E.adminUrl},${E2E.studentUrl},${E2E.apiUrl}`,
   LOG_LEVEL: 'warn',
   ADMIN_BOOTSTRAP_PASSWORD: E2E.password,
+  ...(process.env.E2E_WEB_ROOT ? { WEB_ROOT: process.env.E2E_WEB_ROOT } : {}),
 };
 const run = (cmd, args, input) =>
   execFileSync(cmd, args, {

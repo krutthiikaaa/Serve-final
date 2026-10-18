@@ -101,7 +101,7 @@ verify   ──► provider.verifyPaymentSignature()                         HMA
          ──► after commit: order:status_updated (student), order:created (kitchen)
 ```
 
-- **MockPaymentProvider:** development and test only. It is rejected in production, and `mock-complete` is only mounted in mock mode outside production. It is stateless: the captured amount and outcome are encoded in the HMAC-signed mock payment id, so a restart between initiate and complete strands nothing.
+- **MockPaymentProvider:** development and test. Production rejects it unless `DEMO_MODE=true` declares a public demo (no real money; every other production rule still applies); `mock-complete` is mounted only in mock mode, outside production or in such a demo. It runs the normal verification path. It is stateless: the captured amount and outcome are encoded in the HMAC-signed mock payment id, so a restart between initiate and complete strands nothing.
 - **Refund ordering:** a staff cancellation of a paid order commits `CANCELLED` first and refunds afterwards. A concurrent `PREPARING` can therefore never end with money refunded for an order still being cooked. If the provider refund fails, the payment stays `SUCCESS` with `failureReason = "Refund pending…"` and the error is logged.
 - **RazorpayPaymentProvider:** signature verification is implemented as documented by Razorpay. API calls are pending and return `503 PAYMENT_PROVIDER_NOT_IMPLEMENTED`; they never fake success.
 - **Webhooks:** verified over the raw body, and replay-safe through `ProcessedPaymentEvent`.
@@ -125,8 +125,9 @@ The event catalogue is in [api.md](api.md#realtime-socketio).
 | Config source | `backend/.env` | `backend/.env.test` | platform env / secrets manager only |
 | Database | `serve_dev` | `serve_test` (recreated per run) | managed PostgreSQL |
 | Firebase | Auth Emulator (`demo-serve`) | Auth Emulator | real project, service account |
-| Payments | mock | mock | Razorpay (adapter API calls pending) |
+| Payments | mock | mock | Razorpay (adapter API calls pending); mock only with `DEMO_MODE=true` |
 | CORS | localhost allowed | localhost allowed | https only, no localhost |
+| Web apps | separate dev servers | separate dev servers / served by the backend (single-domain suite) | served by the backend from `WEB_ROOT` at `/`, `/staff/`, `/admin/` ([deployment.md](deployment.md)) |
 
 ## 9. Clients
 

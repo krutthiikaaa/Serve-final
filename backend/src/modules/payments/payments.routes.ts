@@ -67,8 +67,10 @@ export function createPaymentsRouter(ctx: AppContext, services: Services): Route
     res.json({ data: result.order });
   });
 
-  // Development/test only. Never mounted in production or outside mock mode.
-  if (ctx.env.PAYMENT_MODE === 'mock' && ctx.env.NODE_ENV !== 'production') {
+  // Mock mode only: development, tests and an explicit DEMO_MODE deployment.
+  // Never mounted for real payments. It runs the same signature, amount and
+  // idempotency checks as a real gateway confirmation (see mockComplete).
+  if (ctx.env.PAYMENT_MODE === 'mock' && (ctx.env.NODE_ENV !== 'production' || ctx.env.DEMO_MODE)) {
     router.post('/:orderId/mock-complete', limiter, async (req, res) => {
       const { orderId } = parse(orderParams, req.params);
       const result = await services.payments.mockComplete(

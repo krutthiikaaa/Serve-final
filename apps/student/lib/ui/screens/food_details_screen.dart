@@ -13,6 +13,7 @@ import '../navigation.dart';
 import '../widgets/food_image.dart';
 import '../widgets/quantity_control.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 
 class FoodDetailsScreen extends StatefulWidget {
   const FoodDetailsScreen({super.key, required this.item, this.categoryName});
@@ -73,23 +74,33 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> with WidgetsBindi
       body: notFound
           ? ErrorView(error: _error!, onRetry: _load)
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              padding: const EdgeInsets.fromLTRB(ServeSpace.page, 0, ServeSpace.page, 24),
               children: [
                 Hero(
                   tag: 'food-${_item.id}',
                   child: AspectRatio(
-                    aspectRatio: 16 / 10,
+                    aspectRatio: 4 / 3,
                     child: LayoutBuilder(
                       builder: (context, c) => FoodImage(imageUrl: _item.imageUrl, category: _category, size: c.maxWidth, radius: 20),
                     ),
                   ),
                 ),
                 const SizedBox(height: 20),
-                Text(_item.name, style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 6),
-                Text('${formatRupees(_item.pricePaise)} each', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(_item.name, style: theme.textTheme.headlineSmall)),
+                    const SizedBox(width: 12),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(formatRupees(_item.pricePaise), style: theme.textTheme.headlineSmall),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _AvailabilityPill(item: _item),
                 if (_item.description != null) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   Text(_item.description!, style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
                 ],
                 const SizedBox(height: 20),
@@ -101,14 +112,26 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> with WidgetsBindi
                   const NoticeBanner(message: 'This canteen is currently not accepting orders.', icon: Icons.pause_circle_outline_rounded),
                 if (canteen != null) ...[
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Icon(Icons.storefront_rounded, size: 18, color: ServeColors.muted),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text('Pickup at ${canteen.name}', style: const TextStyle(color: ServeColors.muted)),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          const IconTile(icon: Icons.storefront_rounded, size: 40),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Pickup at ${canteen.name}', style: theme.textTheme.titleSmall),
+                                const SizedBox(height: 2),
+                                Text('Collect at the counter when it is ready.', style: theme.textTheme.bodySmall),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ],
@@ -145,6 +168,35 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> with WidgetsBindi
                 ),
               ),
             ),
+    );
+  }
+}
+
+class _AvailabilityPill extends StatelessWidget {
+  const _AvailabilityPill({required this.item});
+  final MenuItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    if (item.isOrderable) {
+      return const Align(
+        alignment: Alignment.centerLeft,
+        child: StatusPill(
+          label: 'Available',
+          icon: Icons.check_circle_rounded,
+          foreground: ServeColors.oliveInk,
+          background: ServeColors.oliveTint,
+        ),
+      );
+    }
+    return const Align(
+      alignment: Alignment.centerLeft,
+      child: StatusPill(
+        label: 'Not available',
+        icon: Icons.do_not_disturb_on_rounded,
+        foreground: ServeColors.orangeInk,
+        background: ServeColors.orangeTint,
+      ),
     );
   }
 }

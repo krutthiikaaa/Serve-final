@@ -163,6 +163,74 @@ describe('parseEnv', () => {
       expect(issues).toEqual([expect.stringContaining('mock payment provider')]);
     });
   });
+
+  describe('demo deployments (DEMO_MODE)', () => {
+    const {
+      RAZORPAY_KEY_ID: _k,
+      RAZORPAY_KEY_SECRET: _s,
+      RAZORPAY_WEBHOOK_SECRET: _w,
+      ...firebaseProd
+    } = validProd;
+    const demoProd = {
+      ...firebaseProd,
+      CORS_ORIGINS: 'https://serve.example',
+      PAYMENT_MODE: 'mock',
+      PAYMENT_SECRET: SECRET,
+      DEMO_MODE: 'true',
+    };
+
+    it('defaults to off', () => {
+      expect(parseEnv(validDev).DEMO_MODE).toBe(false);
+      expect(parseEnv({ ...validDev, DEMO_MODE: '' }).DEMO_MODE).toBe(false);
+    });
+
+    it('allows the mock provider in production only when declared', () => {
+      const env = parseEnv(demoProd);
+      expect(env).toMatchObject({ NODE_ENV: 'production', PAYMENT_MODE: 'mock', DEMO_MODE: true });
+      expect(issuesOf({ ...demoProd, DEMO_MODE: 'false' })).toEqual([
+        expect.stringContaining('mock payment provider'),
+      ]);
+    });
+
+    it('keeps every other production rule', () => {
+      expect(issuesOf({ ...demoProd, FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' })).toEqual([
+        expect.stringContaining('FIREBASE_AUTH_EMULATOR_HOST'),
+      ]);
+      expect(issuesOf({ ...demoProd, FIREBASE_PROJECT_ID: 'demo-serve' })).toEqual([
+        expect.stringContaining('demo-'),
+      ]);
+      expect(issuesOf({ ...demoProd, CORS_ORIGINS: 'http://serve.example' })).toEqual([
+        expect.stringContaining('https'),
+      ]);
+      expect(issuesOf({ ...demoProd, CORS_ORIGINS: 'https://localhost' })).toEqual([
+        expect.stringContaining('Local origins'),
+      ]);
+      const { FIREBASE_CLIENT_EMAIL: _omit, ...noCreds } = demoProd;
+      expect(issuesOf(noCreds)).toEqual([expect.stringContaining('FIREBASE_CLIENT_EMAIL')]);
+      const { PAYMENT_SECRET: _secret, ...noSecret } = demoProd;
+      expect(issuesOf(noSecret)).toEqual([expect.stringContaining('PAYMENT_SECRET')]);
+    });
+
+    it('cannot be combined with a real payment provider', () => {
+      expect(issuesOf({ ...validProd, DEMO_MODE: 'true' })).toEqual([
+        expect.stringContaining('DEMO_MODE=true requires PAYMENT_MODE=mock'),
+      ]);
+    });
+
+    it('only accepts "true" or "false"', () => {
+      for (const value of ['1', 'yes', 'TRUE']) {
+        expect(issuesOf({ ...demoProd, DEMO_MODE: value })).toEqual([
+          expect.stringContaining('DEMO_MODE'),
+        ]);
+      }
+    });
+  });
+
+  it('treats WEB_ROOT as optional', () => {
+    expect(parseEnv(validDev).WEB_ROOT).toBeUndefined();
+    expect(parseEnv({ ...validDev, WEB_ROOT: '' }).WEB_ROOT).toBeUndefined();
+    expect(parseEnv({ ...validDev, WEB_ROOT: '/srv/serve/web' }).WEB_ROOT).toBe('/srv/serve/web');
+  });
 });
 
 describe('envFileFor', () => {

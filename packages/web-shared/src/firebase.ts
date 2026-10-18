@@ -1,5 +1,12 @@
 import { getApps, initializeApp } from '@firebase/app';
-import { connectAuthEmulator, getAuth, type Auth } from '@firebase/auth';
+import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  connectAuthEmulator,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  type Auth,
+} from '@firebase/auth';
 
 /** Public Firebase web configuration (never secrets — Admin credentials live only in the backend). */
 export interface FirebaseWebConfig {
@@ -21,7 +28,12 @@ export function initFirebaseAuth(config: FirebaseWebConfig): Auth {
       projectId: config.projectId,
       authDomain: config.authDomain ?? `${config.projectId}.firebaseapp.com`,
     });
-  auth = getAuth(app);
+  // getAuth() minus the popup/redirect resolver: SERVE signs in with email and
+  // password only, so no Google sign-in scripts or iframes are loaded (the
+  // single-domain CSP allows scripts from this origin only).
+  auth = initializeAuth(app, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+  });
   if (config.emulatorUrl) connectAuthEmulator(auth, config.emulatorUrl, { disableWarnings: true });
   return auth;
 }

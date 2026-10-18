@@ -50,7 +50,7 @@ apps/student/**/flutter_export_environment.sh
 # Playwright
 # ---------------------------------------------------------------
 test-results/
-playwright-report/
+playwright-report*/
 playwright/.cache/
 
 # ---------------------------------------------------------------

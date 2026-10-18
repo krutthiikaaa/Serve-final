@@ -95,6 +95,14 @@ const envSchema = z
 
     LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
 
+    /**
+     * Directory holding the built web apps (`student/`, `staff/`, `admin/`; see
+     * `npm run build:web`). When set, this process serves them so one origin
+     * carries `/`, `/staff/`, `/admin/`, `/api` and `/socket.io`. Unset = API
+     * only (local development and tests).
+     */
+    WEB_ROOT: optional(z.string().min(1)),
+
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
 
@@ -130,6 +138,14 @@ const envSchema = z
     // --- Payments -------------------------------------------------------------
     /** mock = development provider; razorpay = production provider (adapter pending). */
     PAYMENT_MODE: z.enum(['mock', 'razorpay']).default('mock'),
+    /**
+     * Public demo deployment: the one way to run the mock payment provider with
+     * NODE_ENV=production. No real money moves; every other production rule
+     * still applies. Exactly "true" or "false".
+     */
+    DEMO_MODE: optional(
+      z.enum(['true', 'false'], { error: 'DEMO_MODE must be "true" or "false"' }),
+    ).transform((value) => value === 'true'),
     /** HMAC secret for the mock provider's payment signatures (mock mode only). */
     PAYMENT_SECRET: optional(
       z.string().min(32, { error: 'PAYMENT_SECRET must be at least 32 characters' }),
@@ -167,6 +183,12 @@ const envSchema = z
         if (!env[key]) issue(key, `${key} is required when PAYMENT_MODE=razorpay`);
       }
     }
+    if (env.DEMO_MODE && env.PAYMENT_MODE !== 'mock') {
+      issue(
+        'DEMO_MODE',
+        'DEMO_MODE=true requires PAYMENT_MODE=mock (a demo never takes real money)',
+      );
+    }
 
     if (env.NODE_ENV !== 'production') return;
 
@@ -197,9 +219,13 @@ const envSchema = z
         'demo- projects are emulator-only and not allowed in production',
       );
     }
-    // No simulated payment success in production.
-    if (env.PAYMENT_MODE === 'mock') {
-      issue('PAYMENT_MODE', 'The mock payment provider is not allowed in production');
+    // No simulated payment success in production, except in a deployment
+    // explicitly declared a demo.
+    if (env.PAYMENT_MODE === 'mock' && !env.DEMO_MODE) {
+      issue(
+        'PAYMENT_MODE',
+        'The mock payment provider is not allowed in production (DEMO_MODE=true declares a public demo that takes no real money)',
+      );
     }
   });
 

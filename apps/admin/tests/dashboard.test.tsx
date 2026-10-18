@@ -9,7 +9,8 @@ describe('admin dashboard', () => {
     api.dashboard.mockResolvedValue(adminDashboard());
     api.orders.mockResolvedValue({ data: [], nextCursor: null });
     renderAdmin(<DashboardPage />, { api });
-    const stat = async (label: string) => (await screen.findByText(label)).closest('.stat')!;
+    const stat = async (label: string) =>
+      (await screen.findByText(label)).closest('.kpi, .summary-row')!;
     expect(await stat('Awaiting preparation')).toHaveTextContent('3');
     expect(await stat("Today's revenue")).toHaveTextContent('₹5,125');
     expect(await stat('Pending requests')).toHaveTextContent('2');

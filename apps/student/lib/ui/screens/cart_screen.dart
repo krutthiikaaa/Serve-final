@@ -12,6 +12,7 @@ import '../../theme/serve_theme.dart';
 import '../navigation.dart';
 import '../widgets/quantity_control.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 import 'checkout_screen.dart';
 
 /// The cart is re-quoted by the backend on every change; prices and the total
@@ -125,18 +126,24 @@ class _CartScreenState extends State<CartScreen> {
         actions: [TextButton(onPressed: cart.clear, child: const Text('Clear'))],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
         children: [
           Row(
             children: [
-              const Icon(Icons.storefront_rounded, size: 20, color: ServeColors.oliveDark),
-              const SizedBox(width: 8),
+              const IconTile(icon: Icons.storefront_rounded, size: 36),
+              const SizedBox(width: 10),
               Expanded(
-                child: Text(cart.canteenName ?? '', style: const TextStyle(fontWeight: FontWeight.w700)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Pickup from', style: Theme.of(context).textTheme.bodySmall),
+                    Text(cart.canteenName ?? '', style: Theme.of(context).textTheme.titleSmall),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           if (paused) ...[
             const NoticeBanner(message: 'This canteen is currently not accepting orders.', icon: Icons.pause_circle_outline_rounded),
             const SizedBox(height: 14),
@@ -154,30 +161,53 @@ class _CartScreenState extends State<CartScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
+              child: Column(
                 children: [
-                  const Expanded(
-                    child: Text('Total', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                            if (quote != null)
+                              Text(
+                                '${quote.itemCount} ${quote.itemCount == 1 ? 'item' : 'items'} · pickup at the counter',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (_quoting)
+                        const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      else
+                        Text(
+                          quote == null ? '—' : formatRupees(quote.totalPaise),
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                        ),
+                    ],
                   ),
-                  if (_quoting)
-                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: ServeColors.olive))
-                  else
-                    Text(
-                      quote == null ? '—' : formatRupees(quote.totalPaise),
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                    ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Prices are confirmed by the canteen when you place the order.',
-            style: TextStyle(color: ServeColors.muted, fontSize: 13),
+          const SizedBox(height: 10),
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.verified_outlined, size: 16, color: ServeColors.muted),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Prices are confirmed by the canteen when you place the order.',
+                  style: TextStyle(color: ServeColors.muted, fontSize: 13),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -205,14 +235,14 @@ class _CartLineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = context.read<CartController>();
     return Padding(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(quoted?.itemName ?? line.item.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                Text(quoted?.itemName ?? line.item.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                 const SizedBox(height: 4),
                 if (issue != null)
                   Text(
@@ -220,9 +250,19 @@ class _CartLineRow extends StatelessWidget {
                     style: const TextStyle(color: ServeColors.danger, fontWeight: FontWeight.w600),
                   )
                 else if (quoted != null)
-                  Text(
-                    '${formatRupees(quoted!.unitPricePaise)} × ${quoted!.quantity}  =  ${formatRupees(quoted!.lineTotalPaise)}',
-                    style: const TextStyle(color: ServeColors.muted),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${formatRupees(quoted!.unitPricePaise)} × ${quoted!.quantity}  ',
+                          style: const TextStyle(color: ServeColors.muted),
+                        ),
+                        TextSpan(
+                          text: formatRupees(quoted!.lineTotalPaise),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
                   ),
               ],
             ),

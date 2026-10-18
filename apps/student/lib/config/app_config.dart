@@ -25,6 +25,9 @@ class AppConfig {
       adminPortalUrl: const String.fromEnvironment('ADMIN_PORTAL_URL'),
       isRelease: const bool.fromEnvironment('dart.vm.product'),
       isAndroidDevice: !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
+      // A built web app (profile/release) is served by the SERVE domain itself.
+      // `flutter run` serves it from a dev server, which is not the backend.
+      servedFrom: kIsWeb && !kDebugMode ? Uri.base.origin : null,
     );
     config.validate(isRelease: const bool.fromEnvironment('dart.vm.product'));
     return config;
@@ -38,6 +41,11 @@ class AppConfig {
   /// A `demo-` Firebase project only exists in the emulator, so it always uses
   /// the emulator unless one is named explicitly. Release builds get no
   /// defaults beyond these and are rejected by [validate] unless configured.
+  ///
+  /// [servedFrom] is the origin a built web app was loaded from. On the single
+  /// SERVE domain it is also the backend (`/api`, `/socket.io`) and hosts the
+  /// staff dashboard (`/staff/`) and admin portal (`/admin/`), so those are
+  /// the defaults there.
   factory AppConfig.resolve({
     String apiUrl = '',
     String firebaseApiKey = '',
@@ -47,10 +55,18 @@ class AppConfig {
     String adminPortalUrl = '',
     required bool isRelease,
     required bool isAndroidDevice,
+    String? servedFrom,
   }) {
     final host = isAndroidDevice ? '10.0.2.2' : 'localhost';
     final projectId = firebaseProjectId.isEmpty ? 'demo-serve' : firebaseProjectId;
-    final api = apiUrl.isEmpty ? 'http://$host:5001' : apiUrl;
+    final api = apiUrl.isNotEmpty ? apiUrl : servedFrom ?? 'http://$host:5001';
+    String? portal(String configured, String path, String devUrl) => configured.isNotEmpty
+        ? configured
+        : servedFrom != null
+        ? '$servedFrom$path'
+        : isRelease
+        ? null
+        : devUrl;
     final emulator = authEmulatorHost.isNotEmpty
         ? authEmulatorHost
         : (!isRelease && projectId.startsWith('demo-'))
@@ -61,8 +77,8 @@ class AppConfig {
       firebaseApiKey: firebaseApiKey.isEmpty ? 'demo-api-key' : firebaseApiKey,
       firebaseProjectId: projectId,
       authEmulatorHost: emulator,
-      staffDashboardUrl: staffDashboardUrl.isEmpty ? (isRelease ? null : 'http://localhost:5173') : staffDashboardUrl,
-      adminPortalUrl: adminPortalUrl.isEmpty ? (isRelease ? null : 'http://localhost:5174') : adminPortalUrl,
+      staffDashboardUrl: portal(staffDashboardUrl, '/staff/', 'http://localhost:5173'),
+      adminPortalUrl: portal(adminPortalUrl, '/admin/', 'http://localhost:5174'),
     );
   }
 

@@ -11,6 +11,7 @@ import '../live_reload.dart';
 import '../navigation.dart';
 import '../widgets/order_status.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 import 'order_tracking_screen.dart';
 import 'payment_screen.dart';
 
@@ -95,12 +96,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
       body: order == null
           ? (_error != null ? ErrorView(error: _error!, onRetry: _load) : const LoadingView(label: 'Loading order'))
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
               children: [
                 Row(
                   children: [
-                    Text(order.orderNumber, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                    const Spacer(),
+                    Expanded(
+                      child: Text(order.orderNumber, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                    ),
                     OrderStatusChip(status: order.status),
                   ],
                 ),
@@ -118,36 +120,24 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
                       children: [
                         for (final line in order.items)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.only(bottom: 12),
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('${line.quantity}×', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                Text('${line.quantity}×', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.4)),
                                 const SizedBox(width: 10),
-                                Expanded(child: Text(line.itemName)),
-                                Text(formatRupees(line.lineTotalPaise)),
+                                Expanded(child: Text(line.itemName, style: const TextStyle(height: 1.4))),
+                                const SizedBox(width: 12),
+                                Text(formatRupees(line.lineTotalPaise), style: const TextStyle(height: 1.4)),
                               ],
                             ),
                           ),
                         const Divider(),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text('Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                            ),
-                            Text(formatRupees(order.totalPaise), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                          ],
-                        ),
+                        const SizedBox(height: 14),
+                        SummaryRow(label: 'Total', value: formatRupees(order.totalPaise), emphasis: true),
                         if (order.payment != null) ...[
                           const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text('Payment', style: TextStyle(color: ServeColors.muted)),
-                              ),
-                              Text(_paymentLabel(order.payment!), style: const TextStyle(fontWeight: FontWeight.w600)),
-                            ],
-                          ),
+                          SummaryRow(label: 'Payment', value: _paymentLabel(order.payment!)),
                         ],
                       ],
                     ),
@@ -156,7 +146,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
                 const SizedBox(height: 16),
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
                     child: OrderTimeline(order: order),
                   ),
                 ),

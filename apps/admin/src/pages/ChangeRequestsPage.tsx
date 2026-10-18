@@ -163,7 +163,7 @@ export function ChangeRequestsPage() {
                       )}
                     </td>
                     <td className="muted">{r.notes ?? '—'}</td>
-                    <td className="muted">
+                    <td className="muted nowrap">
                       {formatDateTime(r.reviewedAt ?? r.createdAt)}
                       {r.reviewedBy ? <div className="small">by {r.reviewedBy.name}</div> : null}
                     </td>

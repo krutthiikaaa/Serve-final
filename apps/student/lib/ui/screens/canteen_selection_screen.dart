@@ -8,7 +8,7 @@ import '../../state/cart_controller.dart';
 import '../../theme/serve_theme.dart';
 import '../cart_actions.dart';
 import '../widgets/states.dart';
-import 'home_screen.dart';
+import '../widgets/surface.dart';
 
 class CanteenSelectionScreen extends StatefulWidget {
   const CanteenSelectionScreen({super.key});
@@ -59,50 +59,94 @@ class _CanteenSelectionScreenState extends State<CanteenSelectionScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Choose a canteen')),
       body: canteens == null
-          ? (_error != null ? ErrorView(error: _error!, onRetry: _load) : const LoadingView())
+          ? (_error != null ? ErrorView(error: _error!, onRetry: _load) : const SkeletonList(label: 'Loading canteens', header: false))
           : canteens.isEmpty
           ? const EmptyView(icon: Icons.storefront_outlined, title: 'No canteens are open right now')
           : ListView.separated(
-              padding: const EdgeInsets.all(20),
-              itemCount: canteens.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
+              itemCount: canteens.length + 1,
+              separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 14 : 10),
               itemBuilder: (context, i) {
-                final c = canteens[i];
-                final selected = c.id == selectedId;
-                return Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: selected ? ServeColors.olive : ServeColors.line, width: selected ? 2 : 1),
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _choose(c),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(c.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                                if (c.location != null) ...[
-                                  const SizedBox(height: 2),
-                                  Text(c.location!, style: const TextStyle(color: ServeColors.muted)),
-                                ],
-                                const SizedBox(height: 6),
-                                CanteenStatusLabel(canteen: c),
-                              ],
-                            ),
-                          ),
-                          if (selected) const Icon(Icons.check_circle_rounded, color: ServeColors.olive, semanticLabel: 'Selected'),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
+                if (i == 0) {
+                  return Text(
+                    'Your hostel decides your default canteen. You can order from any canteen that is accepting orders.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ServeColors.muted),
+                  );
+                }
+                final c = canteens[i - 1];
+                return _CanteenOption(canteen: c, selected: c.id == selectedId, onTap: () => _choose(c));
               },
             ),
+    );
+  }
+}
+
+class _CanteenOption extends StatelessWidget {
+  const _CanteenOption({required this.canteen, required this.selected, required this.onTap});
+  final Canteen canteen;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      selected: selected,
+      child: Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ServeSpace.radiusCard),
+          side: BorderSide(color: selected ? ServeColors.oliveStrong : ServeColors.line, width: selected ? 2 : 1),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IconTile(
+                  icon: Icons.storefront_rounded,
+                  background: selected ? ServeColors.oliveStrong : ServeColors.oliveTint,
+                  color: selected ? ServeColors.white : ServeColors.oliveInk,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(canteen.name, style: theme.textTheme.titleMedium),
+                      if (canteen.location != null) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(top: 2),
+                              child: Icon(Icons.place_outlined, size: 15, color: ServeColors.muted),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(canteen.location!, style: theme.textTheme.bodyMedium?.copyWith(color: ServeColors.muted)),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      CanteenStatusLabel(canteen: canteen),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                  color: selected ? ServeColors.oliveStrong : ServeColors.line,
+                  semanticLabel: selected ? 'Selected' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

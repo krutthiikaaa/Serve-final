@@ -2,23 +2,27 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
- * Staff dashboard — http://localhost:5173 in development.
- * Production builds refuse to run without an explicit API URL or with the
- * Firebase emulator configured, so nothing can fall back to localhost.
+ * Staff dashboard — http://localhost:5173 in development, served under /staff/ in
+ * builds (the single-domain deployment, see docs/deployment.md).
+ * Production builds refuse the Firebase emulator and a localhost or plain-http
+ * API. Without VITE_API_URL a build calls the origin that serves it.
  */
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
   if (mode === 'production') {
-    const missing = ['VITE_API_URL', 'VITE_FIREBASE_API_KEY', 'VITE_FIREBASE_PROJECT_ID'].filter(
+    const missing = ['VITE_FIREBASE_API_KEY', 'VITE_FIREBASE_PROJECT_ID'].filter(
       (key) => !env[key],
     );
     if (missing.length > 0) throw new Error(`Production build requires: ${missing.join(', ')}`);
     if (env.VITE_FIREBASE_AUTH_EMULATOR_URL)
       throw new Error('VITE_FIREBASE_AUTH_EMULATOR_URL must not be set for production builds');
+    if (env.VITE_API_URL && !env.VITE_API_URL.startsWith('https://'))
+      throw new Error('VITE_API_URL must use https in production (or be unset for same-origin)');
     if (/localhost|127\.0\.0\.1/.test(env.VITE_API_URL ?? ''))
       throw new Error('VITE_API_URL must not point at localhost in production');
   }
   return {
+    base: command === 'build' ? '/staff/' : '/',
     plugins: [react()],
     server: { port: 5173, strictPort: true },
     preview: { port: 4173, strictPort: true },

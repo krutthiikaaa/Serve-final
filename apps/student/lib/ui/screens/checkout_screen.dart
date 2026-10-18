@@ -10,6 +10,7 @@ import '../../state/cart_controller.dart';
 import '../../theme/serve_theme.dart';
 import '../navigation.dart';
 import '../widgets/states.dart';
+import '../widgets/surface.dart';
 import 'payment_screen.dart';
 
 /// Pickup-only checkout. The order is created by the backend from the cart's
@@ -65,31 +66,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Checkout')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
         children: [
+          const _StepLabel('Pickup'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(color: ServeColors.oliveTint, borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.storefront_rounded, color: ServeColors.oliveDark),
-                  ),
+                  const IconTile(icon: Icons.storefront_rounded),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'PICKUP',
-                          style: TextStyle(color: ServeColors.muted, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1),
-                        ),
-                        Text(quote.canteen.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                        const SizedBox(height: 2),
-                        const Text('Collect in person at the counter. SERVE does not deliver.', style: TextStyle(color: ServeColors.muted)),
+                        Text(quote.canteen.name, style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text('Collect in person at the counter. SERVE does not deliver.', style: theme.textTheme.bodySmall),
                       ],
                     ),
                   ),
@@ -97,9 +91,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          Text('Order summary', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 10),
+          const SizedBox(height: 22),
+          const _StepLabel('Your order'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -107,38 +100,56 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 children: [
                   for (final line in quote.items)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.only(bottom: 12),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${line.quantity}×', style: const TextStyle(fontWeight: FontWeight.w800)),
-                          const SizedBox(width: 10),
-                          Expanded(child: Text(line.itemName)),
-                          Text(formatRupees(line.lineTotalPaise), style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 30),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: ServeColors.surfaceMuted, borderRadius: BorderRadius.circular(6)),
+                            child: Text(
+                              '${line.quantity}×',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(child: Text(line.itemName, style: const TextStyle(height: 1.4))),
+                          const SizedBox(width: 12),
+                          Text(formatRupees(line.lineTotalPaise), style: const TextStyle(fontWeight: FontWeight.w600, height: 1.4)),
                         ],
                       ),
                     ),
                   const Divider(),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text('Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-                      ),
-                      Text(formatRupees(quote.totalPaise), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
-                    ],
-                  ),
+                  const SizedBox(height: 14),
+                  SummaryRow(label: 'Total', value: formatRupees(quote.totalPaise), emphasis: true),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          Text('Payment', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 10),
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.lock_outline_rounded, color: ServeColors.oliveDark),
-              title: Text('Pay online', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text('Paid before the canteen starts preparing. No cash on delivery.'),
+          const SizedBox(height: 22),
+          const _StepLabel('Payment'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const IconTile(icon: Icons.lock_outline_rounded),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Pay online', style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text('Paid before the canteen starts preparing. No cash on delivery.', style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (_error != null) ...[
@@ -161,4 +172,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
   }
+}
+
+class _StepLabel extends StatelessWidget {
+  const _StepLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(left: 2, bottom: 8),
+    child: Semantics(
+      header: true,
+      child: Text(text.toUpperCase(), style: Theme.of(context).textTheme.labelSmall?.copyWith(color: ServeColors.muted)),
+    ),
+  );
 }

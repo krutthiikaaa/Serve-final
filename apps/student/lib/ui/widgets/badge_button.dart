@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/serve_theme.dart';
 
-/// Circular icon button with a count badge (cart, notifications).
+/// Round icon button with a count badge (cart, notifications).
 class BadgeIconButton extends StatelessWidget {
   const BadgeIconButton({
     super.key,
@@ -10,41 +10,51 @@ class BadgeIconButton extends StatelessWidget {
     required this.count,
     required this.onPressed,
     required this.semanticLabel,
-    this.filled = false,
+    this.highlight = false,
   });
 
   final IconData icon;
   final int count;
   final VoidCallback onPressed;
   final String semanticLabel;
-  final bool filled;
+
+  /// The cart: olive badge, and an olive tint once it holds something.
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
     final label = count > 0 ? '$semanticLabel, $count' : semanticLabel;
+    final active = highlight && count > 0;
     return Semantics(
       button: true,
       label: label,
       excludeSemantics: true,
       child: SizedBox(
-        width: 48,
-        height: 48,
+        width: 46,
+        height: 46,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Material(
-              color: filled ? ServeColors.olive : ServeColors.white,
-              shape: CircleBorder(side: filled ? BorderSide.none : const BorderSide(color: ServeColors.line)),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: onPressed,
-                child: SizedBox.expand(child: Icon(icon, color: filled ? ServeColors.white : ServeColors.ink, size: 22)),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: ShapeDecoration(
+                color: active ? ServeColors.oliveTint : ServeColors.white,
+                shape: CircleBorder(side: BorderSide(color: active ? ServeColors.oliveTint : ServeColors.line)),
+              ),
+              child: Material(
+                type: MaterialType.transparency,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onPressed,
+                  child: Center(child: Icon(icon, color: active ? ServeColors.oliveInk : ServeColors.ink, size: 22)),
+                ),
               ),
             ),
             if (count > 0)
               Positioned(
-                top: -2,
-                right: -2,
+                top: -3,
+                right: -3,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
@@ -53,14 +63,14 @@ class BadgeIconButton extends StatelessWidget {
                     constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
                     padding: const EdgeInsets.symmetric(horizontal: 5),
                     decoration: BoxDecoration(
-                      color: filled ? ServeColors.ink : ServeColors.orange,
+                      color: highlight ? ServeColors.oliveStrong : ServeColors.orangeStrong,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: ServeColors.paper, width: 2),
                     ),
                     alignment: Alignment.center,
                     child: Text(
                       count > 99 ? '99+' : '$count',
-                      style: const TextStyle(color: ServeColors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                      style: const TextStyle(color: ServeColors.white, fontSize: 11, fontWeight: FontWeight.w800, height: 1.1),
                     ),
                   ),
                 ),

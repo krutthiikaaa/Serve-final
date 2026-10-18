@@ -264,9 +264,9 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
     },
 
     /**
-     * DEVELOPMENT/TEST ONLY: simulate the customer completing checkout on the
-     * gateway, then run the normal verification path. Never mounted in
-     * production (and the mock provider is rejected there).
+     * MOCK MODE ONLY (development, tests, DEMO_MODE): simulate the customer
+     * completing checkout on the gateway, then run the normal verification
+     * path. Never available with a real payment provider.
      */
     async mockComplete(
       student: StudentPrincipal,

@@ -20,7 +20,7 @@ import { NotFoundError } from '../../lib/errors.js';
  * Stateless: the captured amount and outcome are encoded in the mock payment
  * id, which is covered by the HMAC signature, so a server restart between
  * initiation and completion does not strand a payment. Rejected by
- * configuration in production.
+ * configuration in production unless DEMO_MODE=true declares a demo.
  */
 const MOCK_PAYMENT_ID = /^mock_pay_(\d+)_(captured|failed)_[0-9a-f]{16}$/;
 

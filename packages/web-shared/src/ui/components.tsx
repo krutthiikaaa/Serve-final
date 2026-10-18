@@ -12,6 +12,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
+import { Link } from 'react-router-dom';
 import type { OrderStatus } from '@serve/contracts';
 import { errorMessage } from '../api';
 import { ORDER_STATUS_LABEL } from '../format';
@@ -28,31 +29,37 @@ import {
 
 /* ------------------------------------------------------------------ brand */
 
+/** The official SERVE tagline: brand moments only (sign-in screens). */
+export const SERVE_TAGLINE = 'Order. Track. Collect.';
+
 /**
- * Official SERVE logo slot. Place the transparent asset at
- * `public/brand/serve-logo.png` (see brand/README.md). Until it exists, a plain
- * text wordmark is shown — never a redrawn logo.
+ * The official SERVE logo (`public/brand/serve-logo.png`, transparent; see
+ * brand/README.md) with the SERVE name. Shown at its own proportions on light
+ * surfaces only, never boxed or redrawn. The path follows the app's base URL
+ * (`/staff/`, `/admin/` in builds).
  */
 export function Logo({
   size = 32,
   showWordmark = true,
+  stacked = false,
 }: {
   size?: number;
   showWordmark?: boolean;
+  stacked?: boolean;
 }) {
-  const [hasAsset, setHasAsset] = useState(true);
   return (
-    <span className="logo" aria-label="SERVE">
-      {hasAsset ? (
-        <img
-          src="/brand/serve-logo.png"
-          alt=""
-          width={size}
-          height={size}
-          onError={() => setHasAsset(false)}
-        />
+    <span className={`logo${stacked ? ' logo-stacked' : ''}`} role="img" aria-label="SERVE">
+      <img
+        src={`${import.meta.env.BASE_URL}brand/serve-logo.png`}
+        alt=""
+        height={size}
+        style={{ height: size, width: 'auto' }}
+      />
+      {showWordmark ? (
+        <span className="logo-wordmark" aria-hidden>
+          SERVE
+        </span>
       ) : null}
-      {showWordmark || !hasAsset ? <span className="logo-wordmark">SERVE</span> : null}
     </span>
   );
 }
@@ -119,6 +126,47 @@ export function Tag({
   children: ReactNode;
 }) {
   return <span className={`tag tag-${tone}`}>{children}</span>;
+}
+
+/* ------------------------------------------------------------ key figures */
+
+export interface Kpi {
+  label: string;
+  value: ReactNode;
+  icon?: ReactNode;
+  /** Draws the eye (e.g. orders waiting, requests to review). */
+  attention?: boolean;
+  /** Optional link to the page behind the number. */
+  to?: string;
+}
+
+/** One card split into columns: a page's key figures at a glance. */
+export function KpiStrip({ items, label }: { items: Kpi[]; label: string }) {
+  return (
+    <div className="kpis" role="group" aria-label={label} aria-live="polite">
+      {items.map((item) => {
+        const body = (
+          <>
+            <span className="kpi-label">
+              {item.icon}
+              {item.label}
+            </span>
+            <span className="kpi-value">{item.value}</span>
+          </>
+        );
+        const className = `kpi${item.attention ? ' kpi-attention' : ''}`;
+        return item.to ? (
+          <Link key={item.label} to={item.to} className={className}>
+            {body}
+          </Link>
+        ) : (
+          <div key={item.label} className={className}>
+            {body}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /* ---------------------------------------------------------- page states */

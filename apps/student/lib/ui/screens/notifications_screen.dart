@@ -122,68 +122,107 @@ class _NotificationsScreenState extends State<NotificationsScreen> with WidgetsB
         actions: [TextButton(onPressed: hasUnread ? _markAll : null, child: const Text('Mark all read'))],
       ),
       body: _loading && _items.isEmpty
-          ? const LoadingView(label: 'Loading notifications')
+          ? const SkeletonList(label: 'Loading notifications', count: 5, header: false)
           : _error != null && _items.isEmpty
           ? ErrorView(error: _error!, onRetry: _load)
           : _items.isEmpty
           ? const EmptyView(icon: Icons.notifications_none_rounded, title: "You're all caught up", body: 'Order updates will appear here.')
           : RefreshIndicator(
-              color: ServeColors.olive,
               onRefresh: _load,
               child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
                 itemCount: _items.length + (_cursor != null ? 1 : 0),
-                separatorBuilder: (_, _) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, i) {
                   if (i == _items.length) {
-                    return Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Center(
-                        child: TextButton(onPressed: _more, child: const Text('Load more')),
-                      ),
+                    return Center(
+                      child: TextButton(onPressed: _more, child: const Text('Load more')),
                     );
                   }
-                  final n = _items[i];
-                  return Semantics(
-                    label: n.isRead ? null : 'Unread',
-                    child: ListTile(
-                      onTap: () => _open(n),
-                      tileColor: n.isRead ? null : ServeColors.white,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                      leading: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: n.type == 'ORDER_READY' ? ServeColors.olive : ServeColors.oliveTint,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          n.type == 'ORDER_READY' ? Icons.shopping_bag_rounded : Icons.notifications_rounded,
-                          color: n.type == 'ORDER_READY' ? ServeColors.white : ServeColors.oliveDark,
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(n.title, style: TextStyle(fontWeight: n.isRead ? FontWeight.w600 : FontWeight.w800)),
-                      subtitle: Text(n.message),
-                      trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                  return _NotificationTile(notification: _items[i], onTap: () => _open(_items[i]));
+                },
+              ),
+            ),
+    );
+  }
+}
+
+class _NotificationTile extends StatelessWidget {
+  const _NotificationTile({required this.notification, required this.onTap});
+  final AppNotification notification;
+  final VoidCallback onTap;
+
+  static (IconData, Color, Color) _look(String type) => switch (type) {
+    'ORDER_READY' => (Icons.shopping_bag_rounded, ServeColors.white, ServeColors.oliveStrong),
+    'ORDER_PREPARING' => (Icons.local_fire_department_rounded, const Color(0xFF6E5100), const Color(0xFFFFF4D6)),
+    'PAYMENT_CONFIRMED' || 'ORDER_PLACED' => (Icons.receipt_long_rounded, ServeColors.orangeInk, ServeColors.orangeTint),
+    'ORDER_COLLECTED' => (Icons.check_circle_rounded, ServeColors.muted, ServeColors.surfaceMuted),
+    'ORDER_CANCELLED' => (Icons.cancel_rounded, ServeColors.danger, ServeColors.dangerTint),
+    _ => (Icons.notifications_rounded, ServeColors.oliveInk, ServeColors.oliveTint),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final n = notification;
+    final (icon, fg, bg) = _look(n.type);
+    return Semantics(
+      label: n.isRead ? null : 'Unread',
+      child: Material(
+        color: n.isRead ? ServeColors.paper : ServeColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ServeSpace.radiusCard),
+          side: BorderSide(color: n.isRead ? ServeColors.line : ServeColors.oliveTint, width: n.isRead ? 1 : 1.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+                  child: Icon(icon, color: fg, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(timeAgo(n.createdAt), style: const TextStyle(color: ServeColors.muted, fontSize: 12)),
+                          Expanded(
+                            child: Text(n.title, style: TextStyle(fontWeight: n.isRead ? FontWeight.w600 : FontWeight.w700, height: 1.3)),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(timeAgo(n.createdAt), style: Theme.of(context).textTheme.bodySmall),
                           if (!n.isRead) ...[
-                            const SizedBox(height: 6),
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(color: ServeColors.orange, shape: BoxShape.circle),
+                            const SizedBox(width: 6),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(color: ServeColors.orangeStrong, shape: BoxShape.circle),
+                              ),
                             ),
                           ],
                         ],
                       ),
-                    ),
-                  );
-                },
-              ),
+                      const SizedBox(height: 3),
+                      Text(n.message, style: const TextStyle(color: ServeColors.muted, height: 1.35)),
+                    ],
+                  ),
+                ),
+              ],
             ),
+          ),
+        ),
+      ),
     );
   }
 }

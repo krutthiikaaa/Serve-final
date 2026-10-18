@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ORDER_EVENT_NAMES } from '@serve/contracts';
 import {
@@ -11,6 +11,7 @@ import {
   IconPause,
   IconPlay,
   IconReceipt,
+  KpiStrip,
   SkeletonRows,
   StatusPill,
   formatRupees,
@@ -60,6 +61,8 @@ export function DashboardPage() {
     return <ErrorState error={dashboard.error} onRetry={() => void dashboard.reload()} />;
   const data = dashboard.data;
 
+  const accepting = data ? data.canteen.isActive && data.canteen.isAcceptingOrders : false;
+
   return (
     <>
       <div className="page-header">
@@ -67,69 +70,83 @@ export function DashboardPage() {
           <h1>Dashboard</h1>
           <p>Tonight at {data ? data.canteen.name : 'your canteen'}</p>
         </div>
-        {data ? (
-          <div className="header-actions">
-            <CanteenStatusTag canteen={data.canteen} />
-            {data.canteen.isActive ? (
-              data.canteen.isAcceptingOrders ? (
-                <Button
-                  variant="secondary"
-                  icon={<IconPause width={16} height={16} />}
-                  loading={toggling}
-                  onClick={() => void toggle(false)}
-                >
-                  Pause orders
-                </Button>
-              ) : (
-                <Button
-                  icon={<IconPlay width={16} height={16} />}
-                  loading={toggling}
-                  onClick={() => void toggle(true)}
-                >
-                  Resume orders
-                </Button>
-              )
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
-      {data && !data.canteen.isActive ? (
-        <div className="notice notice-danger" role="status">
-          This canteen has been deactivated by an admin. Students cannot place orders until it is
-          reactivated.
-        </div>
-      ) : data && !data.canteen.isAcceptingOrders ? (
-        <div className="notice" role="status">
-          Order-taking is paused. Students can browse the menu but cannot place new orders.
-        </div>
+      {data ? (
+        <section
+          className={`section status-banner ${accepting ? 'status-on' : 'status-off'}`}
+          aria-label="Canteen status"
+        >
+          <span className="status-banner-icon" aria-hidden>
+            {accepting ? <IconPlay width={18} height={18} /> : <IconPause width={18} height={18} />}
+          </span>
+          <div className="status-banner-text">
+            <div className="section-title">
+              <h2>{data.canteen.name}</h2>
+              <CanteenStatusTag canteen={data.canteen} />
+            </div>
+            <p className="muted">
+              {!data.canteen.isActive
+                ? 'This canteen has been deactivated by an admin. Students cannot place orders until it is reactivated.'
+                : data.canteen.isAcceptingOrders
+                  ? 'Students can place orders now. New paid orders appear on the order board instantly.'
+                  : 'Order-taking is paused. Students can browse the menu but cannot place new orders.'}
+            </p>
+          </div>
+          {data.canteen.isActive ? (
+            data.canteen.isAcceptingOrders ? (
+              <Button
+                variant="secondary"
+                icon={<IconPause width={16} height={16} />}
+                loading={toggling}
+                onClick={() => void toggle(false)}
+              >
+                Pause orders
+              </Button>
+            ) : (
+              <Button
+                icon={<IconPlay width={16} height={16} />}
+                loading={toggling}
+                onClick={() => void toggle(true)}
+              >
+                Resume orders
+              </Button>
+            )
+          ) : null}
+        </section>
       ) : null}
 
       {data ? (
-        <div className="stats" aria-live="polite">
-          <Stat
-            label="Awaiting preparation"
-            value={data.orders.awaitingPreparation}
-            icon={<IconBag width={16} height={16} />}
-            accent={data.orders.awaitingPreparation > 0}
-          />
-          <Stat
-            label="Preparing"
-            value={data.orders.preparing}
-            icon={<IconFlame width={16} height={16} />}
-          />
-          <Stat
-            label="Ready for pickup"
-            value={data.orders.ready}
-            icon={<IconCheck width={16} height={16} />}
-          />
-          <Stat
-            label="Today's orders"
-            value={data.today.orderCount}
-            icon={<IconReceipt width={16} height={16} />}
-          />
-          <Stat label="Today's revenue" value={formatRupees(data.today.revenuePaise)} />
-        </div>
+        <KpiStrip
+          label="Tonight's orders"
+          items={[
+            {
+              label: 'Awaiting preparation',
+              value: data.orders.awaitingPreparation,
+              icon: <IconBag width={16} height={16} />,
+              attention: data.orders.awaitingPreparation > 0,
+              to: '/orders',
+            },
+            {
+              label: 'Preparing',
+              value: data.orders.preparing,
+              icon: <IconFlame width={16} height={16} />,
+              to: '/orders',
+            },
+            {
+              label: 'Ready for pickup',
+              value: data.orders.ready,
+              icon: <IconCheck width={16} height={16} />,
+              to: '/orders',
+            },
+            {
+              label: "Today's orders",
+              value: data.today.orderCount,
+              icon: <IconReceipt width={16} height={16} />,
+            },
+            { label: "Today's revenue", value: formatRupees(data.today.revenuePaise) },
+          ]}
+        />
       ) : (
         <SkeletonRows rows={2} />
       )}
@@ -165,9 +182,7 @@ export function DashboardPage() {
                       <strong className="order-number">{order.orderNumber}</strong>
                     </td>
                     <td>{order.student.name}</td>
-                    <td className="muted">
-                      {order.items.reduce((n, item) => n + item.quantity, 0)} items
-                    </td>
+                    <td className="muted">{itemCount(order.items)}</td>
                     <td className="num">{formatRupees(order.totalPaise)}</td>
                     <td className="muted">{order.paidAt ? formatTime(order.paidAt) : '—'}</td>
                     <td>
@@ -190,24 +205,7 @@ export function DashboardPage() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  icon,
-  accent,
-}: {
-  label: string;
-  value: number | string;
-  icon?: ReactNode;
-  accent?: boolean;
-}) {
-  return (
-    <div className={`stat${accent ? ' stat-accent' : ''}`}>
-      <div className="stat-label">
-        {icon}
-        {label}
-      </div>
-      <div className="stat-value">{value}</div>
-    </div>
-  );
+function itemCount(items: { quantity: number }[]): string {
+  const n = items.reduce((sum, item) => sum + item.quantity, 0);
+  return `${n} ${n === 1 ? 'item' : 'items'}`;
 }

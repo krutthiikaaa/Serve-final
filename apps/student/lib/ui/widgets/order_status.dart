@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/format.dart';
 import '../../services/api/models.dart';
 import '../../theme/serve_theme.dart';
+import 'surface.dart';
 
 String orderStatusLabel(OrderStatus status) => switch (status) {
   OrderStatus.placed => 'Awaiting payment',
@@ -23,11 +24,11 @@ String orderStatusHeadline(OrderStatus status) => switch (status) {
 };
 
 ({Color bg, Color fg, IconData icon}) orderStatusStyle(OrderStatus status) => switch (status) {
-  OrderStatus.placed => (bg: const Color(0xFFF0EFE8), fg: ServeColors.muted, icon: Icons.schedule_rounded),
-  OrderStatus.paymentConfirmed => (bg: ServeColors.orangeTint, fg: const Color(0xFFA9461A), icon: Icons.receipt_long_rounded),
-  OrderStatus.preparing => (bg: const Color(0xFFFFF4D6), fg: const Color(0xFF7A5A00), icon: Icons.local_fire_department_rounded),
-  OrderStatus.ready => (bg: ServeColors.oliveTint, fg: ServeColors.oliveDark, icon: Icons.shopping_bag_rounded),
-  OrderStatus.collected => (bg: const Color(0xFFECEBE5), fg: ServeColors.muted, icon: Icons.check_circle_rounded),
+  OrderStatus.placed => (bg: ServeColors.surfaceMuted, fg: ServeColors.muted, icon: Icons.schedule_rounded),
+  OrderStatus.paymentConfirmed => (bg: ServeColors.orangeTint, fg: ServeColors.orangeInk, icon: Icons.receipt_long_rounded),
+  OrderStatus.preparing => (bg: const Color(0xFFFFF4D6), fg: const Color(0xFF6E5100), icon: Icons.local_fire_department_rounded),
+  OrderStatus.ready => (bg: ServeColors.oliveTint, fg: ServeColors.oliveInk, icon: Icons.shopping_bag_rounded),
+  OrderStatus.collected => (bg: ServeColors.surfaceMuted, fg: ServeColors.muted, icon: Icons.check_circle_rounded),
   OrderStatus.cancelled => (bg: ServeColors.dangerTint, fg: ServeColors.danger, icon: Icons.cancel_rounded),
 };
 
@@ -39,18 +40,37 @@ class OrderStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = orderStatusStyle(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: s.bg, borderRadius: BorderRadius.circular(20)),
+    return StatusPill(label: orderStatusLabel(status), icon: s.icon, foreground: s.fg, background: s.bg);
+  }
+}
+
+/// Five-segment progress (placed → collected) for compact order cards.
+class OrderProgressBar extends StatelessWidget {
+  const OrderProgressBar({super.key, required this.status, this.onDark = false});
+  final OrderStatus status;
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final reached = OrderTimeline.steps.indexOf(status);
+    return ExcludeSemantics(
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(s.icon, size: 14, color: s.fg),
-          const SizedBox(width: 5),
-          Text(
-            orderStatusLabel(status),
-            style: TextStyle(color: s.fg, fontWeight: FontWeight.w700, fontSize: 12),
-          ),
+          for (var i = 0; i < OrderTimeline.steps.length; i++) ...[
+            if (i > 0) const SizedBox(width: 4),
+            Expanded(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                height: 5,
+                decoration: BoxDecoration(
+                  color: i <= reached
+                      ? (onDark ? ServeColors.white : ServeColors.olive)
+                      : (onDark ? ServeColors.white.withValues(alpha: 0.3) : ServeColors.line),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -112,7 +132,7 @@ class _TimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = danger ? ServeColors.danger : (reached ? ServeColors.olive : ServeColors.line);
+    final color = danger ? ServeColors.danger : (reached ? ServeColors.oliveStrong : ServeColors.line);
     return Semantics(
       label: '$label${reached ? ', done' : ', pending'}${at != null ? ' at ${formatTime(at!)}' : ''}',
       excludeSemantics: true,
@@ -133,13 +153,13 @@ class _TimelineRow extends StatelessWidget {
                       color: reached ? color : ServeColors.white,
                       shape: BoxShape.circle,
                       border: Border.all(color: color, width: 2),
-                      boxShadow: current ? [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 0, spreadRadius: 5)] : null,
+                      boxShadow: current ? [BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 0, spreadRadius: 5)] : null,
                     ),
                     child: reached
                         ? Icon(danger ? Icons.close_rounded : Icons.check_rounded, size: current ? 14 : 10, color: ServeColors.white)
                         : null,
                   ),
-                  if (!isLast) Expanded(child: Container(width: 2, color: reached ? ServeColors.olive : ServeColors.line)),
+                  if (!isLast) Expanded(child: Container(width: 2, color: reached ? ServeColors.oliveStrong : ServeColors.line)),
                 ],
               ),
             ),
@@ -153,7 +173,7 @@ class _TimelineRow extends StatelessWidget {
                       child: Text(
                         label,
                         style: TextStyle(
-                          fontWeight: current ? FontWeight.w800 : FontWeight.w600,
+                          fontWeight: current ? FontWeight.w700 : FontWeight.w500,
                           color: reached ? ServeColors.ink : ServeColors.muted,
                           fontSize: current ? 16 : 15,
                         ),
