@@ -142,6 +142,20 @@ describe('parseEnv', () => {
       expect(issues).toEqual([expect.stringContaining('https')]);
     });
 
+    it('rejects the local development and test databases in production', () => {
+      for (const database of ['serve_dev', 'serve_test']) {
+        const issues = issuesOf({
+          ...validProd,
+          DATABASE_URL: `postgresql://serve:pw@db.internal:5432/${database}?schema=public`,
+        });
+        expect(issues).toEqual([expect.stringContaining(`local ${database} database`)]);
+      }
+      // A same-host production database is a supported setup (PostgreSQL on the VPS).
+      expect(
+        issuesOf({ ...validProd, DATABASE_URL: 'postgresql://serve:pw@localhost:5432/serve' }),
+      ).toEqual([]);
+    });
+
     it('rejects the Firebase Auth Emulator in production', () => {
       const issues = issuesOf({ ...validProd, FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' });
       expect(issues).toEqual([expect.stringContaining('FIREBASE_AUTH_EMULATOR_HOST')]);
