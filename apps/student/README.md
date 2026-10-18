@@ -40,6 +40,27 @@ No other settings are needed: the app reaches your computer as `10.0.2.2`.
 The debug build allows plain `http://` to your computer; release builds only
 talk to an `https://` backend.
 
+### Your own iPhone (Mac + Xcode)
+
+Not yet tried on a real iPhone; these are the standard Flutter steps.
+
+1. One-time signing: open `ios/Runner.xcworkspace` in Xcode → **Runner**
+   target → **Signing & Capabilities** → pick your **Team** (a free Apple ID
+   works). If the bundle id `app.serve.serveStudent` is taken, use your own,
+   e.g. `app.serve.serveStudent.<yourname>`.
+2. On the iPhone: **Settings → Privacy & Security → Developer Mode → On**
+   (iOS 16+), connect it by cable and trust the computer.
+3. Start the emulator with `npm run emulators:phone` and the backend as usual,
+   then `npm run dev:student -- -d <iphone-id> --lan` (`flutter devices`
+   shows the id). iPhone and Mac must be on the same Wi-Fi.
+4. Allow **Local Network** when iOS asks (debug builds talk to your Mac). If
+   you declined: Settings → SERVE → Local Network.
+5. "Untrusted Developer": **Settings → General → VPN & Device Management** →
+   trust your Apple ID. Builds signed with a free Apple ID expire after 7 days.
+
+After deployment, run it against the public domain in release mode instead:
+[docs/deployment.md](../../docs/deployment.md#student-app-on-an-iphone).
+
 ### In a browser (quick preview only)
 
 `npm run dev:student` opens it in Chrome on http://localhost:5555. The backend's
@@ -87,12 +108,13 @@ local backend.
 
 ## Demo deployment, installing on a phone, APK
 
-On the single SERVE domain the web build is served at `/` and can be added to
-an iPhone's home screen (Safari → Share → Add to Home Screen) or installed
-from Chrome on Android. It is the web build in standalone mode, not a native
-iOS app. `npm run build:web` (repository root) builds it; an optional Android
-APK needs `--dart-define=API_URL=https://YOUR_DOMAIN` and the real Firebase
-values. The web build does not register Flutter's service worker
+The native app is the real student app; it is not published to the App
+Store or Google Play. Against the deployed domain it runs from Xcode or
+`flutter run --release` on an iPhone, and as an APK on Android, with
+`--dart-define=API_URL=https://YOUR_DOMAIN` and the real Firebase values. The
+web build is served at `/` on the same domain for browser tests and demos
+(installable from Safari or Chrome). `npm run build:web` (repository root)
+builds it; it does not register Flutter's service worker
 (`web/flutter_bootstrap.js`). Details, signing and distribution:
 [docs/deployment.md](../../docs/deployment.md#8-installability).
 
@@ -122,9 +144,10 @@ works, what the client never sends).
 
 ## Logo
 
-Put the official transparent logo at `assets/images/serve_logo.png` (copy it
-from `/brand/`). Until then the app shows the text wordmark "SERVE"; the logo is
-never redrawn. Menu items without an `imageUrl` show a category placeholder.
+`assets/images/serve_logo.png` is the official logo from `/brand/` (same
+file; see [brand/README.md](../../brand/README.md)). It is never redrawn, boxed
+or recoloured; the app icons are made from it. Menu items without an
+`imageUrl` show a category placeholder.
 
 ## Tests
 

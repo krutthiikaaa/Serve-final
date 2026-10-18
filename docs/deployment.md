@@ -7,11 +7,17 @@ project owner's decision and accounts.
 
 | URL | What |
 |---|---|
-| `https://YOUR_DOMAIN/` | Student app (Flutter web build; installable on phones) |
+| `https://YOUR_DOMAIN/` | Student app, Flutter web build (browser testing and demos; installable) |
 | `https://YOUR_DOMAIN/staff/` | Staff dashboard (installable on desktop) |
 | `https://YOUR_DOMAIN/admin/` | Admin portal (installable on desktop) |
 | `https://YOUR_DOMAIN/api/…` | REST API |
 | `https://YOUR_DOMAIN/socket.io/` | Socket.IO realtime (WebSocket) |
+
+The student app's real form is the Flutter **mobile** app (Android, iOS). It
+is not published to the App Store or Google Play; testers run it from a
+development machine or an APK, pointed at the same domain
+([section 8](#8-installability)). The web build at `/` serves browser tests and
+demos.
 
 Payments stay **simulated** (mock provider, `DEMO_MODE=true`). No real money
 moves. See [section 9](#9-demo-payments).
@@ -19,7 +25,7 @@ moves. See [section 9](#9-demo-payments).
 ## 1. Architecture
 
 ```
-            Phone / laptop browser             Android APK (optional)
+            Phone / laptop browser          Flutter app (Android / iOS)
                      │  https://YOUR_DOMAIN           │
                      ▼                                │
    ┌───────────────────────────────────┐              │
@@ -84,7 +90,8 @@ domain this tells browsers to use https for every subdomain too.
 | A host for one long-running Node.js 22 process with WebSockets | A Linux VPS with Caddy or nginx, a Node platform-as-a-service that supports WebSockets and long-lived processes, or any container host (see the [Dockerfile](../Dockerfile)). Not serverless functions (no persistent WebSockets) and not a static-only host (the backend is required). |
 | PostgreSQL 16 | Managed (with automated backups) or on the VPS. |
 | A Firebase project | Free tier is enough. Separate from development; never `demo-…`. |
-| Optional: an Android signing key | Only for the APK ([section 8](#8-android-apk-optional)). |
+| Optional: an Android signing key | Only for the APK ([section 8](#android-apk-optional)). |
+| Optional: a Mac with Xcode and an Apple ID | Only to run the native app on an iPhone ([section 8](#student-app-on-an-iphone)). A free Apple ID is enough for testing on your own devices; TestFlight and the App Store need the paid Apple Developer Program, which this demo does not require. |
 
 ## 4. Firebase (production project)
 
@@ -100,8 +107,9 @@ domain this tells browsers to use https for every subdomain too.
 4. Optional hardening in Google Cloud → APIs & Services → Credentials, on the
    web API key: restrict **APIs** to Identity Toolkit API and Token Service
    API. A **website restriction** (`https://YOUR_DOMAIN/*`) also works for the
-   web apps, but would block the Android APK, which sends no referrer; use a
-   separate key for the APK if you add one.
+   web apps, but blocks the native Android and iOS builds, which call Firebase
+   Auth over REST without a referrer. Either restrict the key by API only, or
+   give the native builds a second key restricted to those two APIs.
 5. Authorized domains (Authentication → Settings) only matter for OAuth
    redirects, which SERVE does not use. Adding `YOUR_DOMAIN` is harmless.
 
@@ -120,7 +128,7 @@ prints values.
 |---|---|---|
 | `NODE_ENV` | `production` | no |
 | `PORT` | `5001` (or what the platform assigns; never 5000) | no |
-| `DATABASE_URL` | `postgresql://…` (add `sslmode=require` for a remote database) | **yes** |
+| `DATABASE_URL` | `postgresql://…` (add `sslmode=require` for a remote database). The local `serve_dev` / `serve_test` databases are rejected. | **yes** |
 | `CORS_ORIGINS` | `https://YOUR_DOMAIN` (https only; localhost rejected) | no |
 | `TRUST_PROXY` | number of proxies in front, usually `1` | no |
 | `WEB_ROOT` | absolute path of the `npm run build:web` output | no |
@@ -278,21 +286,47 @@ context (`.dockerignore` excludes env files and keys).
 
 ### Student app on an iPhone
 
-Safari → open `https://YOUR_DOMAIN/` → **Share → Add to Home Screen**. It
-opens full screen from the home-screen icon (manifest `display: standalone`
-plus `apple-mobile-web-app-capable`).
+**Native app (the real student app).** Needs a Mac with Xcode, the iPhone on
+a cable (or the same network), and an Apple ID:
 
-This is the Flutter **web** build running in Safari's engine, **not a native
-iOS app**: there is no App Store listing, live order updates arrive while the
-app is open (there are no push notifications), and iOS may clear a web app's
-stored data, after which the student signs in again. A native iOS build would
-need an Apple Developer account and TestFlight or the App Store, which this
-project does not include.
+1. Open `apps/student/ios/Runner.xcworkspace` in Xcode → **Runner** target →
+   **Signing & Capabilities** → choose your **Team**. With a free Apple ID,
+   change the bundle identifier if Xcode reports `app.serve.serveStudent` is
+   taken (for example `app.serve.serveStudent.<yourname>`).
+2. On the iPhone: **Settings → Privacy & Security → Developer Mode → On**
+   (iOS 16+), then trust the computer when asked.
+3. Run it against the deployed domain (release mode, real Firebase project):
+
+   ```bash
+   cd apps/student
+   flutter devices                       # note the iPhone's id
+   flutter run --release -d <iphone-id> \
+     --dart-define=API_URL=https://YOUR_DOMAIN \
+     --dart-define=FIREBASE_API_KEY='<web api key>' \
+     --dart-define=FIREBASE_PROJECT_ID='<project id>' \
+     --dart-define=STAFF_DASHBOARD_URL=https://YOUR_DOMAIN/staff/ \
+     --dart-define=ADMIN_PORTAL_URL=https://YOUR_DOMAIN/admin/
+   ```
+
+4. If iOS says "Untrusted Developer": **Settings → General → VPN & Device
+   Management** → trust your Apple ID.
+
+Apps signed with a free Apple ID stop opening after 7 days; run step 3 again.
+Before deployment, the same app runs against your computer instead:
+[apps/student/README.md](../apps/student/README.md#your-own-iphone-mac--xcode).
+
+**Web build (no Mac needed).** Safari → `https://YOUR_DOMAIN/` → **Share → Add
+to Home Screen**. It opens full screen (manifest `display: standalone` plus
+`apple-mobile-web-app-capable`). This is the Flutter web build in Safari's
+engine: live updates arrive while it is open (there are no push
+notifications), and iOS may clear a web app's stored data, after which the
+student signs in again.
 
 ### Student app on Android
 
-Chrome → `https://YOUR_DOMAIN/` → **⋮ → Install app** (or "Add to Home
-screen"). Chrome installs it as a standalone web app.
+Native: build the APK below and install it, or `flutter run --release -d
+<phone-id>` with the same `--dart-define` values as for the iPhone. Web: Chrome
+→ `https://YOUR_DOMAIN/` → **⋮ → Install app**.
 
 ### Staff dashboard and admin portal on desktop
 
@@ -304,12 +338,10 @@ Notes:
 
 - Chrome's installability check passed for all three apps in the
   single-domain test suite; real-device installs have not been tried.
-- **Icons:** the official SERVE logo has not been supplied yet, so the
-  install icons are still Flutter's default placeholder icons from
-  `apps/student/web/icons/` (no logo was drawn or generated). All three apps
-  use those files, served at `/icons/…`. When the official logo arrives,
-  replace `Icon-192.png`, `Icon-512.png`, `Icon-maskable-192.png`,
-  `Icon-maskable-512.png` and `favicon.png` there and rebuild.
+- **Icons:** made from the official SERVE logo (`brand/`), centred on the
+  warm off-white background: the web icons in `apps/student/web/icons/`
+  (all three apps use them, served at `/icons/…`), the Android launcher
+  icons and the iOS app icon. See [brand/README.md](../brand/README.md).
 - **One browser, one Firebase session for staff and admin:** `/staff/` and
   `/admin/` share an origin, so they share the Firebase sign-in. A staff
   member opening `/admin/` is told "You are signed in with a staff account"
@@ -360,8 +392,8 @@ describes: load `key.properties` into a `signingConfigs.create("release")`
 block and use it in `buildTypes.release`. `key.properties`, `*.jks` and
 `*.keystore` are already gitignored. Never commit them, and back up the
 keystore: losing it means users must uninstall to update. The Gradle change
-is not applied in this repository, and no APK was built during preparation
-(the Android SDK could not be downloaded there).
+is not applied in this repository, and no APK has been built yet: the
+preparation environment cannot download the Android SDK.
 
 **Distribution.** Share the file directly (a download link, Google Drive, or
 Firebase App Distribution). Testers must allow "Install unknown apps" for
@@ -444,7 +476,8 @@ Treat every "paid" order in a demo as simulated, and tell canteen staff so.
   exists only in mock mode, which production accepts only with
   `DEMO_MODE=true`.
 - CORS stays an exact allowlist (`https://YOUR_DOMAIN`), never `*`. The web
-  apps are same-origin and do not depend on it; the APK sends no Origin.
+  apps are same-origin and do not depend on it; the native apps send no
+  Origin.
 - Keep the Firebase Email/Password provider the only one enabled, rotate
   `PAYMENT_SECRET` if it leaks, and keep the service-account key only in the
   secret store.
@@ -491,8 +524,41 @@ The apps are same-origin, so `CORS_ORIGINS` needs no change for this.
 | Backend CORS defaults | `.env.example` | local dev | kept; production `https://YOUR_DOMAIN` |
 | Static hosting, page CSP | `backend/src/web/web-apps.ts` | production change | new, opt-in via `WEB_ROOT` |
 | Mock payments in production | `backend/src/config/env.ts` | production change | only with `DEMO_MODE=true` |
+| Local `serve_dev` / `serve_test` database in production | `backend/src/config/env.ts` | production change | rejected at startup |
+| `demo-` Firebase project in web builds | `apps/*/vite.config.ts`, `scripts/build-web.mjs` | production change | rejected |
 | Socket.IO path | default `/socket.io` on the same server | production | unchanged; WebSocket upgrades pass through Caddy/nginx |
 | `firebase.json` (127.0.0.1), `firebase.phone.json` (0.0.0.0) | repo root | local dev | kept |
 | E2E ports 5101/5273/5274/5455, emulator | `e2e/tests/support/constants.mjs` | test | kept |
 | Test fixtures with localhost | backend, web-shared, Flutter tests | test | kept |
 | Docker | none before | production | `Dockerfile`, `.dockerignore` added |
+
+## 14. Readiness
+
+**Verified on the local stack** (real backend process, PostgreSQL, Firebase
+Auth Emulator; no mocked HTTP, database or auth):
+
+- Student, staff and admin flows end to end, through the APIs and in real
+  browsers (Playwright drives the Flutter web build and both React apps).
+- PostgreSQL as the source of truth: registrations, menu changes, orders,
+  payments and staff status read back from the database, and unchanged after a
+  backend restart.
+- Realtime: order status to the right student only, paid orders to that
+  canteen's staff only, menu and pause/resume changes to students viewing the
+  canteen, approval, rejection, reassignment and deactivation to the staff
+  member; reconnects re-verify the token; expired, invalid and missing tokens
+  are refused.
+- Authorization on the server: students and staff are refused on admin routes,
+  staff only see their own canteen, client prices and role headers are ignored.
+- Production builds of all three apps, and the single-domain layout (`/`,
+  `/staff/`, `/admin/`, `/api`, `/socket.io`) served by one process.
+
+**Not verified yet:** a real deployment (domain, TLS, managed database, real
+Firebase project), `docker build`, the Android APK build, the iOS build, and
+any real phone. The native builds need the Android SDK or a Mac with Xcode,
+which the preparation environment does not have.
+
+**Before deploying, the owner provides:** the domain and DNS access; a host
+for one Node.js 22 process with WebSockets; PostgreSQL 16 with backups; a
+Firebase project (web API key, project id, service account); a new
+`PAYMENT_SECRET`; and the first admin's email. Then follow
+[section 7](#7-deployment-sequence).
