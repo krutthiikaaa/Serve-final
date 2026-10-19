@@ -59,7 +59,7 @@ Not yet tried on a real iPhone; these are the standard Flutter steps.
    trust your Apple ID. Builds signed with a free Apple ID expire after 7 days.
 
 After deployment, run it against the public domain in release mode instead:
-[docs/deployment.md](../../docs/deployment.md#student-app-on-an-iphone).
+[docs/deployment.md](../../docs/deployment.md#17-iphone-build).
 
 ### In a browser (quick preview only)
 
@@ -109,14 +109,16 @@ local backend.
 ## Demo deployment, installing on a phone, APK
 
 The native app is the real student app; it is not published to the App
-Store or Google Play. Against the deployed domain it runs from Xcode or
-`flutter run --release` on an iPhone, and as an APK on Android, with
-`--dart-define=API_URL=https://YOUR_DOMAIN` and the real Firebase values. The
-web build is served at `/` on the same domain for browser tests and demos
-(installable from Safari or Chrome). `npm run build:web` (repository root)
-builds it; it does not register Flutter's service worker
-(`web/flutter_bootstrap.js`). Details, signing and distribution:
-[docs/deployment.md](../../docs/deployment.md#8-installability).
+Store or Google Play. For the deployed domain, copy
+`config/production.example.json` to `config/production.json` (gitignored),
+fill in the domain and the Firebase values, and build with
+`--dart-define-from-file=config/production.json`: an APK on Android, or
+`flutter run --release` from Xcode on an iPhone. The web build is served at
+`/` on the same domain for browser tests and demos (installable from Safari or
+Chrome). `npm run build:web` (repository root) builds it; it does not register
+Flutter's service worker (`web/flutter_bootstrap.js`). Details, signing and
+distribution: [docs/deployment.md](../../docs/deployment.md#15-mobile-api-configuration)
+(steps 15–17).
 
 ## Structure
 

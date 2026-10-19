@@ -1,62 +1,549 @@
-# SERVE — Deployment (one domain, public demo)
+# SERVE — Deployment guide (one domain, public demo)
 
-This guide prepares SERVE for a **demo deployment on one public domain**.
-`YOUR_DOMAIN` is a placeholder throughout: no domain, server, database or
-Firebase project has been created for you. Every external step below needs the
-project owner's decision and accounts.
+This guide takes SERVE from this repository to a public demo on **one
+domain**, step by step. `YOUR_DOMAIN` is a placeholder throughout. No domain,
+server, database or Firebase project has been created for you, and no hosting
+provider has been chosen: every external step needs the owner's accounts and
+approval.
 
 | URL | What |
 |---|---|
 | `https://YOUR_DOMAIN/` | Student app, Flutter web build (browser testing and demos; installable) |
-| `https://YOUR_DOMAIN/staff/` | Staff dashboard (installable on desktop) |
-| `https://YOUR_DOMAIN/admin/` | Admin portal (installable on desktop) |
+| `https://YOUR_DOMAIN/staff/` | Staff dashboard (desktop/tablet; installable) |
+| `https://YOUR_DOMAIN/admin/` | Admin portal (desktop/tablet; installable) |
 | `https://YOUR_DOMAIN/api/…` | REST API |
-| `https://YOUR_DOMAIN/socket.io/` | Socket.IO realtime (WebSocket) |
+| `https://YOUR_DOMAIN/socket.io/` | Socket.IO realtime (WebSocket over TLS) |
 
 The student app's real form is the Flutter **mobile** app (Android, iOS). It
-is not published to the App Store or Google Play; testers run it from a
-development machine or an APK, pointed at the same domain
-([section 8](#8-installability)). The web build at `/` serves browser tests and
-demos.
-
-Payments stay **simulated** (mock provider, `DEMO_MODE=true`). No real money
-moves. See [section 9](#9-demo-payments).
-
-## 1. Architecture
+is not published to the App Store or Google Play: testers install an APK or
+run it from Xcode, pointed at the same domain (steps 15–17). Payments stay
+**simulated** (mock provider, `DEMO_MODE=true`); no real money moves
+([appendix B](#b-demo-payments-and-razorpay)).
 
 ```
-            Phone / laptop browser          Flutter app (Android / iOS)
-                     │  https://YOUR_DOMAIN           │
-                     ▼                                │
-   ┌───────────────────────────────────┐              │
-   │ TLS: Caddy / nginx / the platform │◄─────────────┘
-   │ (forwards everything, incl. WS)   │
-   └─────────────────┬─────────────────┘
-                     ▼ http://127.0.0.1:5001
-   ┌────────────────────────────────────────────────────────────┐
-   │ ONE Node.js process (backend, WEB_ROOT set)                │
-   │   /api/*        Express REST    (JSON 404 for unknown)     │
-   │   /socket.io/*  Socket.IO       (token auth, server rooms) │
-   │   /staff/*      WEB_ROOT/staff    → staff index.html       │
-   │   /admin/*      WEB_ROOT/admin    → admin index.html       │
-   │   /*            WEB_ROOT/student  → student index.html     │
-   └───────────────┬───────────────────────────┬────────────────┘
-                   ▼                           ▼
-              PostgreSQL              Firebase Auth (real project)
+                INTERNET (HTTPS)
+          ┌──────────────┴───────────────┐
+   phone / laptop browser       Flutter app (Android / iOS)
+          └──────────────┬───────────────┘
+                         ▼  https://YOUR_DOMAIN
+          ┌───────────────────────────────┐
+          │ Caddy (or nginx): TLS, passes │
+          │ everything incl. WebSockets   │
+          └──────────────┬────────────────┘
+                         ▼  serve:5001 / 127.0.0.1:5001
+   ┌──────────────────────────────────────────────────────────┐
+   │ ONE Node.js process (backend image, WEB_ROOT set)        │
+   │   /api/*        Express REST    (JSON 404 for unknown)   │
+   │   /socket.io/*  Socket.IO       (token auth, server rooms)│
+   │   /staff/*      staff dashboard (React build)            │
+   │   /admin/*      admin portal    (React build)            │
+   │   /*            student web app (Flutter web build)      │
+   └──────────────┬──────────────────────────┬────────────────┘
+                  ▼                          ▼
+             PostgreSQL 16           Firebase Auth (real project)
 ```
 
 - **One process, one port, one origin.** The backend serves the three built
-  apps itself when `WEB_ROOT` is set. A reverse proxy only terminates TLS.
-  Without `WEB_ROOT` (local development, tests) it is the API alone, exactly
-  as before.
-- **Same-origin calls.** The built apps call `/api` and `/socket.io` on the
-  origin that served them. No API URL is baked into the web builds, and CORS
-  does not apply to them.
-- **One instance.** Socket.IO runs without a Redis adapter, so run exactly
-  one backend instance (enough for a campus demo). Several instances would
-  need sticky sessions and the Socket.IO Redis adapter.
+  web apps itself. The reverse proxy only terminates TLS. The built apps call
+  `/api` and `/socket.io` on the origin that served them: no API URL is baked
+  into the web builds, and CORS does not apply to them.
+- **One instance.** Socket.IO runs without a Redis adapter, so run exactly one
+  backend instance (enough for a campus demo).
+- **Local development is unchanged:** student `:5555`, staff `:5173`, admin
+  `:5174`, backend `:5001` ([development.md](development.md)).
 
-## 2. Routing details
+**The whole deployment in commands** (Docker Compose on one server; each step
+is explained below):
+
+```bash
+# build machine (Node 22, Flutter 3.47)
+npm ci
+FIREBASE_API_KEY='<web api key>' FIREBASE_PROJECT_ID='<project id>' npm run build:web
+
+# server (Docker), repository checked out with dist/web copied in
+cp deploy/production.env.example deploy/serve.env      # then fill it in (step 6)
+export SERVE_DOMAIN=YOUR_DOMAIN
+docker compose -f deploy/docker-compose.yml build
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate npm run db:seed --workspace backend
+docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate \
+  npm run admin:create --workspace backend -- --email <admin email> --name "<name>" --confirm-production
+
+# any machine
+npm run smoke:deploy -- https://YOUR_DOMAIN
+```
+
+---
+
+## 1. Requirements
+
+| You need | Why |
+|---|---|
+| A domain | `YOUR_DOMAIN` (step 2) |
+| A Linux server with Docker (or Node.js 22) | Runs the backend and the proxy (step 3) |
+| PostgreSQL 16 | The database (step 4) |
+| A Firebase project | Sign-in for all three apps (step 5) |
+| A build machine with Node.js 22, npm and Flutter 3.47+ | Builds the web apps (Flutter is not inside the Docker image) |
+| Optional: Android SDK (Android Studio) | The student APK (step 16) |
+| Optional: a Mac with Xcode and an Apple ID | The student app on an iPhone (step 17) |
+
+## 2. Domain
+
+1. Buy or pick a domain (any registrar; a subdomain of an existing university
+   domain also works).
+2. In its DNS settings, add an **A** record (and **AAAA** for IPv6) pointing
+   at your server's public IP, or the CNAME your platform gives you.
+3. Make sure ports **80** and **443** reach the server (firewall / security
+   group). Caddy needs both to obtain the certificate.
+4. Wait until `nslookup YOUR_DOMAIN` returns the server's IP.
+
+## 3. Hosting / server
+
+SERVE needs **one long-running Node.js process that accepts WebSockets**, plus
+PostgreSQL. That rules out serverless functions (no persistent WebSockets) and
+static-only hosting (the backend is required). Any of these works; none has
+been chosen:
+
+- **A Linux VPS** (2 GB RAM is comfortable) running Docker Compose: the SERVE
+  container behind a Caddy container ([deploy/docker-compose.yml](../deploy/docker-compose.yml)).
+  This is the path this guide follows.
+- **The same VPS without Docker:** Node.js 22 under systemd, with Caddy or
+  nginx installed on the host (steps 9–10 show both).
+- **A container platform** that supports WebSockets and long-lived
+  containers: run the SERVE image ([Dockerfile](../Dockerfile)) and let the
+  platform terminate TLS.
+
+## 4. PostgreSQL
+
+Use **PostgreSQL 16**, either a managed database (automated backups and
+point-in-time recovery included; recommended) or PostgreSQL on the server.
+
+1. Create a database (e.g. `serve`) and a dedicated user that owns it.
+2. Build the connection string:
+   `postgresql://<user>:<password>@<host>:5432/serve?schema=public`.
+   For a database on another machine append `&sslmode=require`. From inside
+   Docker Compose, a database on the host itself is `host.docker.internal`
+   (PostgreSQL must then listen on the Docker bridge, not only 127.0.0.1).
+3. It goes into `DATABASE_URL` (step 6). The local development databases
+   `serve_dev` and `serve_test` are rejected in production.
+
+PostgreSQL is the only source of truth: accounts, roles, canteens, menus,
+orders and payments. Backups: step 20.
+
+## 5. Firebase production project
+
+1. Create a project in the Firebase console. **Authentication → Sign-in
+   method:** enable **Email/Password** only.
+2. **Project settings → General → Your apps → Add app → Web.** Note the
+   public `apiKey` and `projectId`. They go into the web build (step 8) and the
+   mobile app (step 15). They are public by design.
+3. **Project settings → Service accounts → Generate new private key.** This
+   JSON is a **secret**. Copy `client_email` and `private_key` into the
+   backend environment (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`), then
+   delete the downloaded file. Never commit it or put it in a frontend build.
+4. Optional hardening (Google Cloud → APIs & Services → Credentials, the web
+   API key): restrict **APIs** to Identity Toolkit API and Token Service API.
+   A **website restriction** (`https://YOUR_DOMAIN/*`) works for the web apps
+   but blocks the native Android and iOS builds, which call Firebase Auth over
+   REST without a referrer. Either restrict by API only, or give the native
+   builds a second key restricted to those two APIs.
+5. Authorized domains only matter for OAuth redirects, which SERVE does not
+   use. Adding `YOUR_DOMAIN` is harmless.
+
+The backend verifies every Firebase ID token (including revocation) and reads
+roles, staff approval and canteen assignment from PostgreSQL only. The
+emulator demo accounts do not exist in a real project; the script that
+creates them refuses to run outside development.
+
+## 6. Environment variables
+
+### Backend (secret; on the server only)
+
+Copy [deploy/production.env.example](../deploy/production.env.example) to
+`deploy/serve.env` (Docker Compose; gitignored) or `/etc/serve/serve.env`
+(systemd; `chmod 600`) and fill it in. Validation runs at startup, names any
+wrong variable and never prints values.
+
+| Variable | Value | Secret |
+|---|---|---|
+| `NODE_ENV` | `production` (set by the image and compose) | no |
+| `PORT` | `5001` (never 5000) | no |
+| `DATABASE_URL` | step 4 | **yes** |
+| `CORS_ORIGINS` | `https://YOUR_DOMAIN` (https only; localhost rejected) | no |
+| `TRUST_PROXY` | number of proxies in front, `1` with Caddy | no |
+| `WEB_ROOT` | built web apps; `/app/web` in the image (compose sets it) | no |
+| `FIREBASE_PROJECT_ID` | step 5 (`demo-` rejected) | no |
+| `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | step 5.3; the key on one line with `\n` for newlines | **yes** |
+| `PAYMENT_MODE` | `mock` | no |
+| `DEMO_MODE` | `true` (required for `mock` in production) | no |
+| `PAYMENT_SECRET` | new `openssl rand -hex 32` for this deployment | **yes** |
+| `LOG_LEVEL` | `info` | no |
+| `STUDENT_EMAIL_DOMAINS` | optional allowlist, e.g. your university domain | no |
+| `FIREBASE_AUTH_EMULATOR_HOST` | **must be unset** (rejected) | — |
+| `RATE_LIMIT_*`, `SENSITIVE_RATE_LIMIT_*` | optional; defaults 300 and 20 requests per minute | no |
+
+Production refuses to start with localhost or plain-http CORS origins, the
+emulator, a `demo-` project, the local development databases, or mock payments
+without `DEMO_MODE=true`. Never copy development values (`backend/.env`, the
+dev `PAYMENT_SECRET`, dev database passwords).
+
+### Web build (public; build machine)
+
+| Variable | Value |
+|---|---|
+| `FIREBASE_API_KEY` | step 5.2 |
+| `FIREBASE_PROJECT_ID` | step 5.2 |
+| `FIREBASE_AUTH_DOMAIN` | optional (defaults to `<projectId>.firebaseapp.com`) |
+| `API_URL` | **leave unset** (same origin). Only for a backend on another https origin. |
+
+Socket.IO always uses the same origin as the API.
+
+### Student mobile app (public; build machine)
+
+`apps/student/config/production.json`, copied from
+[production.example.json](../apps/student/config/production.example.json)
+(step 15).
+
+### Never commit
+
+`.env`, `.env.*` (except `.env.example`), `deploy/serve.env`,
+`apps/student/config/production.json`, service-account JSON, `*.pem`, `*.key`,
+keystores and `key.properties`. All are gitignored, and `.dockerignore` keeps
+them out of images.
+
+## 7. Database migration
+
+Migrations are forward-only SQL files in `backend/prisma/migrations`. Apply
+them with `prisma migrate deploy`, which never resets or drops data. **Take a
+backup first** once the database holds data (step 20).
+
+```bash
+# Docker Compose (the tools image has the Prisma CLI):
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate
+
+# Without Docker (production environment loaded, from the repository root):
+npm run prisma:migrate:deploy --workspace backend
+```
+
+Then, once:
+
+```bash
+# Catalogue: hostels, canteens, demo menus. Idempotent, never changes existing
+# rows; allowed in production only with DEMO_MODE=true.
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate npm run db:seed --workspace backend
+#   (without Docker: npm run db:seed --workspace backend)
+```
+
+Never run `prisma migrate dev`, `prisma migrate reset` or `prisma db push`
+against production. The Prisma configuration refuses them with
+`NODE_ENV=production` or on any database whose name does not end in `_dev` or
+`_test`. The test suites only ever reset databases ending in `_test`.
+
+## 8. Docker build
+
+The image contains the backend, its production dependencies and the three
+built web apps (`dist/web`). Flutter is not in the image, so build the web apps
+first, on the build machine:
+
+```bash
+npm ci
+FIREBASE_API_KEY='<web api key>' FIREBASE_PROJECT_ID='<project id>' npm run build:web
+```
+
+`npm run build:web` builds the staff and admin apps (Vite, base `/staff/` and
+`/admin/`) and the student app (`flutter build web --release --base-href /
+--no-web-resources-cdn --csp`) into `dist/web/{student,staff,admin}`. It
+refuses `demo-` projects and non-https `API_URL`s.
+
+Then, with `dist/web` next to the repository on the server (or build there):
+
+```bash
+export SERVE_DOMAIN=YOUR_DOMAIN
+docker compose -f deploy/docker-compose.yml build                  # runtime image: serve:latest
+docker compose -f deploy/docker-compose.yml --profile tools build  # tools image: serve-tools:latest
+```
+
+The runtime image is multi-stage: production dependencies only, runs as the
+unprivileged `node` user, has a health check, and contains no env files or
+keys (`.dockerignore`). It is about 1 GB, mostly `node_modules`. iOS and
+Android builds are never part of it.
+
+## 9. Starting the backend
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml ps        # serve: healthy, caddy: running
+docker compose -f deploy/docker-compose.yml logs -f serve
+```
+
+The log shows `SERVE backend listening on port 5001` and a `DEMO_MODE`
+warning. Caddy starts once the backend reports healthy.
+
+Without Docker: `npm run build --workspace backend`, then run
+`node backend/dist/server.js` with the environment from step 6, for example
+under systemd:
+
+```ini
+[Unit]
+Description=SERVE backend
+After=network-online.target
+
+[Service]
+WorkingDirectory=/srv/serve
+EnvironmentFile=/etc/serve/serve.env   # chmod 600, owned by root
+ExecStart=/usr/bin/node backend/dist/server.js
+User=serve
+Restart=on-failure
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Set `WEB_ROOT=/srv/serve/dist/web` in that file.
+
+## 10. Reverse proxy
+
+**Caddy** ([deploy/Caddyfile](../deploy/Caddyfile)) is the default. It
+forwards everything (including Socket.IO WebSocket upgrades and
+`X-Forwarded-*` headers) to the backend.
+
+- With Docker Compose: nothing to edit. `SERVE_DOMAIN` (step 8) is the site
+  address and the upstream is the `serve` container.
+- With Caddy on the host: replace `YOUR_DOMAIN` in the Caddyfile with your
+  domain (or set `SERVE_DOMAIN` in Caddy's environment); the default upstream
+  is `127.0.0.1:5001`.
+
+**nginx** ([deploy/nginx.conf](../deploy/nginx.conf)) is the alternative:
+replace `YOUR_DOMAIN` everywhere. It passes WebSocket upgrades and keeps
+connections open longer than Socket.IO's 25-second ping.
+
+Either way the backend runs with `TRUST_PROXY=1`, so rate limits see real
+client IPs.
+
+## 11. HTTPS
+
+- **Caddy** obtains and renews a Let's Encrypt certificate automatically once
+  DNS points at the server and ports 80/443 are open. Certificates live in the
+  `caddy_data` volume.
+- **nginx:** `certbot certonly --nginx -d YOUR_DOMAIN`, then reload nginx.
+- The backend sends HSTS with `includeSubDomains` (on an apex domain, browsers
+  then use https for every subdomain) and `upgrade-insecure-requests`.
+  Socket.IO uses `wss://` automatically on an https page.
+
+## 12. Staff URL
+
+`https://YOUR_DOMAIN/staff/` (`/staff` redirects). Staff create an account at
+`/staff/create-account`, request access to a canteen, and wait for an admin's
+approval; they see only their assigned canteen. Chrome or Edge can install it
+as a desktop app (address bar → Install).
+
+## 13. Admin URL
+
+`https://YOUR_DOMAIN/admin/`. There is no public admin sign-up. Create the
+first admin's user in Firebase console → Authentication → Add user, then link
+it in PostgreSQL:
+
+```bash
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate \
+  npm run admin:create --workspace backend -- --email <admin email> --name "<name>" --confirm-production
+#   (without Docker: npm run admin:create --workspace backend -- … --confirm-production)
+```
+
+The script never accepts passwords in production. `/staff/` and `/admin/`
+share a browser sign-in (same origin); use separate browser profiles to be
+signed in as staff and admin at once.
+
+## 14. Student web URL
+
+`https://YOUR_DOMAIN/` serves the Flutter web build of the student app, for
+browser testing and demos. It can be added to a phone's home screen (Safari
+→ Share → Add to Home Screen; Chrome → Install app). It gets live updates
+while open; there are no push notifications.
+
+## 15. Mobile API configuration
+
+The native student app reads its configuration at build time. Copy the
+template and fill in your values (all public):
+
+```bash
+cd apps/student
+cp config/production.example.json config/production.json   # gitignored
+```
+
+| Key | Value |
+|---|---|
+| `API_URL` | `https://YOUR_DOMAIN` (REST under `/api`, Socket.IO at `/socket.io`) |
+| `FIREBASE_API_KEY`, `FIREBASE_PROJECT_ID` | step 5.2 (see 5.4 for key restrictions) |
+| `STAFF_DASHBOARD_URL`, `ADMIN_PORTAL_URL` | `https://YOUR_DOMAIN/staff/`, `https://YOUR_DOMAIN/admin/` |
+
+Pass it with `--dart-define-from-file=config/production.json`. Release builds
+refuse to start with the emulator, a `demo-` project, or a non-https or
+localhost API. Without these values (plain `flutter run`) the app keeps its
+development defaults: backend `:5001` and the Auth Emulator.
+
+## 16. Android APK build
+
+Needs the Android SDK (Android Studio). From `apps/student`:
+
+```bash
+flutter build apk --release --dart-define-from-file=config/production.json
+# → build/app/outputs/flutter-apk/app-release.apk (gitignored)
+```
+
+The main manifest declares `INTERNET`; release builds allow https only.
+
+**Signing.** As generated by Flutter, release builds are signed with the build
+machine's **debug key**: fine for side-loading a demo, but an APK signed on
+another machine cannot update it. For a lasting demo, create your own key:
+
+```bash
+keytool -genkey -v -keystore ~/serve-upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias serve
+```
+
+then `apps/student/android/key.properties` (`storePassword`, `keyPassword`,
+`keyAlias=serve`, `storeFile=…`) and the release `signingConfig` in
+`android/app/build.gradle.kts` as
+[Flutter's signing guide](https://docs.flutter.dev/deployment/android#sign-the-app)
+describes. Keystores and `key.properties` are gitignored; back the keystore up.
+
+**Distribution.** Share the file directly (a download link, Google Drive, or
+Firebase App Distribution). Testers allow "Install unknown apps". Do not
+commit APKs.
+
+## 17. iPhone build
+
+Needs a Mac with Xcode, the iPhone on a cable, and an Apple ID (free is
+enough for your own devices). No App Store or TestFlight is involved.
+
+1. Open `apps/student/ios/Runner.xcworkspace` in Xcode → **Runner** target →
+   **Signing & Capabilities** → choose your **Team**. With a free Apple ID,
+   change the bundle identifier if `app.serve.serveStudent` is taken (e.g.
+   `app.serve.serveStudent.<yourname>`).
+2. On the iPhone: **Settings → Privacy & Security → Developer Mode → On**
+   (iOS 16+), and trust the computer.
+3. From `apps/student`:
+
+   ```bash
+   flutter devices                      # note the iPhone's id
+   flutter run --release -d <iphone-id> --dart-define-from-file=config/production.json
+   ```
+
+4. "Untrusted Developer": **Settings → General → VPN & Device Management** →
+   trust your Apple ID.
+
+Apps signed with a free Apple ID stop opening after 7 days; repeat step 3.
+Before deployment the same app runs against your computer instead
+([apps/student/README.md](../apps/student/README.md#your-own-iphone-mac--xcode)).
+
+## 18. Production testing
+
+Run both checks after every deployment.
+
+**Read-only smoke test** (never signs in or writes):
+
+```bash
+npm run smoke:deploy -- https://YOUR_DOMAIN
+```
+
+It checks https, `/api/health` and `/api/health/db`, all three apps and a deep
+link each, the `/staff` redirect, the manifests and icons, page security
+headers, and a Socket.IO WebSocket upgrade (an unauthenticated socket must be
+refused).
+
+**Signed-in acceptance test** (needs accounts; writes a little data):
+
+```bash
+FIREBASE_API_KEY='<web api key>' \
+ACCEPT_STUDENT_EMAIL=… ACCEPT_STUDENT_PASSWORD=… \
+ACCEPT_STAFF_EMAIL=… ACCEPT_STAFF_PASSWORD=… \
+ACCEPT_ADMIN_EMAIL=… ACCEPT_ADMIN_PASSWORD=… \
+ACCEPT_APPLICANT_EMAIL=… ACCEPT_APPLICANT_PASSWORD=… \
+npm run acceptance:deploy -- https://YOUR_DOMAIN
+```
+
+Accounts: a registered student, an approved staff member whose canteen is
+accepting orders, an admin, and optionally a throwaway Firebase account for
+the approval check (it ends deactivated). The test checks:
+
+- unauthenticated requests and sockets are refused; a student cannot use
+  staff or admin APIs; staff cannot use admin APIs;
+- student: canteen → menu → cart quote → order → demo payment;
+- staff receive the paid order live and move it PREPARING → READY →
+  COLLECTED; the student sees each step live; tracking and history agree;
+- staff mark a menu item unavailable and the student's menu updates live
+  (the item is restored afterwards);
+- admin: dashboard, staff, canteens, change requests; with an applicant, the
+  admin approves an access request and the applicant is told live.
+
+Then walk the demo by hand in the apps: a staff member signs up at
+`/staff/create-account`, the admin approves them, a student registers on a
+phone, orders, pays with the demo gateway and collects.
+
+## 19. Rollback
+
+Keep the previous release until the new one is verified.
+
+- **Docker:** before building, tag the running image: `docker tag
+  serve:latest serve:previous`. To roll back, `docker tag serve:previous
+  serve:latest` and `docker compose -f deploy/docker-compose.yml up -d serve`.
+- **Without Docker:** deploy each release into its own folder (e.g.
+  `/srv/serve/releases/<date>`) with `/srv/serve/current` as a symlink; roll
+  back by pointing the symlink at the previous folder and restarting the
+  service.
+- **Database:** migrations are forward-only. A rollback of the code is safe
+  while the previous release still works with the newer schema (true for
+  additive migrations). Undoing a migration means restoring the backup taken
+  before it (step 20); never edit `_prisma_migrations` by hand.
+- **Web apps** reload the new or old version on the next page load (pages are
+  served `no-cache`). Students using the mobile app keep their installed
+  build; an API change they depend on needs a new build.
+
+## 20. Backup considerations
+
+- **PostgreSQL holds everything that matters.** Managed databases: turn on
+  daily backups with point-in-time recovery. Self-hosted: a scheduled dump
+  copied off the server, for example:
+
+  ```bash
+  pg_dump --format=custom --file=serve-$(date +%F).dump "$DATABASE_URL_WITHOUT_SCHEMA_PARAM"
+  pg_restore --clean --if-exists --dbname=<target> serve-YYYY-MM-DD.dump
+  ```
+
+  (`pg_dump` does not accept Prisma's `?schema=public`; drop that part.)
+- **Test a restore** into a scratch database before you rely on backups.
+- **Firebase Auth** holds the sign-in accounts (emails and passwords); it is
+  managed by Google. `firebase auth:export` can export users if you need a
+  copy.
+- **Not worth backing up:** the Docker images and `dist/web` (rebuildable from
+  the repository) and Caddy's certificates (re-issued automatically).
+- Keep the env file and the service-account key in your secret store, not in
+  backups that others can read.
+
+## 21. Security checklist
+
+- [ ] `deploy/serve.env` (or `/etc/serve/serve.env`) is readable by root only and not in Git
+- [ ] New `PAYMENT_SECRET`; no development values anywhere in production
+- [ ] Service-account JSON deleted after copying; key only in the secret store
+- [ ] `CORS_ORIGINS=https://YOUR_DOMAIN` exactly; `TRUST_PROXY` = number of proxies
+- [ ] `FIREBASE_AUTH_EMULATOR_HOST` unset; Email/Password the only sign-in provider
+- [ ] Firebase web API key restricted to Identity Toolkit + Token Service (step 5.4)
+- [ ] Database user owns only the SERVE database; remote databases use `sslmode=require`
+- [ ] Ports 80/443 open; the backend port (5001) and PostgreSQL not exposed publicly
+- [ ] Backups on, and one restore tested
+- [ ] `npm run smoke:deploy` and `npm run acceptance:deploy` pass
+- [ ] Everyone knows payments are simulated (`DEMO_MODE=true`)
+
+Built in already: every request and socket verifies the Firebase token and
+reads the role from PostgreSQL; staff see only their canteen; prices and
+totals are computed on the server; strict input validation, body-size limits,
+rate limits, Helmet headers and a page CSP; errors never expose internals;
+logs redact tokens and secrets; startup refuses unsafe production settings.
+
+---
+
+## A. Routing and headers
 
 | Request | Result |
 |---|---|
@@ -64,7 +551,7 @@ moves. See [section 9](#9-demo-payments).
 | `/staff/orders` (any path without a file extension) | the staff app's `index.html`, so a refresh on a deep link works. Same for `/admin/…` and the student app at `/…` |
 | `/staff/assets/index-AbC123.js` | the file, `Cache-Control: public, max-age=31536000, immutable` (Vite hashes the names) |
 | other files (`index.html`, `manifest.json`, Flutter's `main.dart.js`, icons) | `Cache-Control: no-cache`: revalidated on every load, so a redeploy is picked up on the next reload |
-| a missing file with an extension, e.g. `/staff/assets/missing.js` | JSON 404, never an HTML page |
+| a missing file with an extension | JSON 404, never an HTML page |
 | `/api/unknown` | JSON 404 `ROUTE_NOT_FOUND` |
 | dotfiles, `..` paths | never served |
 | methods other than GET/HEAD outside `/api` | 404 |
@@ -73,492 +560,126 @@ Security headers on the pages (from `backend/src/web/web-apps.ts`):
 `Content-Security-Policy` with scripts only from this origin
 (`'wasm-unsafe-eval'` lets the Flutter renderer compile its WebAssembly),
 network access to this origin and https/wss endpoints (Firebase Auth's REST API,
-and menu images, which staff may host anywhere), `frame-ancestors 'none'`,
-`object-src 'none'`, `upgrade-insecure-requests` in production;
-`X-Frame-Options: DENY`; `Referrer-Policy: strict-origin-when-cross-origin`
-(Firebase sees your origin, so an API key restricted to `https://YOUR_DOMAIN/*`
-works); HSTS. `/api` keeps its stricter `default-src 'none'` policy.
-
-Note: the backend's HSTS header includes `includeSubDomains`. On an apex
-domain this tells browsers to use https for every subdomain too.
-
-## 3. What you need (owner decisions — nothing here was created)
-
-| Item | Notes |
-|---|---|
-| A domain | `YOUR_DOMAIN`. Any registrar; a subdomain of an existing university domain also works. |
-| A host for one long-running Node.js 22 process with WebSockets | A Linux VPS with Caddy or nginx, a Node platform-as-a-service that supports WebSockets and long-lived processes, or any container host (see the [Dockerfile](../Dockerfile)). Not serverless functions (no persistent WebSockets) and not a static-only host (the backend is required). |
-| PostgreSQL 16 | Managed (with automated backups) or on the VPS. |
-| A Firebase project | Free tier is enough. Separate from development; never `demo-…`. |
-| Optional: an Android signing key | Only for the APK ([section 8](#android-apk-optional)). |
-| Optional: a Mac with Xcode and an Apple ID | Only to run the native app on an iPhone ([section 8](#student-app-on-an-iphone)). A free Apple ID is enough for testing on your own devices; TestFlight and the App Store need the paid Apple Developer Program, which this demo does not require. |
-
-## 4. Firebase (production project)
-
-1. Create a project in the Firebase console. Under **Authentication → Sign-in
-   method**, enable **Email/Password** only.
-2. **Project settings → General → Your apps → Add app → Web**: note the public
-   `apiKey` and `projectId`. These are public values; they go into the web
-   build (`npm run build:web`).
-3. **Project settings → Service accounts → Generate new private key**: this
-   JSON is a secret. Copy `client_email` and `private_key` into the backend's
-   environment (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`) and delete the
-   downloaded file. Never commit it or put it in a frontend build.
-4. Optional hardening in Google Cloud → APIs & Services → Credentials, on the
-   web API key: restrict **APIs** to Identity Toolkit API and Token Service
-   API. A **website restriction** (`https://YOUR_DOMAIN/*`) also works for the
-   web apps, but blocks the native Android and iOS builds, which call Firebase
-   Auth over REST without a referrer. Either restrict the key by API only, or
-   give the native builds a second key restricted to those two APIs.
-5. Authorized domains (Authentication → Settings) only matter for OAuth
-   redirects, which SERVE does not use. Adding `YOUR_DOMAIN` is harmless.
-
-The emulator demo accounts (`npm run db:seed:dev-users`) do not exist in a
-real project, and that script refuses to run outside development.
-
-## 5. Environment checklist
-
-### Backend runtime (secrets: the host's secret manager or environment settings)
-
-Template: [deploy/production.env.example](../deploy/production.env.example).
-Validation runs at startup, names the variable that is wrong, and never
-prints values.
-
-| Variable | Value | Secret |
-|---|---|---|
-| `NODE_ENV` | `production` | no |
-| `PORT` | `5001` (or what the platform assigns; never 5000) | no |
-| `DATABASE_URL` | `postgresql://…` (add `sslmode=require` for a remote database). The local `serve_dev` / `serve_test` databases are rejected. | **yes** |
-| `CORS_ORIGINS` | `https://YOUR_DOMAIN` (https only; localhost rejected) | no |
-| `TRUST_PROXY` | number of proxies in front, usually `1` | no |
-| `WEB_ROOT` | absolute path of the `npm run build:web` output | no |
-| `FIREBASE_PROJECT_ID` | the real project id (`demo-` rejected) | no |
-| `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | service account | **yes** |
-| `PAYMENT_MODE` | `mock` | no |
-| `DEMO_MODE` | `true` (required for `mock` in production) | no |
-| `PAYMENT_SECRET` | new `openssl rand -hex 32` for this deployment | **yes** |
-| `LOG_LEVEL` | `info` | no |
-| `STUDENT_EMAIL_DOMAINS` | optional allowlist, e.g. your university domain | no |
-| `FIREBASE_AUTH_EMULATOR_HOST` | **must be unset** (rejected in production) | — |
-
-`TRUST_PROXY` matters: rate limits are per client IP. Too low and every user
-shares the proxy's IP (and its limit); too high and clients can spoof
-`X-Forwarded-For`. Set it to the exact number of proxies.
-
-Never copy development values (`backend/.env`, the dev `PAYMENT_SECRET`, dev
-database passwords) into production.
-
-### Web build (public values only; build machine or CI)
-
-| Variable | Value |
-|---|---|
-| `FIREBASE_API_KEY` | the web `apiKey` from step 4.2 |
-| `FIREBASE_PROJECT_ID` | the project id |
-| `FIREBASE_AUTH_DOMAIN` | optional (defaults to `<projectId>.firebaseapp.com`) |
-| `API_URL` | **leave unset** for the single domain (same origin). Only for a backend on a different https origin. |
-
-## 6. Build
-
-On a machine with Node.js 22, npm and Flutter 3.47+:
-
-```bash
-npm ci
-FIREBASE_API_KEY='<web api key>' FIREBASE_PROJECT_ID='<project id>' npm run build:web
-npm run build --workspace backend
-```
-
-`npm run build:web` (`scripts/build-web.mjs`):
-
-- builds the staff and admin apps with Vite (`base` `/staff/` and `/admin/`,
-  router basename to match) and the student app with
-  `flutter build web --release --base-href / --no-web-resources-cdn --csp`,
-  so Flutter's renderer is served from your domain and the build contains no
-  `eval`;
-- puts them in `dist/web/{student,staff,admin}` (gitignored): this folder
-  is `WEB_ROOT`;
-- refuses `demo-` projects and non-https `API_URL`s, and refuses to delete an
-  output folder it did not create.
-
-`npm run build:web -- --local` builds a preview against the Auth Emulator for
-local testing ([section 12](#12-test-it-locally-first)). A production
-server refuses to serve that build.
-
-The web builds no longer register Flutter's deprecated service worker. At the
-root scope it would sit in front of `/staff/`, `/admin/` and `/api`, and could
-keep serving an old version after a deploy.
-
-## 7. Deployment sequence
-
-Run these steps in order; each needs the owner's accounts and approval.
-
-1. **DNS:** point `YOUR_DOMAIN` at the host (A/AAAA record to the server's IP,
-   or the CNAME your platform gives you). Open ports 80 and 443.
-2. **PostgreSQL:** create the database and a dedicated user; turn on automated
-   backups.
-3. **Firebase:** section 4.
-4. **Build:** section 6. Copy `dist/web` and the repository (or the Docker
-   image) to the host.
-5. **Environment:** section 5, in the host's secret store.
-6. **Migrate** (with the production environment loaded):
-
-   ```bash
-   npm run prisma:migrate:deploy --workspace backend
-   ```
-
-   Never run `prisma migrate dev` or `migrate reset` against production.
-7. **Catalogue** (hostels, canteens, demo menus; idempotent, never changes
-   existing rows; allowed in production only with `DEMO_MODE=true`):
-
-   ```bash
-   npm run db:seed --workspace backend
-   ```
-
-8. **Start** the backend: `node backend/dist/server.js`, under systemd, the
-   platform's process manager, or the container. Example systemd unit:
-
-   ```ini
-   [Unit]
-   Description=SERVE backend
-   After=network-online.target
-
-   [Service]
-   WorkingDirectory=/srv/serve
-   EnvironmentFile=/etc/serve/serve.env   # chmod 600, owned by root
-   ExecStart=/usr/bin/node backend/dist/server.js
-   User=serve
-   Restart=on-failure
-   TimeoutStopSec=15
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   The log shows `SERVE backend listening …` and a `DEMO_MODE` warning.
-9. **HTTPS:** [deploy/Caddyfile](../deploy/Caddyfile) (automatic Let's Encrypt
-   certificates) or [deploy/nginx.conf](../deploy/nginx.conf) (with certbot).
-   Replace `YOUR_DOMAIN`. Both forward everything to `127.0.0.1:5001`
-   including WebSocket upgrades. On a platform that terminates TLS for you,
-   skip this step.
-10. **First admin:** create the user in Firebase console → Authentication →
-    Add user, then link it (production environment loaded):
-
-    ```bash
-    npm run admin:create --workspace backend -- --email <admin email> --name "<name>" --confirm-production
-    ```
-
-11. **Smoke test** (read-only; never signs in or writes):
-
-    ```bash
-    npm run smoke:deploy -- https://YOUR_DOMAIN
-    ```
-
-    It checks https, `/api/health` and `/api/health/db`, every app and a deep
-    link for each, the `/staff` redirect, the three manifests and their icons,
-    page security headers, and a Socket.IO WebSocket upgrade (an unauthenticated
-    socket must be refused with `AUTH_REQUIRED`).
-12. **Walk the demo:** staff create an account at `/staff/create-account`,
-    the admin approves them in `/admin/`, and a student registers at `/`,
-    orders, pays with the demo gateway and collects.
-
-### Docker (optional)
-
-The [Dockerfile](../Dockerfile) packages the backend with a prebuilt
-`dist/web` (Flutter is not in the image):
-
-```bash
-FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… npm run build:web
-docker build -t serve .                      # runtime image (production deps only)
-docker build --target build -t serve-tools . # migrations, seed, admin:create
-docker run --env-file serve.env -p 127.0.0.1:5001:5001 serve
-docker run --rm --env-file serve.env serve-tools npm run prisma:migrate:deploy --workspace backend
-```
-
-`serve.env` holds the variables from section 5 (`WEB_ROOT` is already set to
-`/app/web` in the image). Keep it out of the repository and out of the build
-context (`.dockerignore` excludes env files and keys).
-
-> Not built in the preparation environment: its build containers could not
-> reach the npm registry. The image's runtime layout (production
-> dependencies, `backend/dist`, `WEB_ROOT`) was reproduced and tested directly
-> on the host. Run `docker build` once before relying on it.
-
-## 8. Installability
-
-### Student app on an iPhone
-
-**Native app (the real student app).** Needs a Mac with Xcode, the iPhone on
-a cable (or the same network), and an Apple ID:
-
-1. Open `apps/student/ios/Runner.xcworkspace` in Xcode → **Runner** target →
-   **Signing & Capabilities** → choose your **Team**. With a free Apple ID,
-   change the bundle identifier if Xcode reports `app.serve.serveStudent` is
-   taken (for example `app.serve.serveStudent.<yourname>`).
-2. On the iPhone: **Settings → Privacy & Security → Developer Mode → On**
-   (iOS 16+), then trust the computer when asked.
-3. Run it against the deployed domain (release mode, real Firebase project):
-
-   ```bash
-   cd apps/student
-   flutter devices                       # note the iPhone's id
-   flutter run --release -d <iphone-id> \
-     --dart-define=API_URL=https://YOUR_DOMAIN \
-     --dart-define=FIREBASE_API_KEY='<web api key>' \
-     --dart-define=FIREBASE_PROJECT_ID='<project id>' \
-     --dart-define=STAFF_DASHBOARD_URL=https://YOUR_DOMAIN/staff/ \
-     --dart-define=ADMIN_PORTAL_URL=https://YOUR_DOMAIN/admin/
-   ```
-
-4. If iOS says "Untrusted Developer": **Settings → General → VPN & Device
-   Management** → trust your Apple ID.
-
-Apps signed with a free Apple ID stop opening after 7 days; run step 3 again.
-Before deployment, the same app runs against your computer instead:
-[apps/student/README.md](../apps/student/README.md#your-own-iphone-mac--xcode).
-
-**Web build (no Mac needed).** Safari → `https://YOUR_DOMAIN/` → **Share → Add
-to Home Screen**. It opens full screen (manifest `display: standalone` plus
-`apple-mobile-web-app-capable`). This is the Flutter web build in Safari's
-engine: live updates arrive while it is open (there are no push
-notifications), and iOS may clear a web app's stored data, after which the
-student signs in again.
-
-### Student app on Android
-
-Native: build the APK below and install it, or `flutter run --release -d
-<phone-id>` with the same `--dart-define` values as for the iPhone. Web: Chrome
-→ `https://YOUR_DOMAIN/` → **⋮ → Install app**.
-
-### Staff dashboard and admin portal on desktop
-
-Chrome or Edge → `https://YOUR_DOMAIN/staff/` (or `/admin/`) → the install
-icon in the address bar → **Install**. Each has its own manifest, scope and
-window.
-
-Notes:
-
-- Chrome's installability check passed for all three apps in the
-  single-domain test suite; real-device installs have not been tried.
-- **Icons:** made from the official SERVE logo (`brand/`), centred on the
-  warm off-white background: the web icons in `apps/student/web/icons/`
-  (all three apps use them, served at `/icons/…`), the Android launcher
-  icons and the iOS app icon. See [brand/README.md](../brand/README.md).
-- **One browser, one Firebase session for staff and admin:** `/staff/` and
-  `/admin/` share an origin, so they share the Firebase sign-in. A staff
-  member opening `/admin/` is told "You are signed in with a staff account"
-  and sees no admin data, because the backend decides roles. Use separate
-  browser profiles to be signed in as staff and admin at once. The student
-  app keeps its own session.
-- The student app's scope is `/`, which technically includes `/staff/` and
-  `/admin/`. Staff should install their dashboard from `/staff/` in a normal
-  browser tab, not from inside the installed student app.
-
-### Android APK (optional)
-
-```bash
-cd apps/student
-flutter build apk --release \
-  --dart-define=API_URL=https://YOUR_DOMAIN \
-  --dart-define=FIREBASE_API_KEY='<web api key>' \
-  --dart-define=FIREBASE_PROJECT_ID='<project id>' \
-  --dart-define=STAFF_DASHBOARD_URL=https://YOUR_DOMAIN/staff/ \
-  --dart-define=ADMIN_PORTAL_URL=https://YOUR_DOMAIN/admin/
-# → build/app/outputs/flutter-apk/app-release.apk (gitignored)
-```
-
-Release builds refuse the emulator, `demo-` projects and non-https or
-localhost API URLs, and Android release builds allow https only.
-
-**Signing.** As generated by Flutter, release builds are signed with the
-build machine's **debug key**. That is fine for side-loading a demo, but an
-APK signed on another machine cannot update it, and stores reject it. For a
-lasting demo, create your own key:
-
-```bash
-keytool -genkey -v -keystore ~/serve-upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias serve
-```
-
-Then create `apps/student/android/key.properties`:
-
-```properties
-storePassword=<…>
-keyPassword=<…>
-keyAlias=serve
-storeFile=/home/<you>/serve-upload.jks
-```
-
-Finally, wire it up in `apps/student/android/app/build.gradle.kts` as
-[Flutter's signing guide](https://docs.flutter.dev/deployment/android#sign-the-app)
-describes: load `key.properties` into a `signingConfigs.create("release")`
-block and use it in `buildTypes.release`. `key.properties`, `*.jks` and
-`*.keystore` are already gitignored. Never commit them, and back up the
-keystore: losing it means users must uninstall to update. The Gradle change
-is not applied in this repository, and no APK has been built yet: the
-preparation environment cannot download the Android SDK.
-
-**Distribution.** Share the file directly (a download link, Google Drive, or
-Firebase App Distribution). Testers must allow "Install unknown apps" for
-their browser or file manager. Do not commit APKs.
-
-## 9. Demo payments
-
-What `DEMO_MODE=true` does:
-
-- allows `PAYMENT_MODE=mock` with `NODE_ENV=production` (otherwise
-  rejected at startup);
-- mounts `POST /api/payments/:orderId/mock-complete` (otherwise mounted
-  only outside production);
-- allows the non-destructive catalogue seed in production;
-- logs a warning at startup.
-
-What it does **not** change:
-
-- the other production checks: https-only CORS, no emulator, no `demo-`
-  project, service-account credentials required, a 32+ character
-  `PAYMENT_SECRET`;
-- verification: `mock-complete` creates an HMAC-signed confirmation and
-  runs it through the same path as a real gateway (signature, captured
-  amount against the server-side order total, idempotent replay, only the
-  owning student). The client never sends prices or totals;
-- it cannot be combined with `PAYMENT_MODE=razorpay`.
-
-The student payment screen says **"Demo mode: no real money is charged"**.
-Treat every "paid" order in a demo as simulated, and tell canteen staff so.
-
-### What must change before real payments
-
-1. Finish the Razorpay adapter (`backend/src/modules/payments/razorpay.provider.ts`).
-   Its API calls currently return 503 and never fake success.
+and menu images), `frame-ancestors 'none'`, `object-src 'none'`,
+`upgrade-insecure-requests` in production; `X-Frame-Options: DENY`;
+`Referrer-Policy: strict-origin-when-cross-origin`; HSTS. `/api` keeps its
+stricter `default-src 'none'` policy. The web builds do not register Flutter's
+service worker, which at the root scope could keep serving an old version.
+
+## B. Demo payments and Razorpay
+
+What `DEMO_MODE=true` does: allows `PAYMENT_MODE=mock` with
+`NODE_ENV=production` (otherwise rejected at startup); mounts
+`POST /api/payments/:orderId/mock-complete` (otherwise only outside
+production); allows the non-destructive catalogue seed in production; logs a
+warning at startup.
+
+What it does **not** change: the other production checks; and verification:
+`mock-complete` creates an HMAC-signed confirmation and runs it through the
+same path as a real gateway (signature, captured amount against the
+server-side order total, idempotent replay, only the owning student). The
+client never sends prices or totals. It cannot be combined with
+`PAYMENT_MODE=razorpay`.
+
+Nothing presents a simulated payment as real: payments are stored with
+provider `MOCK`, the student payment screen says **"Test payment — Demo mode:
+no real money is charged"**, and the staff order details say "Test payment".
+
+**Razorpay status:** an adapter exists as a stub
+(`backend/src/modules/payments/razorpay.provider.ts`). Webhook and payment
+signature verification are implemented; creating orders and fetching payments
+are not, and return 503 rather than faking success. Before taking real money:
+
+1. Finish the adapter's API calls.
 2. In the student app, replace the mock step with Razorpay Checkout
-   (initiate → Razorpay → `POST /api/payments/:id/verify`), and remove
+   (initiate → Razorpay → `POST /api/payments/:id/verify`) and remove
    "Simulate a failed payment".
 3. Environment: `PAYMENT_MODE=razorpay` with `RAZORPAY_KEY_ID`,
-   `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` in the secret store;
-   remove `DEMO_MODE` and `PAYMENT_SECRET`.
-4. In the Razorpay dashboard, set the webhook to
-   `https://YOUR_DOMAIN/api/payments/webhooks/razorpay`.
-5. Extend the page CSP in `backend/src/web/web-apps.ts` with the script and
-   frame origins Razorpay Checkout documents at that time.
-6. Run the payment test suite and a Razorpay test-mode run end to end; add
-   refund and reconciliation procedures, terms and a refund policy before
-   taking live money.
+   `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`; remove `DEMO_MODE` and
+   `PAYMENT_SECRET`.
+4. Razorpay dashboard webhook: `https://YOUR_DOMAIN/api/payments/webhooks/razorpay`.
+5. Extend the page CSP in `backend/src/web/web-apps.ts` for Razorpay Checkout.
+6. Test in Razorpay test mode end to end; add refund and reconciliation
+   procedures, terms and a refund policy.
 
-## 10. Operations
+## C. Operations
 
-- **Logs:** JSON lines on stdout (pino), with request ids and redacted
-  secrets. Collect them with journald or the platform's log viewer.
-- **Health checks:** `GET /api/health` (process) and `GET /api/health/db`
-  (database). Neither is rate-limited; use them for load balancers and uptime
-  alerts.
+- **Logs:** JSON lines on stdout (pino) with request ids and redacted
+  secrets: `docker compose logs`, journald or the platform's log viewer.
+- **Health checks:** `GET /api/health` (process: status, uptime) and
+  `GET /api/health/db` (database round trip: status, latency). Neither exposes
+  configuration or credentials, and neither is rate-limited; the image's
+  Docker health check uses the first. Point an uptime monitor at
+  `https://YOUR_DOMAIN/api/health/db`.
 - **Graceful shutdown:** on SIGTERM the server stops accepting connections,
-  closes sockets and the database pool, and exits within 10 s. Give the
-  platform a stop timeout of at least 15 s. Clients reconnect automatically
-  and refetch.
-- **Redeploys:** build the web apps, run `prisma migrate deploy`, then
-  restart. With one instance there is a brief disconnect, and clients
-  reconnect on their own. Pages revalidate (`no-cache`), so the new version
-  loads on the next reload.
-- **Backups:** managed PostgreSQL with daily backups and point-in-time
-  recovery, or `pg_dump` on a schedule copied off the server. Test a
-  restore.
-- **Monitoring:** an external uptime check on `/api/health/db`, and alerts on
-  restarts and on error-level log lines.
-- **Scaling:** one instance only (section 1).
+  closes sockets and the database pool, and exits within 10 s. Clients
+  reconnect automatically and refetch.
+- **Redeploys:** build the web apps, tag the current image (step 19), rebuild,
+  back up, migrate, `up -d`. With one instance there is a brief disconnect.
+- **Monitoring:** alerts on restarts and on error-level log lines.
 
-## 11. Security notes for the public demo
-
-- Nobody can become staff or admin by visiting a URL. Admins exist only
-  through `admin:create`; staff need an admin's approval; every request is
-  authorised from PostgreSQL, never from the token, URL or local storage.
-  Socket rooms are assigned by the server.
-- Development-only pieces cannot reach production: the emulator and `demo-`
-  projects are rejected at startup, the dev-user seed refuses non-development
-  environments, a `build:web --local` preview is refused, and `mock-complete`
-  exists only in mock mode, which production accepts only with
-  `DEMO_MODE=true`.
-- CORS stays an exact allowlist (`https://YOUR_DOMAIN`), never `*`. The web
-  apps are same-origin and do not depend on it; the native apps send no
-  Origin.
-- Keep the Firebase Email/Password provider the only one enabled, rotate
-  `PAYMENT_SECRET` if it leaks, and keep the service-account key only in the
-  secret store.
-
-## 12. Test it locally first
+## D. Test it locally first
 
 ```bash
 npm run emulators                       # separate terminal
 npm run test:e2e:single-domain          # builds the apps, serves them on one origin, runs the suite
 ```
 
-The single-domain suite (`e2e/tests/single-domain.spec.ts`) loads `/`,
-`/staff/` and `/admin/` and deep links with a refresh; checks `/api`, Chrome's
-installability verdict for all three apps, and the full flow (Flutter
-student pays with the demo gateway, staff work the order live over a
-WebSocket, the student sees each step, the admin sees the result); and fails
-on page errors, CSP violations or broken files. With
-`E2E_SINGLE_DOMAIN_URL=https://… E2E_IGNORE_HTTPS_ERRORS=1` it runs through
-a local Caddy or nginx with a self-signed certificate.
-
-To click around by hand:
+To click around a local single-domain preview:
 
 ```bash
-npm run build:web -- --local
-WEB_ROOT="$PWD/dist/web" npm run dev:backend     # then open http://localhost:5001/
+npm run build:web -- --local            # emulator + demo project; never deploy this build
+WEB_ROOT="$PWD/dist/web" npm run dev:backend
 npm run smoke:deploy -- http://localhost:5001
 ```
 
-The apps are same-origin, so `CORS_ORIGINS` needs no change for this.
+The acceptance test also runs against it with
+`FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099` and the emulator demo
+accounts. A production server refuses to serve a `--local` build.
 
-## 13. Configuration audit (what is local, what changed)
+## E. Configuration audit (what is local, what is production)
 
 | Setting | Where | Class | Status |
 |---|---|---|---|
-| `localhost:5001` / `10.0.2.2` / emulator defaults | `apps/student/lib/config/app_config.dart` | local dev | kept for `flutter run`; a built web app now defaults to its own origin |
+| `localhost:5001` / `10.0.2.2` / emulator defaults | `apps/student/lib/config/app_config.dart` | local dev | kept for `flutter run`; release builds need `config/production.json` values |
 | `VITE_API_URL=http://localhost:5001`, emulator URL | `apps/*/.env.example` → `.env.development.local` | local dev | kept; never read by builds |
 | Vite dev ports 5173/5174, `base: '/'` in dev | `apps/*/vite.config.ts` | local dev | kept |
-| Vite `base` for builds | `apps/*/vite.config.ts` | production change | `/staff/`, `/admin/` |
-| Router basename | `apps/*/src/App.tsx` | production change | from `import.meta.env.BASE_URL` |
-| Logo path `/brand/serve-logo.png` | `packages/web-shared/src/ui/components.tsx` | production change | prefixed with the base URL |
-| Required `VITE_API_URL` | `apps/*/src/config.ts`, `vite.config.ts` | production change | optional in builds (same origin); https only when set |
-| Flutter `<base href>` | `apps/student/web/index.html` | production | `/` (`--base-href /`) |
-| Flutter service worker | `apps/student/web/flutter_bootstrap.js` | production change | not registered |
-| Backend CORS defaults | `.env.example` | local dev | kept; production `https://YOUR_DOMAIN` |
-| Static hosting, page CSP | `backend/src/web/web-apps.ts` | production change | new, opt-in via `WEB_ROOT` |
-| Mock payments in production | `backend/src/config/env.ts` | production change | only with `DEMO_MODE=true` |
-| Local `serve_dev` / `serve_test` database in production | `backend/src/config/env.ts` | production change | rejected at startup |
-| `demo-` Firebase project in web builds | `apps/*/vite.config.ts`, `scripts/build-web.mjs` | production change | rejected |
-| Socket.IO path | default `/socket.io` on the same server | production | unchanged; WebSocket upgrades pass through Caddy/nginx |
+| Vite `base` for builds, router basename | `apps/*/vite.config.ts`, `apps/*/src/App.tsx` | production | `/staff/`, `/admin/` |
+| `VITE_API_URL` in builds | `apps/*/src/config.ts`, `vite.config.ts` | production | optional (same origin); https only when set |
+| Flutter `<base href>`, service worker | `apps/student/web/` | production | `/`; not registered |
+| Static hosting, page CSP | `backend/src/web/web-apps.ts` | production | opt-in via `WEB_ROOT` |
+| Mock payments in production | `backend/src/config/env.ts` | production | only with `DEMO_MODE=true` |
+| Local `serve_dev` / `serve_test` database in production | `backend/src/config/env.ts` | production | rejected at startup |
+| `demo-` Firebase project in builds | `apps/*/vite.config.ts`, `scripts/build-web.mjs`, `app_config.dart` | production | rejected |
+| Destructive Prisma commands | `backend/prisma.config.ts` | safety | only on `*_dev` / `*_test` databases, never in production |
+| Reverse proxy | `deploy/Caddyfile`, `deploy/nginx.conf` | production | `YOUR_DOMAIN` / `SERVE_DOMAIN` placeholder |
+| Container stack | `Dockerfile`, `deploy/docker-compose.yml`, `.dockerignore` | production | app + Caddy; database external |
 | `firebase.json` (127.0.0.1), `firebase.phone.json` (0.0.0.0) | repo root | local dev | kept |
 | E2E ports 5101/5273/5274/5455, emulator | `e2e/tests/support/constants.mjs` | test | kept |
-| Test fixtures with localhost | backend, web-shared, Flutter tests | test | kept |
-| Docker | none before | production | `Dockerfile`, `.dockerignore` added |
 
-## 14. Readiness
+## F. Readiness
 
-**Verified on the local stack** (real backend process, PostgreSQL, Firebase
-Auth Emulator; no mocked HTTP, database or auth):
+**Verified on the preparation machine:**
 
-- Student, staff and admin flows end to end, through the APIs and in real
-  browsers (Playwright drives the Flutter web build and both React apps).
-- PostgreSQL as the source of truth: registrations, menu changes, orders,
-  payments and staff status read back from the database, and unchanged after a
-  backend restart.
-- Realtime: order status to the right student only, paid orders to that
-  canteen's staff only, menu and pause/resume changes to students viewing the
-  canteen, approval, rejection, reassignment and deactivation to the staff
-  member; reconnects re-verify the token; expired, invalid and missing tokens
-  are refused.
-- Authorization on the server: students and staff are refused on admin routes,
-  staff only see their own canteen, client prices and role headers are ignored.
-- Production builds of all three apps, and the single-domain layout (`/`,
-  `/staff/`, `/admin/`, `/api`, `/socket.io`) served by one process.
+- All test suites, the end-to-end suites (browsers driving the Flutter web
+  build and both React apps against the real backend, PostgreSQL and the Auth
+  Emulator), and production builds of the backend and all three web apps.
+- The Docker images built with this Dockerfile's steps (the sandbox's
+  TLS-intercepting proxy required adding its certificate authority to the base
+  image there; a normal server needs nothing extra), migrations and the
+  catalogue seed run with the tools image against a fresh PostgreSQL database,
+  and the production container behind Caddy over HTTPS passing
+  `smoke:deploy` (apps, health, headers, WebSocket upgrade), with graceful
+  shutdown.
+- The acceptance test against a local single-domain server.
 
-**Not verified yet:** a real deployment (domain, TLS, managed database, real
-Firebase project), `docker build`, the Android APK build, the iOS build, and
-any real phone. The native builds need the Android SDK or a Mac with Xcode,
-which the preparation environment does not have.
+**Not verified yet:** a real deployment (domain, DNS, Let's Encrypt, real
+Firebase project, the server's database), the Android APK build (the
+preparation machine cannot download the Android SDK) and iOS builds from this
+machine (no Xcode). The student app has run on a real iPhone in development
+(reported by the owner).
 
-**Before deploying, the owner provides:** the domain and DNS access; a host
-for one Node.js 22 process with WebSockets; PostgreSQL 16 with backups; a
-Firebase project (web API key, project id, service account); a new
-`PAYMENT_SECRET`; and the first admin's email. Then follow
-[section 7](#7-deployment-sequence).
+**The owner provides:** the domain and DNS access; a server; PostgreSQL 16
+with backups; a Firebase project (web API key, project id, service account); a
+new `PAYMENT_SECRET`; the first admin's email; and the accounts for the
+acceptance test.

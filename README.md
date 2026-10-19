@@ -229,7 +229,9 @@ npm run emulators
 npm run prisma:migrate:deploy --workspace backend
 npm run db:seed --workspace backend
 
-# 6. Optional: emulator demo accounts (admin, approved staff, pending staff, student)
+# 6. Optional: emulator demo accounts (admin, approved staff, pending staff, student).
+#    DEVELOPMENT ONLY: they exist only in the Auth Emulator; the script refuses
+#    to run outside NODE_ENV=development.
 DEV_SEED_PASSWORD='choose-a-password' npm run db:seed:dev-users --workspace backend
 
 # 7. Run the backend with live reload on http://localhost:5001
@@ -260,7 +262,9 @@ version (it is in `.env.example`). If the student app doesn't start or can't
 sign in, see the troubleshooting table in
 [apps/student/README.md](apps/student/README.md#troubleshooting).
 
-Provision an admin explicitly (there is no public admin registration):
+Provision an admin explicitly (there is no public admin registration). In
+development the password below creates the emulator user (DEVELOPMENT ONLY);
+in production the script only links an existing Firebase user:
 
 ```bash
 ADMIN_BOOTSTRAP_PASSWORD='choose-a-password' \
@@ -280,7 +284,9 @@ Deployment on one domain (student `/`, staff `/staff/`, admin `/admin/`, API
 
 ```bash
 FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… npm run build:web   # → dist/web (WEB_ROOT)
+docker compose -f deploy/docker-compose.yml build            # backend + web apps image, Caddy in front
 npm run smoke:deploy -- https://YOUR_DOMAIN                  # read-only checks after deploying
+npm run acceptance:deploy -- https://YOUR_DOMAIN             # signed-in checks (accounts via env)
 ```
 
 The backend uses port **5001**. Port 5000 is rejected because it conflicts
@@ -421,7 +427,7 @@ the three client apps.
 | 6 | Cross-application end-to-end tests | **Complete** |
 | — | Single-domain demo deployment preparation (routing, installable apps, configs, docs) | **Complete** (not deployed) |
 | — | UI/UX polish and official branding | **Complete** (approved) |
-| — | Pre-deployment integration and security audit | **Complete** (local stack; see [docs/deployment.md](docs/deployment.md#14-readiness)) |
+| — | Pre-deployment integration and security audit | **Complete** (local stack; see [docs/deployment.md](docs/deployment.md#f-readiness)) |
 | — | Real Razorpay integration | Not started |
 | — | Independent security review of a deployed instance | Not started |
 
