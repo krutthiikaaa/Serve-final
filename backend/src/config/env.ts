@@ -31,6 +31,17 @@ const isLocalOrigin = (origin: string): boolean => {
   }
 };
 
+/** Databases created by `npm run db:setup:local`; never a production database. */
+const LOCAL_DATABASES = new Set(['serve_dev', 'serve_test']);
+
+const databaseName = (url: string): string | null => {
+  try {
+    return decodeURIComponent(new URL(url).pathname.replace(/^\//, '')) || null;
+  } catch {
+    return null;
+  }
+};
+
 /** Comma-separated list of exact origins, e.g. "https://staff.serve.app,https://admin.serve.app". */
 const corsOrigins = z
   .string({ error: 'CORS_ORIGINS is required (comma-separated list of allowed origins)' })
@@ -205,6 +216,13 @@ const envSchema = z
       issue(
         'CORS_ORIGINS',
         `Production CORS origins must use https: ${insecureOrigins.join(', ')}`,
+      );
+    }
+    const database = databaseName(env.DATABASE_URL);
+    if (database && LOCAL_DATABASES.has(database)) {
+      issue(
+        'DATABASE_URL',
+        `The local ${database} database must not be used in production; create a dedicated production database`,
       );
     }
     if (env.FIREBASE_AUTH_EMULATOR_HOST) {

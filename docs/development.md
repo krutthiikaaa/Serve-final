@@ -3,6 +3,26 @@
 Every command below was run against this repository. Commands are run from
 the repository root unless a step says `backend/`.
 
+**Everything running, once set up** (sections 1–6 are the one-time setup):
+
+```bash
+npm run emulators                                                   # terminal 1: Firebase Auth Emulator
+DEV_SEED_PASSWORD='choose-a-password' npm run db:seed:dev-users --workspace backend   # after each emulator restart
+npm run dev:backend                                                 # terminal 2: API + Socket.IO on :5001
+npm run dev:staff                                                   # terminal 3: http://localhost:5173
+npm run dev:admin                                                   # terminal 4: http://localhost:5174
+npm run dev:student                                                 # terminal 5: http://localhost:5555, or -d <device>
+```
+
+**How the pieces fit:** every app signs in with Firebase Auth and sends the
+Firebase ID token to the backend, which verifies it and loads the account
+(role, staff status, canteen) from PostgreSQL. All three apps use the same
+REST API (`/api`) and Socket.IO server (`/socket.io`) on the backend; nothing
+is stored or decided on the client. Details:
+[architecture.md](architecture.md) (sections 4 and 7: authentication and
+realtime) and [frontend-integration.md](frontend-integration.md) (the calls
+each app makes).
+
 ## 1. Prerequisites
 
 | Tool | Version | Why |

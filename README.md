@@ -83,7 +83,7 @@ Implemented in the client apps:
 
 | Interface | Users | Form factor | Status |
 |---|---|---|---|
-| **Student App** | Students | Mobile (Flutter: Android, iOS). Its web build is installable from the browser (iPhone: Add to Home Screen) on the demo domain. Bottom navigation: Home · Menu · Orders · Profile; cart in the header | **Implemented** |
+| **Student App** | Students | Mobile (Flutter: Android, iOS); not published to the App Store or Google Play. The same code's web build runs in the browser on the demo domain for testing and demos. Bottom navigation: Home · Menu · Orders · Profile; cart in the header | **Implemented** |
 | **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation; installable from Chrome/Edge | **Implemented** |
 | **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation; installable from Chrome/Edge | **Implemented** |
 
@@ -396,7 +396,10 @@ Client apps:
   localhost/plain-http API URLs.
 - Socket.IO clients never name rooms.
 
-Planned: a full production security audit and the real Razorpay integration.
+A pre-deployment audit (configuration, secrets, authorization, realtime
+isolation, a live end-to-end check against PostgreSQL and the Auth Emulator)
+is complete. Still planned: an independent security review of a deployed
+instance and the real Razorpay integration.
 
 ## 17. Current Development Status
 
@@ -417,8 +420,10 @@ the three client apps.
 | 6 | Admin Portal (React) | **Complete** |
 | 6 | Cross-application end-to-end tests | **Complete** |
 | — | Single-domain demo deployment preparation (routing, installable apps, configs, docs) | **Complete** (not deployed) |
+| — | UI/UX polish and official branding | **Complete** (approved) |
+| — | Pre-deployment integration and security audit | **Complete** (local stack; see [docs/deployment.md](docs/deployment.md#14-readiness)) |
 | — | Real Razorpay integration | Not started |
-| — | Production security audit | Not started |
+| — | Independent security review of a deployed instance | Not started |
 
 ## 18. Future Enhancements
 
@@ -430,12 +435,13 @@ the three client apps.
 
 ## Brand
 
-The official SERVE logo is a transparent, hand-drawn food/leaf mark supplied
-by the project owner and stored in [`brand/`](brand/). It is pending. Every
-app has an empty logo slot and shows the plain text wordmark "SERVE" until the
-official file is added; nothing imitates the logo. Palette: olive `#879F2D`, dark olive
+The official SERVE logo (a hand-drawn food/leaf mark supplied by the project
+owner) is in [`brand/`](brand/) with the rules for using it; the tagline is
+"Order. Track. Collect.". All three apps and the app icons use that file;
+nothing redraws or imitates it. Palette: olive `#879F2D`, dark olive
 `#6F8425`, orange `#E86A2E`, black `#111111`, warm off-white `#F8F7F2`,
-white `#FFFFFF`, muted grey `#5F6258`.
+white `#FFFFFF`, plus the accessible shades listed in
+[brand/README.md](brand/README.md).
 
 ## 19. Contributors
 

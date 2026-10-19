@@ -197,10 +197,14 @@ notifications.
 - Palette: olive `#879F2D`, dark olive `#6F8425`, orange `#E86A2E`, ink
   `#111111`, paper `#F8F7F2`, muted `#5F6258`. Web tokens live in
   `packages/web-shared/src/styles.css`; Flutter in `lib/theme/serve_theme.dart`.
-  The admin portal uses a dark sidebar for a more administrative look.
-- **Logo slot:** web apps load `/brand/serve-logo.png`, Flutter loads
-  `assets/images/serve_logo.png`. While the official file is missing, both show
-  a plain text wordmark. The logo is never redrawn and never placed in a box.
+  Derived accessible shades (olive strong/ink, orange strong/ink, tints) are
+  listed in `brand/README.md`. Staff and admin share one light sidebar; a
+  product badge tells them apart.
+- **Logo:** the official file from `brand/`. Web apps load
+  `<base>/brand/serve-logo.png`, Flutter loads `assets/images/serve_logo.png`.
+  It is shown at its own proportions on light surfaces, never redrawn and
+  never placed in a box. The tagline "Order. Track. Collect." appears only on
+  brand moments (splash, role selection, sign-in).
 - **Food images:** `imageUrl` when present, otherwise a per-category
   placeholder icon.
 - **Accessibility:** status is shown with icon + text (never colour alone);
