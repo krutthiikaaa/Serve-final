@@ -19,6 +19,41 @@ if (envFile) {
   loadDotenv({ path: path.join(import.meta.dirname, envFile), quiet: true });
 }
 
+/**
+ * Commands that can drop data run only against the local databases from
+ * `npm run db:setup:local` (names ending in _dev or _test), never with
+ * NODE_ENV=production. Production applies migrations with `migrate deploy`.
+ * A local database with another name can be confirmed explicitly:
+ * SERVE_CONFIRM_DESTRUCTIVE_DB=<database name>.
+ */
+const DESTRUCTIVE_COMMANDS = [
+  ['migrate', 'dev'],
+  ['migrate', 'reset'],
+  ['db', 'push'],
+];
+const cliWords = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const destructive = DESTRUCTIVE_COMMANDS.find(([group, action]) => {
+  const at = cliWords.indexOf(group);
+  return at !== -1 && cliWords[at + 1] === action;
+});
+if (destructive) {
+  let database = '';
+  try {
+    database = decodeURIComponent(new URL(process.env.DATABASE_URL ?? '').pathname.slice(1));
+  } catch {
+    // An unreadable URL is refused below.
+  }
+  const local =
+    /_(dev|test)$/.test(database) || process.env.SERVE_CONFIRM_DESTRUCTIVE_DB === database;
+  if (nodeEnv === 'production' || !database || !local) {
+    throw new Error(
+      `Refusing \`prisma ${destructive.join(' ')}\` on database "${database || 'unknown'}": ` +
+        'it can drop data and only runs on local *_dev / *_test databases. ' +
+        'Production uses `npm run prisma:migrate:deploy --workspace backend`.',
+    );
+  }
+}
+
 export default defineConfig({
   schema: path.join(import.meta.dirname, 'prisma', 'schema.prisma'),
   migrations: {
