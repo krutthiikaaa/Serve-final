@@ -1,13 +1,18 @@
 # SERVE behind Caddy — one domain, automatic HTTPS (Let's Encrypt).
 #
-# Replace YOUR_DOMAIN with the real domain (its DNS A/AAAA record must point
-# at this server, ports 80 and 443 open). The backend serves everything:
-# /, /staff/, /admin/, /api and /socket.io (WEB_ROOT set, see
-# docs/deployment.md), so Caddy only terminates TLS and forwards. Caddy passes
-# WebSocket upgrades and X-Forwarded-* headers through by default; run the
-# backend with TRUST_PROXY=1.
+# The site address is your domain: set SERVE_DOMAIN in Caddy's environment
+# (docker-compose.yml does), or replace YOUR_DOMAIN below with the real domain.
+# Its DNS A/AAAA record must point at this server, with ports 80 and 443 open.
+#
+# The backend serves everything: /, /staff/, /admin/, /api and /socket.io
+# (WEB_ROOT set, see docs/deployment.md), so Caddy only terminates TLS and
+# forwards. Caddy passes WebSocket upgrades and X-Forwarded-* headers through
+# by default; run the backend with TRUST_PROXY=1.
+#
+# SERVE_UPSTREAM is where the backend listens: 127.0.0.1:5001 when it runs on
+# the same machine (default), serve:5001 inside docker-compose.yml.
 
-YOUR_DOMAIN {
+{$SERVE_DOMAIN:YOUR_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:5001
+	reverse_proxy {$SERVE_UPSTREAM:127.0.0.1:5001}
 }

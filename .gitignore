@@ -4,6 +4,12 @@
 .env
 .env.*
 !.env.example
+# Filled-in production environment for docker-compose (deploy/serve.env)
+deploy/*.env
+!deploy/*.env.example
+# Flutter production values (apps/student/config/production.json)
+apps/student/config/*.json
+!apps/student/config/*.example.json
 *.pem
 *.key
 *service-account*.json

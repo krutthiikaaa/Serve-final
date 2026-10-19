@@ -1,0 +1,76 @@
+# SERVE production stack: the SERVE image (API, Socket.IO and the three web
+# apps on one port) behind Caddy (HTTPS, WebSockets). PostgreSQL is not part
+# of this file: use a managed database or one on the host, via DATABASE_URL.
+#
+# Prerequisites (docs/deployment.md):
+#   - dist/web built for production: npm run build:web (with the Firebase web values)
+#   - deploy/serve.env: a filled-in copy of deploy/production.env.example
+#     (never committed; deploy/*.env is gitignored)
+#   - SERVE_DOMAIN: your domain, e.g. in deploy/.env or the shell
+#
+#   docker compose -f deploy/docker-compose.yml build
+#   docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# A database on the host itself is reachable as host.docker.internal.
+
+name: serve
+
+services:
+  serve:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: serve:latest
+    env_file: serve.env
+    environment:
+      # Fixed by the image layout; these win over serve.env.
+      NODE_ENV: production
+      PORT: '5001'
+      WEB_ROOT: /app/web
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    expose:
+      - '5001'
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  caddy:
+    image: caddy:2.10
+    environment:
+      SERVE_DOMAIN: ${SERVE_DOMAIN:?Set SERVE_DOMAIN to your domain}
+      SERVE_UPSTREAM: serve:5001
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      serve:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-off tasks with the Prisma CLI and tsx (the build stage of the image):
+  #   --profile tools run --rm migrate                          prisma migrate deploy
+  #   --profile tools run --rm migrate npm run db:seed --workspace backend
+  #   --profile tools run --rm migrate npm run admin:create --workspace backend -- --email … --name "…" --confirm-production
+  migrate:
+    profiles: ['tools']
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: build
+    image: serve-tools:latest
+    env_file: serve.env
+    environment:
+      NODE_ENV: production
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command: ['npm', 'run', 'prisma:migrate:deploy', '--workspace', 'backend']
+
+volumes:
+  caddy_data:
+  caddy_config:
