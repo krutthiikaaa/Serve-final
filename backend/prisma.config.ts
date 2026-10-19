@@ -26,7 +26,7 @@ if (envFile) {
  * A local database with another name can be confirmed explicitly:
  * SERVE_CONFIRM_DESTRUCTIVE_DB=<database name>.
  */
-const DESTRUCTIVE_COMMANDS = [
+const DESTRUCTIVE_COMMANDS: [string, string][] = [
   ['migrate', 'dev'],
   ['migrate', 'reset'],
   ['db', 'push'],
