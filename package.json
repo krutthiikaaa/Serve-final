@@ -31,7 +31,8 @@
     "test:e2e": "npm run test --workspace @serve/e2e",
     "test:e2e:single-domain": "npm run test:single-domain --workspace @serve/e2e",
     "build:web": "node scripts/build-web.mjs",
-    "smoke:deploy": "node scripts/smoke-deploy.mjs"
+    "smoke:deploy": "node scripts/smoke-deploy.mjs",
+    "acceptance:deploy": "node scripts/acceptance-deploy.mjs"
   },
   "devDependencies": {
     "prettier": "3.9.9"
