@@ -42,6 +42,9 @@ don't know:
    and collected.
 6. When the order is **ready**, the student walks over and collects it.
 
+<img width="1482" height="555" alt="image" src="https://github.com/user-attachments/assets/5c71d512-858f-44a8-af08-70808d5e8287" />
+
+
 ## 5. Key Features
 
 Implemented in the backend (API + realtime):
@@ -129,17 +132,6 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Authentication | Firebase Authentication + Firebase Admin | **Implemented** (Auth Emulator in development; a real project is configuration-only) |
 | Payments | Mock provider, Razorpay-ready | Mock **implemented**; Razorpay API calls pending |
 
-## 9. User Roles
-
-| Role | How the account is created | Can do |
-|---|---|---|
-| **Student** | Self-registration (Firebase email/password, then a backend registration step with name, email and hostel). An optional university email-domain restriction is configurable. | Browse active canteens, order, pay, track, view history and notifications |
-| **Staff** | Self-registration, then a canteen access request reviewed by an admin | After approval, manage orders, the menu and the order-taking status of their **assigned canteen only** |
-| **Admin** | Bootstrapped by an operator script; never self-assigned | Manage canteens, review staff requests, assign or reassign or deactivate staff |
-
-Roles live in PostgreSQL. A user who registers through the student flow can
-only ever become a Student.
-
 ## 10. Canteen Structure
 
 Each student belongs to a **hostel**, and each hostel belongs to a **night
@@ -158,19 +150,6 @@ A student's default canteen comes from their hostel. They may also order from
 any other canteen that is **active** and **accepting orders**. The backend
 re-checks this on every order. The mapping above is seed data in PostgreSQL,
 not application code. Admins can add hostels or remap them through the API.
-
-## 11. Order Lifecycle
-
-```
-PLACED -> PAYMENT_CONFIRMED -> PREPARING -> READY -> COLLECTED
-
-CANCELLED is also a possible terminal state.
-```
-
-Only valid transitions are allowed, and the backend enforces them. Staff see
-an order only after payment is confirmed. Each order item keeps a snapshot of
-the item name, unit price and quantity, so later menu changes never alter
-past orders.
 
 ## 12. Project Structure
 
