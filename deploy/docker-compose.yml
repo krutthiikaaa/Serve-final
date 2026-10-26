@@ -3,10 +3,10 @@
 # of this file: use a managed database or one on the host, via DATABASE_URL.
 #
 # Prerequisites (docs/deployment.md):
-#   - dist/web built for production: npm run build:web (with the Firebase web values)
 #   - deploy/serve.env: a filled-in copy of deploy/production.env.example
 #     (never committed; deploy/*.env is gitignored)
-#   - SERVE_DOMAIN: your domain, e.g. in deploy/.env or the shell
+#   - SERVE_DOMAIN, FIREBASE_API_KEY, FIREBASE_PROJECT_ID (the public Firebase
+#     web values the image's web build needs): in the shell or deploy/.env
 #
 #   docker compose -f deploy/docker-compose.yml build
 #   docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate
@@ -21,6 +21,10 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        FIREBASE_API_KEY: ${FIREBASE_API_KEY:-}
+        FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+        FIREBASE_AUTH_DOMAIN: ${FIREBASE_AUTH_DOMAIN:-}
     image: serve:latest
     env_file: serve.env
     environment:

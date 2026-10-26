@@ -1,0 +1,64 @@
+# Render Blueprint for SERVE: one Docker web service that serves the student,
+# staff and admin web apps, the API (/api) and Socket.IO (/socket.io) on the
+# service's onrender.com URL, plus a PostgreSQL database reachable only from
+# inside Render. Step-by-step: docs/render.md.
+#
+# FREE PLANS ARE FOR TRYING THE DEPLOYMENT, NOT FOR THE UNIVERSITY ROLLOUT:
+# a free web service sleeps after inactivity, and a free Render Postgres
+# database expires after a limited time (see docs/render.md). Change both
+# `plan` values to paid plans before real use; no application change is needed.
+
+services:
+  - type: web
+    name: serve
+    runtime: docker
+    plan: free
+    # Keep the web service and the database in the same region.
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Migrations, release tasks (first-boot catalogue, optional first admin),
+    # then the server. The free plan has no pre-deploy command.
+    dockerCommand: /app/backend/scripts/start-production.sh
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Requests reach the app through Render's proxy.
+      - key: TRUST_PROXY
+        value: '1'
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        fromDatabase:
+          name: serve-db
+          property: connectionString
+      # Firebase production project (docs/render.md). Entered in the Render
+      # dashboard when the Blueprint is created; never committed.
+      # FIREBASE_API_KEY and FIREBASE_PROJECT_ID also reach the web build.
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_API_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      # Simulated payments: no real money moves.
+      - key: PAYMENT_MODE
+        value: mock
+      - key: DEMO_MODE
+        value: 'true'
+      - key: PAYMENT_SECRET
+        generateValue: true
+      # CORS_ORIGINS defaults to this service's own URL (RENDER_EXTERNAL_URL).
+
+databases:
+  - name: serve-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: '16'
+    databaseName: serve
+    user: serve
+    # No external connections: only services inside Render can connect.
+    ipAllowList: []

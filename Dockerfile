@@ -3,18 +3,29 @@
 # SERVE single-domain image: one Node process serving the API (/api),
 # Socket.IO (/socket.io) and the three web apps (/, /staff/, /admin/).
 #
-# The web apps are built BEFORE `docker build` (the Flutter SDK is not part of
-# this image), so the image contains exactly what you built and tested:
-#   FIREBASE_API_KEY=<web api key> FIREBASE_PROJECT_ID=<project id> npm run build:web
-#   docker build -t serve .
-# One-off tasks (migrations, catalogue seed, admin provisioning) use the build
-# stage, which has the Prisma CLI and tsx:
-#   docker build --target build -t serve-tools .
+# Everything is built from source inside the image: the backend, the staff
+# and admin apps (Vite) and the student web app (Flutter), with the same
+# scripts/build-web.mjs as a build outside Docker. A host that builds from Git
+# (Render) therefore needs nothing prebuilt. The public Firebase web values are
+# build arguments; Render passes a service's environment variables to the
+# Docker build automatically:
+#   docker build --build-arg FIREBASE_API_KEY=<web api key> \
+#                --build-arg FIREBASE_PROJECT_ID=<project id> -t serve .
 # Runtime configuration (database, Firebase service account, payment mode)
-# comes from the environment at `docker run`; none of it is baked in.
-# See docs/deployment.md.
+# comes from the environment when the container runs; no secret is a build
+# argument or part of the image.
+#
+#   CMD                                   the server only
+#   backend/scripts/start-production.sh   migrations + release tasks + server
+#                                         (Render, see render.yaml)
+# One-off tasks with the Prisma CLI and tsx use the build stage:
+#   docker build --target build -t serve-tools .
+# See docs/deployment.md and docs/render.md.
 
 ARG NODE_VERSION=22.22.0
+# Keep in step with the Flutter version the student app is developed with.
+ARG FLUTTER_VERSION=3.47.4
+ARG FLUTTER_SHA256=5b45f0ceda99b9bebdc873e7e69f6450aeb4c30f454b505e2e62fc9255a907d3
 
 # Workspace manifests: npm needs all of them to install from the lockfile.
 FROM node:${NODE_VERSION}-bookworm-slim AS manifests
@@ -35,6 +46,32 @@ RUN npm run build --workspace backend
 FROM manifests AS deps
 RUN npm ci --omit=dev --no-audit --no-fund && rm -rf node_modules/@serve
 
+# The official Flutter SDK, checked against its published SHA-256. The full
+# (non-slim) Node image already has the curl, git, unzip and xz Flutter needs.
+FROM node:${NODE_VERSION}-bookworm AS flutter
+ARG FLUTTER_VERSION
+ARG FLUTTER_SHA256
+RUN curl -fsSLo /tmp/flutter.tar.xz \
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
+  && echo "${FLUTTER_SHA256}  /tmp/flutter.tar.xz" | sha256sum -c - \
+  && tar -xJf /tmp/flutter.tar.xz -C /opt \
+  && rm /tmp/flutter.tar.xz \
+  && git config --global --add safe.directory /opt/flutter
+ENV PATH=/opt/flutter/bin:$PATH
+RUN flutter config --no-analytics && flutter precache --web
+
+# The three web apps, exactly as `npm run build:web` builds them.
+FROM flutter AS web
+WORKDIR /app
+COPY --from=build /app /app
+COPY packages packages
+COPY apps apps
+COPY scripts/build-web.mjs scripts/
+ARG FIREBASE_API_KEY
+ARG FIREBASE_PROJECT_ID
+ARG FIREBASE_AUTH_DOMAIN=""
+RUN node scripts/build-web.mjs
+
 FROM node:${NODE_VERSION}-bookworm-slim
 ENV NODE_ENV=production \
     PORT=5001 \
@@ -42,9 +79,11 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY --from=deps /app/package.json ./
 COPY --from=deps /app/node_modules node_modules
-COPY --from=build /app/backend/package.json backend/
+COPY --from=build /app/backend/package.json /app/backend/prisma.config.ts backend/
+COPY --from=build /app/backend/prisma backend/prisma
 COPY --from=build /app/backend/dist backend/dist
-COPY dist/web web
+COPY --from=build /app/backend/scripts/start-production.sh backend/scripts/
+COPY --from=web /app/dist/web web
 USER node
 EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \

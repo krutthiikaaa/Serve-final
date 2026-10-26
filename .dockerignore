@@ -1,5 +1,5 @@
-# Only what the image needs: package manifests, the backend source and the
-# prebuilt web apps in dist/web. Never send secrets or local state.
+# Only sources go into the build: the image builds the backend and all three
+# web apps itself. Never send secrets, local state or build output.
 .git
 **/node_modules
 **/.env
@@ -18,10 +18,15 @@ backend/dist
 backend/src/generated
 backend/coverage
 apps/*/dist
-apps/student
+apps/student/build
+apps/student/ios/Pods
+apps/student/ios/.symlinks
+apps/student/android/.gradle
+apps/student/.flutter-plugins*
+apps/student/config/*.json
+!apps/student/config/*.example.json
+**/.dart_tool
 e2e/test-results
 e2e/playwright-report*
-dist/*
-!dist/web
-dist/web/.serve-web-build
+dist
 *.log
