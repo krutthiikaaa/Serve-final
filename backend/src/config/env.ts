@@ -146,6 +146,14 @@ const envSchema = z
           .filter((domain) => domain.length > 0),
       ),
 
+    /**
+     * Optional first admin, linked by the production release step
+     * (src/ops/release.ts) exactly like `npm run admin:create`: the Firebase
+     * user must already exist. Set both or neither.
+     */
+    ADMIN_BOOTSTRAP_EMAIL: optional(z.email({ error: 'ADMIN_BOOTSTRAP_EMAIL must be an email' })),
+    ADMIN_BOOTSTRAP_NAME: optional(z.string().trim().min(1).max(120)),
+
     // --- Payments -------------------------------------------------------------
     /** mock = development provider; razorpay = production provider (adapter pending). */
     PAYMENT_MODE: z.enum(['mock', 'razorpay']).default('mock'),
@@ -193,6 +201,9 @@ const envSchema = z
       ] as const) {
         if (!env[key]) issue(key, `${key} is required when PAYMENT_MODE=razorpay`);
       }
+    }
+    if (Boolean(env.ADMIN_BOOTSTRAP_EMAIL) !== Boolean(env.ADMIN_BOOTSTRAP_NAME)) {
+      issue('ADMIN_BOOTSTRAP_NAME', 'Set ADMIN_BOOTSTRAP_EMAIL and ADMIN_BOOTSTRAP_NAME together');
     }
     if (env.DEMO_MODE && env.PAYMENT_MODE !== 'mock') {
       issue(
@@ -256,9 +267,20 @@ export class EnvValidationError extends Error {
   }
 }
 
-/** Validate a raw environment object. Pure — used directly by tests. */
+/**
+ * Validate a raw environment object. Pure — used directly by tests.
+ *
+ * On Render, CORS_ORIGINS defaults to the service's own public URL
+ * (RENDER_EXTERNAL_URL, set by Render), so the generated onrender.com address
+ * need not be known in advance. An explicit CORS_ORIGINS always wins, and the
+ * production rules (https, no localhost) apply either way.
+ */
 export function parseEnv(raw: Record<string, string | undefined>): Env {
-  const result = envSchema.safeParse(raw);
+  const result = envSchema.safeParse(
+    raw.CORS_ORIGINS || !raw.RENDER_EXTERNAL_URL
+      ? raw
+      : { ...raw, CORS_ORIGINS: raw.RENDER_EXTERNAL_URL },
+  );
   if (!result.success) {
     // Report variable names and rule messages only — never echo values (they may be secrets).
     const issues = result.error.issues.map(

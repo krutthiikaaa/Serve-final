@@ -225,6 +225,19 @@ describe('parseEnv', () => {
       expect(issuesOf(noSecret)).toEqual([expect.stringContaining('PAYMENT_SECRET')]);
     });
 
+    it('on Render, defaults CORS_ORIGINS to the service URL and keeps the production rules', () => {
+      const { CORS_ORIGINS: _cors, ...render } = demoProd;
+      const url = 'https://serve-abcd.onrender.com';
+      expect(parseEnv({ ...render, RENDER_EXTERNAL_URL: url }).CORS_ORIGINS).toEqual([url]);
+      expect(
+        parseEnv({ ...demoProd, RENDER_EXTERNAL_URL: url }).CORS_ORIGINS, // explicit value wins
+      ).toEqual(['https://serve.example']);
+      expect(
+        issuesOf({ ...render, RENDER_EXTERNAL_URL: 'http://serve-abcd.onrender.com' }),
+      ).toEqual([expect.stringContaining('https')]);
+      expect(issuesOf(render)).toEqual([expect.stringContaining('CORS_ORIGINS')]);
+    });
+
     it('cannot be combined with a real payment provider', () => {
       expect(issuesOf({ ...validProd, DEMO_MODE: 'true' })).toEqual([
         expect.stringContaining('DEMO_MODE=true requires PAYMENT_MODE=mock'),
@@ -238,6 +251,25 @@ describe('parseEnv', () => {
         ]);
       }
     });
+  });
+
+  it('accepts the optional first admin only as an email and name pair', () => {
+    expect(parseEnv(validDev).ADMIN_BOOTSTRAP_EMAIL).toBeUndefined();
+    const env = parseEnv({
+      ...validDev,
+      ADMIN_BOOTSTRAP_EMAIL: 'ops@uni.edu',
+      ADMIN_BOOTSTRAP_NAME: 'Ops Admin',
+    });
+    expect(env).toMatchObject({
+      ADMIN_BOOTSTRAP_EMAIL: 'ops@uni.edu',
+      ADMIN_BOOTSTRAP_NAME: 'Ops Admin',
+    });
+    expect(issuesOf({ ...validDev, ADMIN_BOOTSTRAP_EMAIL: 'ops@uni.edu' })).toEqual([
+      expect.stringContaining('together'),
+    ]);
+    expect(
+      issuesOf({ ...validDev, ADMIN_BOOTSTRAP_EMAIL: 'not-an-email', ADMIN_BOOTSTRAP_NAME: 'X' }),
+    ).toEqual([expect.stringContaining('ADMIN_BOOTSTRAP_EMAIL')]);
   });
 
   it('treats WEB_ROOT as optional', () => {
