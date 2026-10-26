@@ -73,13 +73,22 @@ class AppConfig {
         ? '${isAndroidDevice ? '10.0.2.2' : '127.0.0.1'}:9099'
         : null;
     return AppConfig(
-      apiUrl: api.endsWith('/') ? api.substring(0, api.length - 1) : api,
+      apiUrl: _origin(api),
       firebaseApiKey: firebaseApiKey.isEmpty ? 'demo-api-key' : firebaseApiKey,
       firebaseProjectId: projectId,
       authEmulatorHost: emulator,
       staffDashboardUrl: portal(staffDashboardUrl, '/staff/', 'http://localhost:5173'),
       adminPortalUrl: portal(adminPortalUrl, '/admin/', 'http://localhost:5174'),
     );
+  }
+
+  /// The backend origin. REST requests go to `$apiUrl/api/…`, Socket.IO to
+  /// `$apiUrl/socket.io`, so an `API_URL` given with a trailing `/api` (or `/`)
+  /// is reduced to the origin.
+  static String _origin(String url) {
+    var origin = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    if (origin.endsWith('/api')) origin = origin.substring(0, origin.length - 4);
+    return origin;
   }
 
   final String apiUrl;

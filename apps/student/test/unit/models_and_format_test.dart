@@ -69,6 +69,17 @@ void main() {
       expect(c.authEmulatorHost, '192.168.1.20:9099');
     });
 
+    test('API_URL may be given with /api; requests still go to <origin>/api', () {
+      for (final url in [
+        'https://serve-abcd.onrender.com/api',
+        'https://serve-abcd.onrender.com/api/',
+        'https://serve-abcd.onrender.com/',
+      ]) {
+        final c = AppConfig.resolve(apiUrl: url, isRelease: true, isAndroidDevice: false);
+        expect(c.apiUrl, 'https://serve-abcd.onrender.com');
+      }
+    });
+
     test('a real Firebase project never defaults to the emulator', () {
       final c = AppConfig.resolve(firebaseProjectId: 'serve-prod', isRelease: false, isAndroidDevice: false);
       expect(c.authEmulatorHost, isNull);
