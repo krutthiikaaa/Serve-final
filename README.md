@@ -282,9 +282,13 @@ Deployment on one domain (student `/`, staff `/staff/`, admin `/admin/`, API
 `/api`) with installable web apps and demo payments: see
 [docs/deployment.md](docs/deployment.md). In short:
 
+On **Render**, the [render.yaml](render.yaml) Blueprint creates the web
+service and its PostgreSQL database: see [docs/render.md](docs/render.md)
+(free plans are for trying it out, not for the university rollout). On your
+own server:
+
 ```bash
-FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… npm run build:web   # → dist/web (WEB_ROOT)
-docker compose -f deploy/docker-compose.yml build            # backend + web apps image, Caddy in front
+FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… docker compose -f deploy/docker-compose.yml build   # image builds API + all apps
 npm run smoke:deploy -- https://YOUR_DOMAIN                  # read-only checks after deploying
 npm run acceptance:deploy -- https://YOUR_DOMAIN             # signed-in checks (accounts via env)
 ```
@@ -468,4 +472,5 @@ history.
 - [docs/frontend-integration.md](docs/frontend-integration.md)
 - [docs/frontend-architecture.md](docs/frontend-architecture.md)
 - [docs/deployment.md](docs/deployment.md)
+- [docs/render.md](docs/render.md)
 - [apps/student/README.md](apps/student/README.md)

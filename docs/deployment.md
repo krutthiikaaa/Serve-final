@@ -52,17 +52,19 @@ run it from Xcode, pointed at the same domain (steps 15–17). Payments stay
 - **Local development is unchanged:** student `:5555`, staff `:5173`, admin
   `:5174`, backend `:5001` ([development.md](development.md)).
 
+**On Render** (no server to manage, the generated `onrender.com` address,
+HTTPS included): use the [render.yaml](../render.yaml) Blueprint and follow
+[render.md](render.md). The rest of this guide covers your own server, and
+its Firebase, testing, mobile, backup and security steps apply to Render too.
+
 **The whole deployment in commands** (Docker Compose on one server; each step
 is explained below):
 
 ```bash
-# build machine (Node 22, Flutter 3.47)
-npm ci
-FIREBASE_API_KEY='<web api key>' FIREBASE_PROJECT_ID='<project id>' npm run build:web
-
-# server (Docker), repository checked out with dist/web copied in
+# server (Docker), repository checked out
 cp deploy/production.env.example deploy/serve.env      # then fill it in (step 6)
 export SERVE_DOMAIN=YOUR_DOMAIN
+export FIREBASE_API_KEY='<web api key>' FIREBASE_PROJECT_ID='<project id>'   # public; for the web build
 docker compose -f deploy/docker-compose.yml build
 docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate
 docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate npm run db:seed --workspace backend
@@ -84,7 +86,7 @@ npm run smoke:deploy -- https://YOUR_DOMAIN
 | A Linux server with Docker (or Node.js 22) | Runs the backend and the proxy (step 3) |
 | PostgreSQL 16 | The database (step 4) |
 | A Firebase project | Sign-in for all three apps (step 5) |
-| A build machine with Node.js 22, npm and Flutter 3.47+ | Builds the web apps (Flutter is not inside the Docker image) |
+| Node.js 22 and Flutter 3.47+ | Only to build without Docker (the image builds everything itself) and for the mobile app |
 | Optional: Android SDK (Android Studio) | The student APK (step 16) |
 | Optional: a Mac with Xcode and an Apple ID | The student app on an iPhone (step 17) |
 
@@ -112,7 +114,7 @@ been chosen:
   nginx installed on the host (steps 9–10 show both).
 - **A container platform** that supports WebSockets and long-lived
   containers: run the SERVE image ([Dockerfile](../Dockerfile)) and let the
-  platform terminate TLS.
+  platform terminate TLS. **Render** is prepared: [render.md](render.md).
 
 ## 4. PostgreSQL
 
@@ -188,7 +190,7 @@ emulator, a `demo-` project, the local development databases, or mock payments
 without `DEMO_MODE=true`. Never copy development values (`backend/.env`, the
 dev `PAYMENT_SECRET`, dev database passwords).
 
-### Web build (public; build machine)
+### Web build (public; Docker build arguments or the build machine)
 
 | Variable | Value |
 |---|---|
@@ -242,27 +244,23 @@ against production. The Prisma configuration refuses them with
 
 ## 8. Docker build
 
-The image contains the backend, its production dependencies and the three
-built web apps (`dist/web`). Flutter is not in the image, so build the web apps
-first, on the build machine:
-
-```bash
-npm ci
-FIREBASE_API_KEY='<web api key>' FIREBASE_PROJECT_ID='<project id>' npm run build:web
-```
-
-`npm run build:web` builds the staff and admin apps (Vite, base `/staff/` and
-`/admin/`) and the student app (`flutter build web --release --base-href /
---no-web-resources-cdn --csp`) into `dist/web/{student,staff,admin}`. It
-refuses `demo-` projects and non-https `API_URL`s.
-
-Then, with `dist/web` next to the repository on the server (or build there):
+The image builds everything from source: the backend, and the three web apps
+with `scripts/build-web.mjs` (the staff and admin apps with Vite, base
+`/staff/` and `/admin/`; the student app with the official Flutter SDK,
+checksum-verified, `flutter build web --release --base-href /
+--no-web-resources-cdn --csp`). The public Firebase web values are build
+arguments; the build refuses missing values, `demo-` projects and non-https
+`API_URL`s.
 
 ```bash
 export SERVE_DOMAIN=YOUR_DOMAIN
+export FIREBASE_API_KEY='<web api key>' FIREBASE_PROJECT_ID='<project id>'
 docker compose -f deploy/docker-compose.yml build                  # runtime image: serve:latest
 docker compose -f deploy/docker-compose.yml --profile tools build  # tools image: serve-tools:latest
 ```
+
+Without Docker, `FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… npm run build:web`
+(Node.js 22 and Flutter 3.47+) builds the same apps into `dist/web`.
 
 The runtime image is multi-stage: production dependencies only, runs as the
 unprivileged `node` user, has a health check, and contains no env files or
@@ -653,7 +651,8 @@ accounts. A production server refuses to serve a `--local` build.
 | `demo-` Firebase project in builds | `apps/*/vite.config.ts`, `scripts/build-web.mjs`, `app_config.dart` | production | rejected |
 | Destructive Prisma commands | `backend/prisma.config.ts` | safety | only on `*_dev` / `*_test` databases, never in production |
 | Reverse proxy | `deploy/Caddyfile`, `deploy/nginx.conf` | production | `YOUR_DOMAIN` / `SERVE_DOMAIN` placeholder |
-| Container stack | `Dockerfile`, `deploy/docker-compose.yml`, `.dockerignore` | production | app + Caddy; database external |
+| Container stack | `Dockerfile`, `deploy/docker-compose.yml`, `.dockerignore` | production | builds all apps from source; app + Caddy; database external |
+| Render | `render.yaml`, `backend/scripts/start-production.sh`, `backend/src/ops/release.ts` | production | one web service + PostgreSQL; migrations and release tasks at start; CORS defaults to `RENDER_EXTERNAL_URL` |
 | `firebase.json` (127.0.0.1), `firebase.phone.json` (0.0.0.0) | repo root | local dev | kept |
 | E2E ports 5101/5273/5274/5455, emulator | `e2e/tests/support/constants.mjs` | test | kept |
 
@@ -663,23 +662,25 @@ accounts. A production server refuses to serve a `--local` build.
 
 - All test suites, the end-to-end suites (browsers driving the Flutter web
   build and both React apps against the real backend, PostgreSQL and the Auth
-  Emulator), and production builds of the backend and all three web apps.
-- The Docker images built with this Dockerfile's steps (the sandbox's
-  TLS-intercepting proxy required adding its certificate authority to the base
-  image there; a normal server needs nothing extra), migrations and the
-  catalogue seed run with the tools image against a fresh PostgreSQL database,
-  and the production container behind Caddy over HTTPS passing
-  `smoke:deploy` (apps, health, headers, WebSocket upgrade), with graceful
-  shutdown.
+  Emulator), production builds of the backend and all three web apps, and
+  `npm audit` (0 vulnerabilities).
+- The Docker image built from source with this Dockerfile (Flutter SDK
+  checksum-verified, all three web apps built inside), then started like
+  Render runs it (`start-production.sh`, `PORT=10000`, CORS from
+  `RENDER_EXTERNAL_URL`) against a fresh PostgreSQL database: migrations
+  applied, catalogue seeded once, `smoke:deploy` passing (apps, health,
+  headers, WebSocket upgrade), graceful shutdown. Earlier: the compose stack
+  behind Caddy over HTTPS. (The sandbox's TLS-intercepting proxy required
+  trusting its certificate authority in the local base images; a normal build
+  host needs nothing extra.)
 - The acceptance test against a local single-domain server.
 
-**Not verified yet:** a real deployment (domain, DNS, Let's Encrypt, real
-Firebase project, the server's database), the Android APK build (the
-preparation machine cannot download the Android SDK) and iOS builds from this
-machine (no Xcode). The student app has run on a real iPhone in development
-(reported by the owner).
+**Not verified yet:** a real deployment (Render or a server, a real Firebase
+project and database), the Android APK build (the preparation machine cannot
+download the Android SDK) and iOS builds from this machine (no Xcode). The
+student app has run on a real iPhone in development (reported by the owner).
 
-**The owner provides:** the domain and DNS access; a server; PostgreSQL 16
-with backups; a Firebase project (web API key, project id, service account); a
-new `PAYMENT_SECRET`; the first admin's email; and the accounts for the
-acceptance test.
+**The owner provides:** a Render account (or a domain and a server), a
+Firebase project (web API key, project id, service account), the first
+admin's email, and the accounts for the acceptance test. On a server, also
+PostgreSQL 16 with backups and a new `PAYMENT_SECRET` (Render generates one).
