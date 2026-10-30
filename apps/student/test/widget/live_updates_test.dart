@@ -102,7 +102,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
     await tester.pumpAndSettle();
-    expect(find.text('Continue as'), findsOneWidget);
+    expect(find.text('Welcome to SERVE'), findsOneWidget);
     expect(h.services.cart.isEmpty, isTrue);
     expect(h.realtime.started, isFalse);
   });

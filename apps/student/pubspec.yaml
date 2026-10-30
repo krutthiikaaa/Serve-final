@@ -48,6 +48,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # Test-only: a fake URL launcher for the staff/admin portal links.
+  url_launcher_platform_interface: ^2.3.2
+  plugin_platform_interface: ^2.1.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -63,6 +66,8 @@ flutter:
   # The official SERVE logo (transparent PNG, see brand/README.md).
   assets:
     - assets/images/serve_logo.png
+    # Welcome-screen sandwich, one transparent layer per ingredient.
+    - assets/images/sandwich/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

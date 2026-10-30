@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SERVE warm off-white (ServeColors.paper): the window behind the app
+         until Flutter draws the opening animation's first frame. -->
+    <color name="serve_paper">#F8F7F2</color>
+</resources>

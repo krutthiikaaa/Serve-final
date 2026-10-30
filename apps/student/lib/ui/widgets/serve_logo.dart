@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../theme/serve_theme.dart';
 
-/// The official SERVE tagline. Used on the splash, role selection and sign-in
-/// screens only.
+/// The official SERVE tagline. Used on the role selection and sign-in screens
+/// only.
 const serveTagline = 'Order. Track. Collect.';
 
 /// The official SERVE logo (`assets/images/serve_logo.png`, transparent).

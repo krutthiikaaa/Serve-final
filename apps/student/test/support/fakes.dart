@@ -219,6 +219,9 @@ class FakeFirebase extends FirebaseAuthClient {
   final calls = <String>[];
   AuthException? signInError;
 
+  /// When set, sign-in waits for it to complete (to observe loading states).
+  Completer<void>? signInGate;
+
   FirebaseSession _session(String email) => FirebaseSession(
     uid: 'uid-$email',
     email: email,
@@ -230,6 +233,7 @@ class FakeFirebase extends FirebaseAuthClient {
   @override
   Future<FirebaseSession> signIn(String email, String password) async {
     calls.add('signIn:$email');
+    await signInGate?.future;
     if (signInError != null) throw signInError!;
     return _session(email);
   }

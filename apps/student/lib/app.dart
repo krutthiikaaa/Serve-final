@@ -14,7 +14,6 @@ import 'ui/navigation.dart';
 import 'ui/screens/home_shell.dart';
 import 'ui/screens/register_screen.dart';
 import 'ui/screens/signed_out_flow.dart';
-import 'ui/screens/splash_screen.dart';
 import 'ui/screens/status_screens.dart';
 
 /// Everything the UI needs, created once in main() (or by tests with fakes).
@@ -113,16 +112,21 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final auth = s.auth;
+    // There is no splash screen: the app opens on the signed-out flow, whose
+    // role selection plays the opening animation. It stays mounted while a
+    // saved session is restored or an account loads after sign-in, so the
+    // animation (or the sign-in form) isn't interrupted; a restored student
+    // then goes straight home.
+    const signedOut = SignedOutFlow(key: ValueKey('signed-out'));
     final child = switch (auth.status) {
-      AuthStatus.initializing => const SplashScreen(key: ValueKey('splash')),
-      AuthStatus.loadingAccount when auth.me == null => const SplashScreen(key: ValueKey('splash')),
-      AuthStatus.signedOut => const SignedOutFlow(key: ValueKey('signed-out')),
+      AuthStatus.initializing || AuthStatus.signedOut => signedOut,
+      AuthStatus.loadingAccount when auth.me == null => signedOut,
       AuthStatus.error when auth.me == null => AccountErrorScreen(key: const ValueKey('error'), error: auth.error),
       _ => switch (auth.me) {
         UnregisteredMe(:final email) => RegisterScreen(key: const ValueKey('register'), lockedEmail: email),
         OtherRoleMe(:final role) => WrongRoleScreen(key: const ValueKey('wrong-role'), role: role),
         StudentMe() => const HomeShell(key: ValueKey('home')),
-        null => const SplashScreen(key: ValueKey('splash')),
+        null => signedOut,
       },
     };
     return AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: child);

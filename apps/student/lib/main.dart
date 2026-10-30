@@ -21,7 +21,6 @@ Future<void> main() async {
       services: AppServices(config: config, auth: auth, api: api, realtime: realtime),
     ),
   );
-  // Give the splash a brief moment, then restore any saved session.
-  await Future<void>.delayed(const Duration(milliseconds: 900));
+  // The opening animation plays while any saved session is restored.
   await auth.restore();
 }

@@ -6,6 +6,9 @@ import 'package:serve_student/services/auth/auth_controller.dart';
 
 import '../support/fakes.dart';
 
+final loginEmail = find.byKey(const Key('login-email'));
+final loginPassword = find.byKey(const Key('login-password'));
+
 void main() {
   testWidgets('signed out: role selection → login → home (routed by /me)', (tester) async {
     usePhoneSize(tester);
@@ -15,15 +18,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Student'), findsOneWidget);
-    expect(find.text('Canteen staff'), findsOneWidget);
+    expect(find.text('Canteen Staff'), findsOneWidget);
     expect(find.text('Administrator'), findsOneWidget);
 
     await tester.tap(find.text('Student'));
     await tester.pumpAndSettle();
     expect(find.text('Welcome back'), findsOneWidget);
 
-    await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'asha@example.edu');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret');
+    await tester.enterText(loginEmail, 'asha@example.edu');
+    await tester.enterText(loginPassword, 'secret');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
@@ -40,8 +43,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Student'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'asha@example.edu');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'nope');
+    await tester.enterText(loginEmail, 'asha@example.edu');
+    await tester.enterText(loginPassword, 'nope');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
     expect(find.text('Incorrect email or password.'), findsOneWidget);
