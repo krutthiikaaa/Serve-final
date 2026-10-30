@@ -139,6 +139,10 @@ prints values.
 | `PAYMENT_SECRET` | new `openssl rand -hex 32` for this deployment | **yes** |
 | `LOG_LEVEL` | `info` | no |
 | `STUDENT_EMAIL_DOMAINS` | optional allowlist, e.g. your university domain | no |
+| `STUDENT_APP_URL` | `https://YOUR_DOMAIN` — used in SSO error “return to SERVE” links | no |
+| `STAFF_DASHBOARD_URL` | `https://YOUR_DOMAIN/staff` (or the staff origin). HTTPS required. | no |
+| `ADMIN_PORTAL_URL` | `https://YOUR_DOMAIN/admin` (or the admin origin). HTTPS required. | no |
+| `SSO_CODE_TTL_SECONDS` | optional, default `60` (15–300) | no |
 | `FIREBASE_AUTH_EMULATOR_HOST` | **must be unset** (rejected in production) | — |
 
 `TRUST_PROXY` matters: rate limits are per client IP. Too low and every user

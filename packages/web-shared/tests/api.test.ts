@@ -73,6 +73,19 @@ describe('ApiClient', () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
+  it('does not sign out when an anonymous 401 is returned (SSO exchange)', async () => {
+    const { api, onUnauthorized } = client([
+      json(401, errorBody('SSO_CODE_INVALID', 'This sign-in link is invalid or has expired.')),
+    ]);
+    await expect(
+      api.data('POST', '/auth/sso/exchange', {
+        body: { code: 'already-used-or-expiredxx', audience: 'STAFF' },
+        anonymous: true,
+      }),
+    ).rejects.toMatchObject({ status: 401, code: 'SSO_CODE_INVALID' });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
   it('maps network failures to a friendly status-0 error', async () => {
     const api = new ApiClient({
       baseUrl: 'http://localhost:5001',

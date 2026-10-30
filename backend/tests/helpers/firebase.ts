@@ -41,6 +41,14 @@ export async function createFirebaseUser(email = uniqueEmail()): Promise<Firebas
   return { uid: String(json.localId), email: email.toLowerCase(), idToken: String(json.idToken) };
 }
 
+export async function signInWithCustomToken(customToken: string): Promise<string> {
+  const json = await identityToolkit('accounts:signInWithCustomToken', {
+    token: customToken,
+    returnSecureToken: true,
+  });
+  return String(json.idToken);
+}
+
 export async function signIn(email: string): Promise<string> {
   const json = await identityToolkit('accounts:signInWithPassword', {
     email,

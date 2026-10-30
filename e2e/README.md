@@ -32,6 +32,7 @@ touches the database directly.
 | `realtime-isolation` | events reach only the right canteen, student and admins; foreign REST access is 404 |
 | `operations` | live menu changes in paise, canteen pause/resume, staff deactivation, cancellation with refund |
 | `access-control` | staff, admin and student accounts in the wrong portal; wrong password |
+| `sso` | Staff/Admin authorization-code handoff, invalid/expired/reused codes, logout, session persistence |
 | `visual` | screenshots of every staff and admin screen → `test-results/visual/` |
 | `student-web` | the Flutter app: registration, menu, canteen-switch dialog, checkout, payment, live tracking |
 

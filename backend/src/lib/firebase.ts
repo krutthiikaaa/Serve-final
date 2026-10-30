@@ -14,6 +14,8 @@ export interface VerifiedIdentity {
 
 export interface IdentityVerifier {
   verifyIdToken(idToken: string): Promise<VerifiedIdentity>;
+  /** Mint a Firebase Custom Token for SSO into another SERVE origin. */
+  createCustomToken(uid: string): Promise<string>;
 }
 
 const APP_NAME = 'serve-backend';
@@ -89,6 +91,29 @@ const TOKEN_ERRORS: Record<string, { code: string; message: string }> = {
  */
 export class FirebaseIdentityVerifier implements IdentityVerifier {
   constructor(private readonly auth: Auth) {}
+
+  async createCustomToken(uid: string): Promise<string> {
+    try {
+      const user = await this.auth.getUser(uid);
+      if (user.disabled) {
+        throw new UnauthorizedError('This account has been disabled.', 'AUTH_USER_DISABLED');
+      }
+      return await this.auth.createCustomToken(uid);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) throw err;
+      const code = (err as { code?: unknown }).code;
+      if (code === 'auth/user-disabled') {
+        throw new UnauthorizedError('This account has been disabled.', 'AUTH_USER_DISABLED');
+      }
+      if (code === 'auth/user-not-found') {
+        throw new UnauthorizedError('Invalid authentication token.', 'AUTH_TOKEN_INVALID');
+      }
+      throw new ServiceUnavailableError(
+        'Authentication service is temporarily unavailable.',
+        'AUTH_UNAVAILABLE',
+      );
+    }
+  }
 
   async verifyIdToken(idToken: string): Promise<VerifiedIdentity> {
     try {

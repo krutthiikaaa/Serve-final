@@ -185,6 +185,15 @@ export const meStaffSchema = z.strictObject({
 });
 export const meAdminSchema = z.strictObject({ ...meBase, role: z.literal('ADMIN') });
 
+export const ssoAudienceSchema = z.enum(['STAFF', 'ADMIN']);
+export const ssoInitiateResultSchema = z.strictObject({
+  redirectUrl: z.url(),
+  expiresAt: isoDate,
+});
+export const ssoExchangeResultSchema = z.strictObject({
+  customToken: z.string().min(1),
+});
+
 export const changeRequestSchema = z.strictObject({
   id: uuid,
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED']),

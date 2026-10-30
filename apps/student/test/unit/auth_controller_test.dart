@@ -60,6 +60,12 @@ void main() {
     expect(await auth.idToken(), 'id-token');
   });
 
+  test('sendPasswordReset does not change auth status', () async {
+    await auth.sendPasswordReset('asha@example.edu');
+    expect(firebase.calls, ['reset:asha@example.edu']);
+    expect(auth.status, AuthStatus.initializing);
+  });
+
   test('concurrent token refreshes share one request', () async {
     await auth.signIn('asha@example.edu', 'secret');
     firebase.calls.clear();

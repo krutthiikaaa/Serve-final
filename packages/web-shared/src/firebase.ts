@@ -28,9 +28,10 @@ export function initFirebaseAuth(config: FirebaseWebConfig): Auth {
       projectId: config.projectId,
       authDomain: config.authDomain ?? `${config.projectId}.firebaseapp.com`,
     });
-  // getAuth() minus the popup/redirect resolver: SERVE signs in with email and
-  // password only, so no Google sign-in scripts or iframes are loaded (the
-  // single-domain CSP allows scripts from this origin only).
+  // getAuth() minus the popup/redirect resolver: SERVE signs in with email /
+  // password and Firebase Custom Tokens (SSO), so no Google sign-in scripts
+  // or iframes are loaded (the single-domain CSP allows scripts from this
+  // origin only). Persistence keeps the dashboard session across refresh.
   auth = initializeAuth(app, {
     persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
   });

@@ -27,6 +27,9 @@ export function errorMessage(err: unknown): string {
       case 0:
         return NETWORK_MESSAGE;
       case 401:
+        if (err.code === 'SSO_CODE_INVALID') {
+          return err.message || 'This sign-in link is invalid or has expired.';
+        }
         return 'Your session has expired. Please sign in again.';
       case 403:
         return err.message || 'You do not have permission to do that.';
@@ -128,7 +131,7 @@ export class ApiClient {
       }
     }
     if (!res.ok) {
-      if (res.status === 401) this.options.onUnauthorized?.();
+      if (res.status === 401 && !options.anonymous) this.options.onUnauthorized?.();
       throw await toError(res);
     }
     const body = (res.status === 204 ? undefined : await res.json()) as T;

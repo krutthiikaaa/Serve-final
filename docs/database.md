@@ -47,6 +47,7 @@ ProcessedPaymentEvent (provider, eventId) — replay protection
 | **Payment** | `orderId` unique, `provider` (MOCK / RAZORPAY), `status` (PENDING / SUCCESS / FAILED / REFUNDED), `amountPaise`, `currency`, `providerOrderId` unique, `providerPaymentId` unique, `signature`, `failureReason`, `paidAt`, `refundedAt` | one per Order |
 | **ProcessedPaymentEvent** | `provider`, `eventId`, `processedAt` | unique (`provider`, `eventId`) |
 | **Notification** | `studentId?`, `staffId?`, `adminId?`, `orderId?`, `type`, `title`, `message`, `data`, `readAt` | exactly one recipient |
+| **SsoAuthorizationCode** | `codeHash` unique (SHA-256 of the one-time code), `firebaseUid`, `audience` (STAFF / ADMIN), `expiresAt`, `consumedAt?` | no relations; consumed atomically |
 
 All ids are server-generated UUIDs. Every mutable table has `createdAt` and
 `updatedAt`.

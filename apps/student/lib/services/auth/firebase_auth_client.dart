@@ -55,6 +55,23 @@ class FirebaseAuthClient {
   Future<FirebaseSession> signIn(String email, String password) =>
       _passwordCall('signInWithPassword', {'email': email.trim(), 'password': password, 'returnSecureToken': true});
 
+  /// Sends Firebase's password-reset email. [EMAIL_NOT_FOUND] is treated as
+  /// success so the form cannot be used to probe which addresses exist.
+  Future<void> sendPasswordReset(String email) async {
+    try {
+      await _send(
+        () => _http.post(
+          _identity('sendOobCode'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'requestType': 'PASSWORD_RESET', 'email': email.trim()}),
+        ),
+      );
+    } on AuthException catch (e) {
+      if (e.code == 'EMAIL_NOT_FOUND') return;
+      rethrow;
+    }
+  }
+
   /// Exchanges the refresh token for a fresh ID token.
   Future<FirebaseSession> refresh(FirebaseSession session) async {
     final res = await _send(
@@ -105,7 +122,7 @@ String firebaseErrorMessage(String code) {
     'EMAIL_EXISTS' => 'An account with this email already exists. Sign in instead.',
     'INVALID_LOGIN_CREDENTIALS' || 'EMAIL_NOT_FOUND' || 'INVALID_PASSWORD' || 'INVALID_EMAIL' => 'Incorrect email or password.',
     'MISSING_PASSWORD' => 'Enter your password.',
-    'TOO_MANY_ATTEMPTS_TRY_LATER' => 'Too many attempts. Please wait and try again.',
+    'TOO_MANY_ATTEMPTS_TRY_LATER' || 'RESET_PASSWORD_EXCEED_LIMIT' => 'Too many attempts. Please wait and try again.',
     'USER_DISABLED' => 'This account has been disabled.',
     'TOKEN_EXPIRED' || 'INVALID_REFRESH_TOKEN' || 'USER_NOT_FOUND' => 'Your session has expired. Please sign in again.',
     _ => 'Sign-in failed. Please try again.',

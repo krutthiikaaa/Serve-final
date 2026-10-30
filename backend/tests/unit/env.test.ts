@@ -23,6 +23,9 @@ const validProd = {
   FIREBASE_PROJECT_ID: 'serve-prod',
   FIREBASE_CLIENT_EMAIL: 'firebase-adminsdk@serve-prod.iam.gserviceaccount.com',
   FIREBASE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n',
+  STUDENT_APP_URL: 'https://serve.example',
+  STAFF_DASHBOARD_URL: 'https://staff.serve.example',
+  ADMIN_PORTAL_URL: 'https://admin.serve.example',
 };
 
 const issuesOf = (raw: Record<string, string | undefined>): string[] => {
@@ -41,6 +44,7 @@ describe('parseEnv', () => {
     expect(env.PORT).toBe(5001);
     expect(env.PAYMENT_MODE).toBe('mock');
     expect(env.TRUST_PROXY).toBe(0);
+    expect(env.SSO_CODE_TTL_SECONDS).toBe(60);
     expect(env.CORS_ORIGINS).toEqual(['http://localhost:5173', 'http://localhost:5174']);
   });
 
@@ -110,6 +114,11 @@ describe('parseEnv', () => {
     }
   });
 
+  it('rejects an SSO code TTL outside 15–300 seconds', () => {
+    expect(issuesOf({ ...validDev, SSO_CODE_TTL_SECONDS: '5' }).length).toBeGreaterThan(0);
+    expect(issuesOf({ ...validDev, SSO_CODE_TTL_SECONDS: '301' }).length).toBeGreaterThan(0);
+  });
+
   it('rejects short payment secrets', () => {
     expect(issuesOf({ ...validDev, PAYMENT_SECRET: 'short' })).toEqual([
       expect.stringContaining('PAYMENT_SECRET'),
@@ -175,6 +184,17 @@ describe('parseEnv', () => {
     it('rejects the mock payment provider in production', () => {
       const issues = issuesOf({ ...validProd, PAYMENT_MODE: 'mock', PAYMENT_SECRET: SECRET });
       expect(issues).toEqual([expect.stringContaining('mock payment provider')]);
+    });
+
+    it('requires https dashboard URLs in production', () => {
+      const { STAFF_DASHBOARD_URL: _omit, ...raw } = validProd;
+      expect(issuesOf(raw)).toEqual([expect.stringContaining('STAFF_DASHBOARD_URL')]);
+      expect(
+        issuesOf({ ...validProd, ADMIN_PORTAL_URL: 'http://admin.serve.example' }),
+      ).toEqual([expect.stringContaining('ADMIN_PORTAL_URL')]);
+      expect(issuesOf({ ...validProd, STUDENT_APP_URL: 'https://localhost:5555' })).toEqual([
+        expect.stringContaining('STUDENT_APP_URL'),
+      ]);
     });
   });
 

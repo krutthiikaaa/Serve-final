@@ -179,6 +179,9 @@ describe('page CSP by environment', () => {
       PAYMENT_MODE: 'mock',
       PAYMENT_SECRET: SECRET,
       DEMO_MODE: 'true',
+      STUDENT_APP_URL: 'https://serve.example',
+      STAFF_DASHBOARD_URL: 'https://serve.example/staff',
+      ADMIN_PORTAL_URL: 'https://serve.example/admin',
     });
     const csp = pageContentSecurityPolicy(production);
     expect(csp.upgradeInsecureRequests).toEqual([]);

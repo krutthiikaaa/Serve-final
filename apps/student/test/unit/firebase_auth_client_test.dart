@@ -69,4 +69,29 @@ void main() {
     expect(firebaseErrorMessage('EMAIL_EXISTS'), contains('already exists'));
     expect(firebaseErrorMessage('WEAK_PASSWORD : Password should be at least 6 characters'), contains('6 characters'));
   });
+
+  test('sends a password-reset oob code and hides missing emails', () async {
+    final seen = <http.Request>[];
+    var missing = true;
+    final client = FirebaseAuthClient(
+      emulator,
+      httpClient: MockClient((req) async {
+        seen.add(req);
+        if (missing) {
+          return http.Response(
+            jsonEncode({
+              'error': {'message': 'EMAIL_NOT_FOUND'},
+            }),
+            400,
+          );
+        }
+        return http.Response('{}', 200);
+      }),
+    );
+    await client.sendPasswordReset(' missing@serve.dev ');
+    expect(seen.single.url.toString(), contains('accounts:sendOobCode'));
+    expect(jsonDecode(seen.single.body), {'requestType': 'PASSWORD_RESET', 'email': 'missing@serve.dev'});
+    missing = false;
+    await client.sendPasswordReset('asha@example.edu');
+  });
 }

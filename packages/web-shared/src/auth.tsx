@@ -1,6 +1,7 @@
 import {
   createUserWithEmailAndPassword,
   onIdTokenChanged,
+  signInWithCustomToken as firebaseSignInWithCustomToken,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   type Auth,
@@ -18,6 +19,7 @@ import {
 } from 'react';
 import type { Me } from '@serve/contracts';
 import { ApiClient, ApiError } from './api';
+import { ssoLog } from './sso-log';
 
 export type AuthStatus = 'initializing' | 'signedOut' | 'loadingAccount' | 'ready' | 'error';
 
@@ -32,6 +34,9 @@ export interface AuthState {
 export interface AuthContextValue extends AuthState {
   api: ApiClient;
   signIn(email: string, password: string): Promise<void>;
+  signInWithCustomToken(customToken: string): Promise<void>;
+  /** Resolves after Firebase Auth has restored persistence. SSO must wait. */
+  waitForAuthReady(): Promise<void>;
   signUp(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
   /** Re-read `/api/auth/me` (after registration, approval, reconnect…). */
@@ -86,9 +91,18 @@ export function AuthProvider({
     }));
     try {
       const me = await api.get<Me>('/auth/me');
+      ssoLog('auth/me', {
+        ok: true,
+        registered: me.registered,
+        role: me.registered ? me.role : null,
+      });
       setState((s) => ({ ...s, status: 'ready', me, error: null }));
       return me;
     } catch (error) {
+      ssoLog('auth/me', {
+        ok: false,
+        status: error instanceof ApiError ? error.status : undefined,
+      });
       setState((s) => ({ ...s, status: 'error', error }));
       return null;
     }
@@ -109,23 +123,43 @@ export function AuthProvider({
     [auth, loadMe],
   );
 
+  const waitForAuthReady = useCallback(() => auth.authStateReady(), [auth]);
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+    },
+    [auth],
+  );
+  const signInWithCustomToken = useCallback(
+    async (customToken: string) => {
+      await auth.authStateReady();
+      await firebaseSignInWithCustomToken(auth, customToken);
+    },
+    [auth],
+  );
+  const signUp = useCallback(
+    async (email: string, password: string) => {
+      await createUserWithEmailAndPassword(auth, email.trim(), password);
+    },
+    [auth],
+  );
+  const signOut = useCallback(async () => {
+    await firebaseSignOut(auth);
+  }, [auth]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
       api,
       getToken,
       refreshMe: loadMe,
-      async signIn(email, password) {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
-      },
-      async signUp(email, password) {
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
-      },
-      async signOut() {
-        await firebaseSignOut(auth);
-      },
+      waitForAuthReady,
+      signIn,
+      signInWithCustomToken,
+      signUp,
+      signOut,
     }),
-    [state, api, getToken, loadMe, auth],
+    [state, api, getToken, loadMe, waitForAuthReady, signIn, signInWithCustomToken, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

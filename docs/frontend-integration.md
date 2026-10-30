@@ -33,6 +33,7 @@ captured from the running backend. The full reference is
 | Firebase project | `FIREBASE_PROJECT_ID=demo-serve` | `VITE_FIREBASE_PROJECT_ID=demo-serve` |
 | Auth emulator (dev only) | `FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099` | `VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099` |
 | Other portals (role screen) | `STAFF_DASHBOARD_URL`, `ADMIN_PORTAL_URL` | — |
+| Failed-SSO return link | — | `VITE_STUDENT_APP_URL` (dev default `http://localhost:5555`) |
 
 REST lives under `${API_URL}/api`. Socket.IO connects to `${API_URL}` (path `/socket.io`).
 
@@ -64,6 +65,13 @@ Firebase sign-in (email/password)  ─►  Firebase ID token (1 h)
 - On `401`:
   - `AUTH_TOKEN_EXPIRED`: refresh once with `getIdToken(true)` and retry.
   - `AUTH_TOKEN_REVOKED`, `AUTH_USER_DISABLED`, `AUTH_TOKEN_INVALID`: sign out.
+Staff/Admin login in the student app is **SSO**, not a second password prompt.
+`POST /api/auth/sso/initiate` (authenticated) returns a `redirectUrl` to
+`/sso/callback?code=…` on the trusted dashboard. That page POSTs the code to
+`/api/auth/sso/exchange` (public) and signs in with the returned Firebase
+Custom Token. Refreshing the dashboard then uses that origin's own Firebase
+persistence.
+
 - After sign-in, call `GET /api/auth/me` and route on the result:
 
 | `/me` result | Student app | Staff dashboard | Admin portal |

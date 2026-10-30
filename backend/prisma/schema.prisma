@@ -64,6 +64,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum SsoAudience {
+  STAFF
+  ADMIN
+}
+
 enum NotificationType {
   ORDER_PLACED
   PAYMENT_CONFIRMED
@@ -330,6 +335,21 @@ model Payment {
   order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
   @@index([status])
+}
+
+/// One-time SSO handoff from the student app to a staff or admin dashboard.
+/// Only the SHA-256 of the authorization code is stored.
+model SsoAuthorizationCode {
+  id          String      @id @default(uuid()) @db.Uuid
+  codeHash    String      @unique
+  firebaseUid String
+  audience    SsoAudience
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@index([expiresAt])
+  @@index([firebaseUid])
 }
 
 /// Replay protection for payment confirmations and (future) provider webhooks.

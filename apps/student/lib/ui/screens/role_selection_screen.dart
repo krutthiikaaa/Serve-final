@@ -5,10 +5,20 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_config.dart';
+import '../../core/api_exception.dart';
+import '../../services/api/models.dart';
+import '../../services/api/serve_api.dart';
+import '../../services/auth/auth_controller.dart';
+import '../../services/auth/sso_tab.dart';
 import '../../theme/serve_theme.dart';
+import '../widgets/auth_info_pane.dart';
 import '../widgets/auth_layout.dart';
+import '../widgets/forgot_password_form.dart';
+import '../widgets/login_form.dart';
 import '../widgets/sandwich_intro.dart';
+import '../widgets/staff_register_form.dart';
 import '../widgets/states.dart';
+import '../widgets/student_register_form.dart';
 import '../widgets/surface.dart';
 
 const _headline = 'Welcome to SERVE';
@@ -29,14 +39,33 @@ abstract final class _Intro {
 
 double _span(double t, (double, double) phase) => ((t - phase.$1) / (phase.$2 - phase.$1)).clamp(0.0, 1.0);
 
+enum _Pane {
+  roles,
+  studentLogin,
+  studentRegister,
+  studentForgot,
+  staffLogin,
+  staffRegister,
+  staffForgot,
+  staffPending,
+  adminLogin,
+  adminForgot,
+  adminProvision,
+}
+
 /// Students continue in the app; staff and admins are sent to their web portals.
 ///
 /// Opening experience: the sandwich at the centre of the light-green field
 /// bursts into its ingredients; those pieces travel into a centred popup and
-/// become it. Later visits (e.g. back from sign-in) show the popup directly.
+/// become it. Choosing a role transforms the popup's contents into that role's
+/// authentication interface. Every later step (login, create account, password
+/// reset, verification) reuses the same popup. The sandwich is not replayed.
 class RoleSelectionScreen extends StatefulWidget {
-  const RoleSelectionScreen({super.key, required this.onStudent});
-  final VoidCallback onStudent;
+  const RoleSelectionScreen({super.key, this.completeEmail});
+
+  /// When a Firebase user has no SERVE profile yet, open student registration
+  /// on this email inside the popup (no sandwich replay).
+  final String? completeEmail;
 
   static const introDuration = Duration(milliseconds: 4800);
 
@@ -54,23 +83,47 @@ class RoleSelectionScreen extends StatefulWidget {
   State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
+class _LoginSlot {
+  final form = GlobalKey<FormState>();
+  final email = TextEditingController();
+  final password = TextEditingController();
+  bool busy = false;
+  bool obscure = true;
+  String? error;
+
+  void dispose() {
+    email.dispose();
+    password.dispose();
+  }
+}
+
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerProviderStateMixin {
-  late final bool _withIntro = !RoleSelectionScreen._introPlayed;
-  late bool _playing = _withIntro;
+  late final bool _withIntro;
+  late bool _playing;
   bool _started = false;
   bool _disposed = false;
-  late final _intro = AnimationController(vsync: this, duration: RoleSelectionScreen.introDuration, value: _withIntro ? 0 : 1);
-  late final _imageWait = AnimationController(vsync: this, duration: RoleSelectionScreen.maxImageWait);
+  late _Pane _pane;
+  String? _lockedEmail;
+  late final AnimationController _intro;
+  late final AnimationController _imageWait;
   final _stageKey = GlobalKey();
   final _popupKey = GlobalKey();
+  final _student = _LoginSlot();
+  final _staff = _LoginSlot();
+  final _admin = _LoginSlot();
 
   @override
   void initState() {
     super.initState();
-    if (_withIntro) {
-      RoleSelectionScreen._introPlayed = true;
-      _intro.addStatusListener(_onStatus);
-    }
+    final complete = widget.completeEmail;
+    _withIntro = complete == null && !RoleSelectionScreen._introPlayed;
+    _playing = _withIntro;
+    _pane = complete == null ? _Pane.roles : _Pane.studentRegister;
+    _lockedEmail = complete;
+    RoleSelectionScreen._introPlayed = true;
+    _intro = AnimationController(vsync: this, duration: RoleSelectionScreen.introDuration, value: _withIntro ? 0 : 1);
+    _imageWait = AnimationController(vsync: this, duration: RoleSelectionScreen.maxImageWait);
+    if (_withIntro) _intro.addStatusListener(_onStatus);
   }
 
   @override
@@ -111,16 +164,79 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     _disposed = true;
     _imageWait.dispose();
     _intro.dispose();
+    _student.dispose();
+    _staff.dispose();
+    _admin.dispose();
     super.dispose();
   }
 
-  Future<void> _openPortal(String? url, String name) async {
-    if (url == null) {
-      showSnack(context, 'The $name link is not configured for this build.');
+  @override
+  void didUpdateWidget(RoleSelectionScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.completeEmail != null && widget.completeEmail != old.completeEmail) {
+      _lockedEmail = widget.completeEmail;
+      _pane = _Pane.studentRegister;
+    }
+  }
+
+  void _show(_Pane pane) {
+    if (_playing) return;
+    setState(() => _pane = pane);
+  }
+
+  Future<void> _back() async {
+    switch (_pane) {
+      case _Pane.roles:
+        return;
+      case _Pane.studentLogin:
+      case _Pane.staffLogin:
+      case _Pane.adminLogin:
+        _show(_Pane.roles);
+      case _Pane.studentRegister:
+        if (_lockedEmail != null) {
+          _lockedEmail = null;
+          await context.read<AuthController>().signOut();
+        }
+        if (mounted) _show(_Pane.studentLogin);
+      case _Pane.studentForgot:
+        _show(_Pane.studentLogin);
+      case _Pane.staffRegister:
+      case _Pane.staffForgot:
+      case _Pane.staffPending:
+        _show(_Pane.staffLogin);
+      case _Pane.adminForgot:
+      case _Pane.adminProvision:
+        _show(_Pane.adminLogin);
+    }
+  }
+
+  Future<void> _openHandoff(String redirect, String? trustedBase, String name, SsoTab? tab) async {
+    if (!_trustedHandoff(redirect, trustedBase)) {
+      tab?.close();
+      if (mounted) showSnack(context, 'The $name link is not configured for this build.');
       return;
     }
-    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (tab != null) {
+      tab.open(redirect);
+      return;
+    }
+    final ok = await launchUrl(Uri.parse(redirect), mode: LaunchMode.externalApplication);
     if (!ok && mounted) showSnack(context, 'Could not open the $name.');
+  }
+
+  static bool _trustedHandoff(String redirect, String? base) {
+    if (base == null || base.isEmpty) return false;
+    final dest = Uri.tryParse(redirect);
+    final trusted = Uri.tryParse(base);
+    if (dest == null || trusted == null || dest.hasEmptyPath) return false;
+    if (dest.scheme != trusted.scheme || dest.host != trusted.host || dest.port != trusted.port) {
+      return false;
+    }
+    final params = dest.queryParameters;
+    if (params.containsKey('idToken') || params.containsKey('token') || params.containsKey('customToken')) {
+      return false;
+    }
+    return dest.path.contains('/sso/callback') && (params['code'] ?? '').length >= 16;
   }
 
   Rect? _popupRect() {
@@ -130,62 +246,244 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     return popup.localToGlobal(Offset.zero, ancestor: stage) & popup.size;
   }
 
+  _LoginSlot _slotFor(_Pane pane) => switch (pane) {
+    _Pane.staffLogin || _Pane.staffRegister || _Pane.staffForgot || _Pane.staffPending => _staff,
+    _Pane.adminLogin || _Pane.adminForgot || _Pane.adminProvision => _admin,
+    _ => _student,
+  };
+
+  Future<void> _submit(_Pane pane) async {
+    final slot = _slotFor(pane);
+    if (slot.busy || !(slot.form.currentState?.validate() ?? false)) return;
+    setState(() {
+      slot.busy = true;
+      slot.error = null;
+    });
+    final auth = context.read<AuthController>();
+    final config = context.read<AppConfig>();
+    final api = context.read<ServeApi>();
+    SsoTab? tab;
+    try {
+      if (pane == _Pane.studentLogin) {
+        await auth.signIn(slot.email.text, slot.password.text);
+        return;
+      }
+      tab = openBlankSsoTab();
+      final me = await auth.identify(slot.email.text, slot.password.text);
+      final allowed =
+          (pane == _Pane.staffLogin && me is OtherRoleMe && me.role == 'STAFF') ||
+          (pane == _Pane.adminLogin && me is OtherRoleMe && me.role == 'ADMIN');
+      if (!allowed) {
+        tab?.close();
+        await auth.signOut();
+        if (mounted) setState(() => slot.error = _mismatch(pane == _Pane.staffLogin ? 'staff' : 'admin', me));
+        return;
+      }
+      final audience = pane == _Pane.staffLogin ? 'STAFF' : 'ADMIN';
+      final handoff = await api.initiateSso(audience);
+      await auth.signOut();
+      if (!mounted) {
+        tab?.close();
+        return;
+      }
+      await _openHandoff(
+        handoff.redirectUrl,
+        pane == _Pane.staffLogin ? config.staffDashboardUrl : config.adminPortalUrl,
+        pane == _Pane.staffLogin ? 'staff dashboard' : 'admin portal',
+        tab,
+      );
+      if (mounted) setState(() => _pane = _Pane.roles);
+    } catch (e) {
+      tab?.close();
+      if (auth.isSignedIn) await auth.signOut();
+      if (mounted) setState(() => slot.error = errorMessage(e));
+    } finally {
+      if (mounted) setState(() => slot.busy = false);
+    }
+  }
+
+  static String _mismatch(String wanted, Me me) {
+    final actual = switch (me) {
+      StudentMe() => 'a student account',
+      UnregisteredMe() => 'an unregistered account',
+      OtherRoleMe(:final role) when role == 'ADMIN' => 'an admin account',
+      OtherRoleMe() => 'a staff account',
+    };
+    final label = switch (wanted) {
+      'staff' => 'Canteen Staff',
+      'admin' => 'Administrator',
+      _ => 'Student',
+    };
+    return 'This is $actual. Choose $label to continue.';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final config = context.read<AppConfig>();
     final roles = _Roles(
-      onStudent: widget.onStudent,
-      onStaff: () => _openPortal(config.staffDashboardUrl, 'staff dashboard'),
-      onAdmin: () => _openPortal(config.adminPortalUrl, 'admin portal'),
+      onStudent: () => _show(_Pane.studentLogin),
+      onStaff: () => _show(_Pane.staffLogin),
+      onAdmin: () => _show(_Pane.adminLogin),
     );
     final intro = _withIntro ? _intro : null;
-    return Scaffold(
-      backgroundColor: ServeColors.oliveTint,
-      body: SafeArea(
-        child: Stack(
-          key: _stageKey,
-          children: [
-            if (_playing)
+    return PopScope(
+      canPop: _pane == _Pane.roles,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        backgroundColor: ServeColors.oliveTint,
+        body: SafeArea(
+          child: Stack(
+            key: _stageKey,
+            children: [
+              if (_playing)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _intro,
+                      builder: (context, _) {
+                        final fallback = SandwichIntroStage.sandwichRectFor(MediaQuery.sizeOf(context));
+                        return SandwichIntroStage(progress: _intro, popup: _popupRect() ?? fallback);
+                      },
+                    ),
+                  ),
+                ),
               Positioned.fill(
                 child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _intro,
-                    builder: (context, _) {
-                      final fallback = SandwichIntroStage.sandwichRectFor(MediaQuery.sizeOf(context));
-                      return SandwichIntroStage(progress: _intro, popup: _popupRect() ?? fallback);
+                  ignoring: _playing,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final padding = EdgeInsets.symmetric(
+                        horizontal: constraints.maxWidth < 400 ? 20 : 32,
+                        vertical: constraints.maxHeight < 720 ? 16 : 24,
+                      );
+                      return SingleChildScrollView(
+                        padding: padding,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: math.max(0, constraints.maxHeight - padding.vertical)),
+                          child: Center(
+                            child: KeyedSubtree(
+                              key: _popupKey,
+                              child: _RolePopup(
+                                roles: roles,
+                                intro: intro,
+                                pane: _pane,
+                                body: _pane == _Pane.roles ? null : _authBody(_pane),
+                                onBack: _back,
+                                maxBodyHeight: math.max(160, constraints.maxHeight - padding.vertical - 120),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
                     },
                   ),
                 ),
               ),
-            Positioned.fill(
-              child: IgnorePointer(
-                ignoring: _playing,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final padding = EdgeInsets.symmetric(
-                      horizontal: constraints.maxWidth < 400 ? 20 : 32,
-                      vertical: constraints.maxHeight < 720 ? 16 : 24,
-                    );
-                    return SingleChildScrollView(
-                      padding: padding,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: math.max(0, constraints.maxHeight - padding.vertical)),
-                        child: Center(
-                          child: KeyedSubtree(
-                            key: _popupKey,
-                            child: _RolePopup(roles: roles, intro: intro),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            if (_playing) Positioned(top: 8, right: 8, child: _SkipButton(onPressed: _skip)),
-          ],
+              if (_playing) Positioned(top: 8, right: 8, child: _SkipButton(onPressed: _skip)),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _authBody(_Pane pane) {
+    return switch (pane) {
+      _Pane.studentLogin => _loginForm(
+        pane,
+        heading: 'Welcome back',
+        body: 'Sign in to continue to your SERVE account.',
+        onCreate: () {
+          _lockedEmail = null;
+          _show(_Pane.studentRegister);
+        },
+        onForgot: () => _show(_Pane.studentForgot),
+      ),
+      _Pane.staffLogin => _loginForm(
+        pane,
+        heading: 'Staff sign in',
+        body: 'Sign in to manage orders and your canteen.',
+        onCreate: () => _show(_Pane.staffRegister),
+        onForgot: () => _show(_Pane.staffForgot),
+      ),
+      _Pane.adminLogin => _loginForm(
+        pane,
+        heading: 'Admin sign in',
+        body: 'Sign in to manage SERVE and oversee operations.',
+        onCreate: () => _show(_Pane.adminProvision),
+        onForgot: () => _show(_Pane.adminForgot),
+      ),
+      _Pane.studentRegister => StudentRegisterForm(
+        lockedEmail: _lockedEmail,
+        onBackToLogin: () => _show(_Pane.studentLogin),
+        onUseDifferentAccount: () async {
+          await context.read<AuthController>().signOut();
+          if (mounted) {
+            setState(() {
+              _lockedEmail = null;
+              _pane = _Pane.studentLogin;
+            });
+          }
+        },
+      ),
+      _Pane.staffRegister => StaffRegisterForm(
+        onBackToLogin: () => _show(_Pane.staffLogin),
+        onSubmitted: () => _show(_Pane.staffPending),
+      ),
+      _Pane.studentForgot => ForgotPasswordForm(
+        initialEmail: _student.email.text,
+        onBackToLogin: () => _show(_Pane.studentLogin),
+      ),
+      _Pane.staffForgot => ForgotPasswordForm(
+        initialEmail: _staff.email.text,
+        onBackToLogin: () => _show(_Pane.staffLogin),
+      ),
+      _Pane.adminForgot => ForgotPasswordForm(
+        initialEmail: _admin.email.text,
+        onBackToLogin: () => _show(_Pane.adminLogin),
+      ),
+      _Pane.staffPending => AuthInfoPane(
+        icon: Icons.schedule_rounded,
+        heading: 'Request sent',
+        body:
+            'Your staff account is pending admin approval. You will be able to open the staff dashboard after an administrator reviews your request.',
+        actionLabel: 'Back to login',
+        onAction: () => _show(_Pane.staffLogin),
+      ),
+      _Pane.adminProvision => AuthInfoPane(
+        icon: Icons.admin_panel_settings_rounded,
+        heading: 'Admin accounts are provisioned',
+        body:
+            'SERVE does not offer public admin sign-up. Admin access is created through a controlled invitation or setup process. If you were provisioned, sign in with that email.',
+        actionLabel: 'Back to login',
+        onAction: () => _show(_Pane.adminLogin),
+      ),
+      _Pane.roles => const SizedBox.shrink(),
+    };
+  }
+
+  Widget _loginForm(
+    _Pane pane, {
+    required String heading,
+    required String body,
+    required VoidCallback onCreate,
+    required VoidCallback onForgot,
+  }) {
+    final slot = _slotFor(pane);
+    return ServeLoginForm(
+      formKey: slot.form,
+      email: slot.email,
+      password: slot.password,
+      busy: slot.busy,
+      obscure: slot.obscure,
+      error: slot.error,
+      heading: heading,
+      body: body,
+      onToggleObscure: () => setState(() => slot.obscure = !slot.obscure),
+      onSubmit: () => _submit(pane),
+      onCreateAccount: onCreate,
+      onForgotPassword: onForgot,
     );
   }
 }
@@ -193,9 +491,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
 /// The centred role-selection card. During the intro its paper surface and
 /// contents grow in as the sandwich pieces arrive to build it.
 class _RolePopup extends StatelessWidget {
-  const _RolePopup({required this.roles, required this.intro});
+  const _RolePopup({
+    required this.roles,
+    required this.intro,
+    required this.pane,
+    required this.body,
+    required this.onBack,
+    required this.maxBodyHeight,
+  });
   final _Roles roles;
   final Animation<double>? intro;
+  final _Pane pane;
+  final Widget? body;
+  final VoidCallback onBack;
+  final double maxBodyHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -219,53 +528,14 @@ class _RolePopup extends StatelessWidget {
             children: [
               _Reveal(intro: motion, phase: _Intro.brand, child: const AuthLockup(logoHeight: 48)),
               const SizedBox(height: 22),
-              _Reveal(
-                intro: motion,
-                phase: _Intro.headline,
-                child: const Align(alignment: Alignment.centerLeft, child: AuthAccent(width: 32)),
-              ),
-              const SizedBox(height: 12),
-              _Reveal(
-                intro: motion,
-                phase: _Intro.headline,
-                child: AuthHeadline(_headline, size: narrow ? 26 : 30),
-              ),
-              const SizedBox(height: 8),
-              _Reveal(intro: motion, phase: _Intro.body, child: const AuthBody(_description)),
-              const SizedBox(height: 22),
-              _Reveal(
-                intro: motion,
-                phase: _Intro.cards[0],
-                child: _RoleCard(
-                  icon: Icons.school_rounded,
-                  title: 'Student',
-                  subtitle: 'Order and track your food',
-                  primary: true,
-                  onTap: roles.onStudent,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _Reveal(
-                intro: motion,
-                phase: _Intro.cards[1],
-                child: _RoleCard(
-                  icon: Icons.storefront_rounded,
-                  title: 'Canteen Staff',
-                  subtitle: 'Manage orders and your canteen',
-                  trailing: Icons.open_in_new_rounded,
-                  onTap: roles.onStaff,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _Reveal(
-                intro: motion,
-                phase: _Intro.cards[2],
-                child: _RoleCard(
-                  icon: Icons.admin_panel_settings_rounded,
-                  title: 'Administrator',
-                  subtitle: 'Manage SERVE and oversee operations',
-                  trailing: Icons.open_in_new_rounded,
-                  onTap: roles.onAdmin,
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxBodyHeight),
+                child: SingleChildScrollView(
+                  child: _PaneSwitch(
+                    pane: pane,
+                    roles: _RoleBody(key: const ValueKey('roles'), roles: roles, intro: motion, narrow: narrow),
+                    body: body == null ? null : _AuthBody(key: ValueKey(pane), onBack: onBack, child: body!),
+                  ),
                 ),
               ),
             ],
@@ -311,6 +581,121 @@ class _RolePopup extends StatelessWidget {
       },
     );
   }
+}
+
+class _PaneSwitch extends StatelessWidget {
+  const _PaneSwitch({required this.pane, required this.roles, required this.body});
+  final _Pane pane;
+  final Widget roles;
+  final Widget? body;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    final child = pane == _Pane.roles ? roles : body!;
+    final switched = AnimatedSwitcher(
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (current, previous) => Stack(alignment: Alignment.topCenter, children: [...previous, ?current]),
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: SlideTransition(
+          position: Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(anim),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+    if (reduce) return switched;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.topCenter,
+      child: switched,
+    );
+  }
+}
+
+class _RoleBody extends StatelessWidget {
+  const _RoleBody({super.key, required this.roles, required this.intro, required this.narrow});
+  final _Roles roles;
+  final Animation<double>? intro;
+  final bool narrow;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Reveal(
+        intro: intro,
+        phase: _Intro.headline,
+        child: const Align(alignment: Alignment.centerLeft, child: AuthAccent(width: 32)),
+      ),
+      const SizedBox(height: 12),
+      _Reveal(
+        intro: intro,
+        phase: _Intro.headline,
+        child: AuthHeadline(_headline, size: narrow ? 26 : 30),
+      ),
+      const SizedBox(height: 8),
+      _Reveal(intro: intro, phase: _Intro.body, child: const AuthBody(_description)),
+      const SizedBox(height: 22),
+      _Reveal(
+        intro: intro,
+        phase: _Intro.cards[0],
+        child: _RoleCard(
+          icon: Icons.school_rounded,
+          title: 'Student',
+          subtitle: 'Order and track your food',
+          primary: true,
+          onTap: roles.onStudent,
+        ),
+      ),
+      const SizedBox(height: 10),
+      _Reveal(
+        intro: intro,
+        phase: _Intro.cards[1],
+        child: _RoleCard(
+          icon: Icons.storefront_rounded,
+          title: 'Canteen Staff',
+          subtitle: 'Manage orders and your canteen',
+          onTap: roles.onStaff,
+        ),
+      ),
+      const SizedBox(height: 10),
+      _Reveal(
+        intro: intro,
+        phase: _Intro.cards[2],
+        child: _RoleCard(
+          icon: Icons.admin_panel_settings_rounded,
+          title: 'Administrator',
+          subtitle: 'Manage SERVE and oversee operations',
+          onTap: roles.onAdmin,
+        ),
+      ),
+    ],
+  );
+}
+
+class _AuthBody extends StatelessWidget {
+  const _AuthBody({super.key, required this.onBack, required this.child});
+  final VoidCallback onBack;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: BackButton(onPressed: onBack, color: ServeColors.ink),
+      ),
+      child,
+    ],
+  );
 }
 
 class _Reveal extends StatelessWidget {
@@ -371,20 +756,12 @@ class _Roles {
 }
 
 class _RoleCard extends StatefulWidget {
-  const _RoleCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.primary = false,
-    this.trailing = Icons.arrow_forward_rounded,
-  });
+  const _RoleCard({required this.icon, required this.title, required this.subtitle, required this.onTap, this.primary = false});
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
   final bool primary;
-  final IconData trailing;
 
   @override
   State<_RoleCard> createState() => _RoleCardState();
@@ -461,7 +838,7 @@ class _RoleCardState extends State<_RoleCard> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(color: primary ? onTint : ServeColors.surfaceMuted, shape: BoxShape.circle),
-                      child: Icon(widget.trailing, size: 18, color: primary ? ServeColors.white : ServeColors.muted),
+                      child: Icon(Icons.arrow_forward_rounded, size: 18, color: primary ? ServeColors.white : ServeColors.muted),
                     ),
                   ),
                 ],

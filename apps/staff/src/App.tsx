@@ -7,9 +7,11 @@ import {
   NotificationsProvider,
   RealtimeProvider,
   Spinner,
+  SsoCallbackPage,
   ToastProvider,
   initFirebaseAuth,
   isConnectivityError,
+  ssoLog,
   useAuth,
 } from '@serve/web-shared';
 import { config } from './config';
@@ -47,13 +49,34 @@ export function App() {
  * only proves identity; nothing here trusts a client-side role.
  */
 export function Gate() {
-  const { status, me, error, api, getToken, refreshMe, signOut } = useAuth();
+  return (
+    <Routes>
+      <Route
+        path="/sso/callback"
+        element={<SsoCallbackPage audience="STAFF" studentAppUrl={config.studentAppUrl} />}
+      />
+      <Route path="*" element={<AccountGate />} />
+    </Routes>
+  );
+}
+
+function AccountGate() {
+  const { status, me, user, error, api, getToken, refreshMe, signOut } = useAuth();
   const client = useMemo(() => staffApi(api), [api]);
 
-  if (status === 'initializing' || status === 'loadingAccount')
+  if (status === 'initializing' || status === 'loadingAccount' || (user && !me && status !== 'error')) {
+    ssoLog('guard', { audience: 'STAFF', status, hasUser: Boolean(user), hasMe: false, destination: 'loading' });
     return <Spinner label="Loading your account" />;
+  }
 
   if (status === 'signedOut' || !me) {
+    ssoLog('guard', {
+      audience: 'STAFF',
+      status,
+      hasUser: Boolean(user),
+      hasMe: Boolean(me),
+      destination: status === 'error' ? 'error' : 'login',
+    });
     if (status === 'error') {
       return (
         <div className="auth-screen">
@@ -76,6 +99,14 @@ export function Gate() {
     );
   }
 
+  ssoLog('guard', {
+    audience: 'STAFF',
+    status,
+    hasUser: Boolean(user),
+    hasMe: true,
+    role: me.registered ? me.role : null,
+    destination: 'app',
+  });
   const realtimeEnabled = me.registered && me.role === 'STAFF' && me.status !== 'DEACTIVATED';
   return (
     <StaffApiContext.Provider value={client}>

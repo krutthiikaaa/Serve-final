@@ -12,7 +12,6 @@ import 'state/notifications_controller.dart';
 import 'theme/serve_theme.dart';
 import 'ui/navigation.dart';
 import 'ui/screens/home_shell.dart';
-import 'ui/screens/register_screen.dart';
 import 'ui/screens/signed_out_flow.dart';
 import 'ui/screens/status_screens.dart';
 
@@ -123,7 +122,7 @@ class _AuthGateState extends State<AuthGate> {
       AuthStatus.loadingAccount when auth.me == null => signedOut,
       AuthStatus.error when auth.me == null => AccountErrorScreen(key: const ValueKey('error'), error: auth.error),
       _ => switch (auth.me) {
-        UnregisteredMe(:final email) => RegisterScreen(key: const ValueKey('register'), lockedEmail: email),
+        UnregisteredMe(:final email) => SignedOutFlow(key: const ValueKey('signed-out'), completeEmail: email),
         OtherRoleMe(:final role) => WrongRoleScreen(key: const ValueKey('wrong-role'), role: role),
         StudentMe() => const HomeShell(key: ValueKey('home')),
         null => signedOut,

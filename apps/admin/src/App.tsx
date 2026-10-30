@@ -9,9 +9,11 @@ import {
   RealtimeProvider,
   SignInForm,
   Spinner,
+  SsoCallbackPage,
   ToastProvider,
   initFirebaseAuth,
   isConnectivityError,
+  ssoLog,
   useAuth,
 } from '@serve/web-shared';
 import { config } from './config';
@@ -47,11 +49,25 @@ export function App() {
  * there is no self-registration here.
  */
 export function Gate() {
-  const { status, me, error, api, getToken, refreshMe, signIn, signOut } = useAuth();
+  return (
+    <Routes>
+      <Route
+        path="/sso/callback"
+        element={<SsoCallbackPage audience="ADMIN" studentAppUrl={config.studentAppUrl} />}
+      />
+      <Route path="*" element={<AccountGate />} />
+    </Routes>
+  );
+}
+
+function AccountGate() {
+  const { status, me, user, error, api, getToken, refreshMe, signIn, signOut } = useAuth();
   const client = useMemo(() => adminApi(api), [api]);
 
-  if (status === 'initializing' || status === 'loadingAccount')
+  if (status === 'initializing' || status === 'loadingAccount' || (user && !me && status !== 'error')) {
+    ssoLog('guard', { audience: 'ADMIN', status, hasUser: Boolean(user), hasMe: false, destination: 'loading' });
     return <Spinner label="Loading your account" />;
+  }
 
   if (status === 'error') {
     return (
@@ -69,6 +85,13 @@ export function Gate() {
   }
 
   if (status === 'signedOut' || !me) {
+    ssoLog('guard', {
+      audience: 'ADMIN',
+      status,
+      hasUser: Boolean(user),
+      hasMe: Boolean(me),
+      destination: 'login',
+    });
     return (
       <AuthLayout subtitle="Admin portal">
         <section className="section">
@@ -104,6 +127,14 @@ export function Gate() {
     );
   }
 
+  ssoLog('guard', {
+    audience: 'ADMIN',
+    status,
+    hasUser: Boolean(user),
+    hasMe: true,
+    role: me.role,
+    destination: 'app',
+  });
   return (
     <AdminApiContext.Provider value={client}>
       <RealtimeProvider url={config.apiUrl} getToken={getToken} enabled>

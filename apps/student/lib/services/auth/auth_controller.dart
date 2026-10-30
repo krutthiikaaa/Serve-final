@@ -60,6 +60,21 @@ class AuthController extends ChangeNotifier {
     await refreshMe();
   }
 
+  /// Firebase sign-in + `/me` without publishing [AuthStatus.ready], so the
+  /// caller can accept or reject the account before [AuthGate] routes.
+  Future<Me> identify(String email, String password) async {
+    _session = await _firebase.signIn(email, password);
+    await _persist();
+    if (status != AuthStatus.ready) _set(AuthStatus.loadingAccount);
+    try {
+      if (_session!.idToken.isEmpty) await idToken(forceRefresh: true);
+      return await _loadMe();
+    } catch (_) {
+      await signOut();
+      rethrow;
+    }
+  }
+
   /// Creates the Firebase account without leaving the registration screen:
   /// the caller registers with SERVE next and then calls [setMe]. If that
   /// step is abandoned, the next sign-in lands on "complete registration".
@@ -67,6 +82,9 @@ class AuthController extends ChangeNotifier {
     _session = await _firebase.signUp(email, password);
     await _persist();
   }
+
+  /// Firebase email reset. Does not change [status]; the popup stays put.
+  Future<void> sendPasswordReset(String email) => _firebase.sendPasswordReset(email);
 
   Future<void> signOut() async {
     _session = null;

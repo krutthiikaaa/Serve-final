@@ -15,6 +15,7 @@ const frontendEnv = {
   VITE_FIREBASE_API_KEY: E2E.firebaseApiKey,
   VITE_FIREBASE_PROJECT_ID: E2E.firebaseProjectId,
   VITE_FIREBASE_AUTH_EMULATOR_URL: E2E.emulatorUrl,
+  VITE_STUDENT_APP_URL: E2E.studentUrl,
 };
 
 export default defineConfig({

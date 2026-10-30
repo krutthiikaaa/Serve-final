@@ -17,6 +17,9 @@ export const config = {
   apiUrl: import.meta.env.DEV
     ? required('VITE_API_URL', configuredApiUrl)
     : configuredApiUrl || window.location.origin,
+  studentAppUrl:
+    (import.meta.env.VITE_STUDENT_APP_URL as string | undefined) ||
+    (import.meta.env.DEV ? 'http://localhost:5555' : window.location.origin),
   firebase: {
     apiKey: required(
       'VITE_FIREBASE_API_KEY',

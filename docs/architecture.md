@@ -24,6 +24,14 @@ REST call (`Authorization: Bearer …`) and on the Socket.IO handshake
 (`auth.token`). The backend verifies the token, loads the account from
 PostgreSQL, and makes every authorization decision from that database record.
 
+Staff and Admin dashboards live on different origins (or paths) from the
+student app, so they cannot inherit a Firebase session. After a successful
+Staff/Admin login in the student app, the backend issues a ~60s single-use
+authorization code (`POST /api/auth/sso/initiate`). The dashboard exchanges it
+(`POST /api/auth/sso/exchange`) for a Firebase Custom Token and calls
+`signInWithCustomToken`. Passwords, ID tokens and Custom Tokens never appear
+in URLs.
+
 ## 2. Backend layout
 
 ```

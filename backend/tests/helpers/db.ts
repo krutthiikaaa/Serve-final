@@ -8,6 +8,7 @@ export function createTestPrisma(): PrismaClient {
 }
 
 const TABLES = [
+  'SsoAuthorizationCode',
   'Notification',
   'ProcessedPaymentEvent',
   'Payment',

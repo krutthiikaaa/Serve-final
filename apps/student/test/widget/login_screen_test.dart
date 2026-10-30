@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:serve_student/ui/screens/role_selection_screen.dart';
 
 import '../support/fakes.dart';
 
@@ -27,6 +28,14 @@ Future<TestHarness> _openLogin(WidgetTester tester) async {
 }
 
 void main() {
+  setUp(() {
+    RoleSelectionScreen.debugResetIntro();
+    RoleSelectionScreen.maxImageWait = Duration.zero;
+  });
+  tearDown(() {
+    RoleSelectionScreen.maxImageWait = const Duration(milliseconds: 1500);
+  });
+
   testWidgets('empty form shows inline errors and does not call Firebase', (tester) async {
     usePhoneSize(tester);
     final h = await _openLogin(tester);
@@ -85,24 +94,50 @@ void main() {
     await tester.tap(find.text('Create an account'));
     await tester.pumpAndSettle();
     expect(find.text('Create your account'), findsOneWidget);
+    expect(find.text('Order. Track. Collect.'), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
   });
 
-  for (final (name, size, panel) in [
-    ('desktop 1440', const Size(1440, 900), true),
-    ('laptop 1280', const Size(1280, 800), true),
-    ('tablet 768', const Size(768, 1024), false),
-    ('iPhone 390', const Size(390, 844), false),
-    ('small phone 360', const Size(360, 640), false),
+  for (final (name, size) in [
+    ('desktop 1440', const Size(1440, 900)),
+    ('laptop 1280', const Size(1280, 800)),
+    ('tablet 768', const Size(768, 1024)),
+    ('iPhone 390', const Size(390, 844)),
+    ('iPhone 430', const Size(430, 932)),
+    ('Android 360', const Size(360, 800)),
+    ('small phone 360', const Size(360, 640)),
   ]) {
     testWidgets('lays out without overflow at $name', (tester) async {
       _useSize(tester, size);
       await _openLogin(tester);
       expect(tester.takeException(), isNull);
       expect(find.text('Welcome back'), findsOneWidget);
-      expect(find.text('Good food is just a few taps away.'), panel ? findsOneWidget : findsNothing);
-      final button = tester.getRect(find.byType(FilledButton));
-      expect(button.left, greaterThanOrEqualTo(0));
-      expect(button.right, lessThanOrEqualTo(size.width));
+      expect(find.text('Order. Track. Collect.'), findsOneWidget);
+      expect(find.text('Good food is just a few taps away.'), findsNothing);
+      final popup = tester.getRect(find.ancestor(of: find.text('Welcome back'), matching: find.byType(Material)).first);
+      expect(popup.width, lessThanOrEqualTo(440));
+      expect((popup.center.dx - size.width / 2).abs(), lessThan(24));
+      final button = tester.getRect(find.widgetWithText(FilledButton, 'Sign in'));
+      expect(button.left, greaterThanOrEqualTo(popup.left));
+      expect(button.right, lessThanOrEqualTo(popup.right));
+      expect(button.width, lessThanOrEqualTo(440));
+      expect(button.height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('registration lays out in the same popup at $name', (tester) async {
+      _useSize(tester, size);
+      await _openLogin(tester);
+      await tester.tap(find.text('Create an account'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Create your account'), findsOneWidget);
+      expect(find.text('Order. Track. Collect.'), findsOneWidget);
+      expect(find.byType(AppBar), findsNothing);
+      final popup = tester.getRect(find.ancestor(of: find.text('Create your account'), matching: find.byType(Material)).first);
+      expect(popup.width, lessThanOrEqualTo(440));
+      expect((popup.center.dx - size.width / 2).abs(), lessThan(24));
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Create account'));
+      final button = tester.getRect(find.widgetWithText(FilledButton, 'Create account'));
       expect(button.width, lessThanOrEqualTo(440));
       expect(button.height, greaterThanOrEqualTo(48));
     });

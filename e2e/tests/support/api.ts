@@ -83,6 +83,12 @@ export class ApiActor {
     });
     return new LiveSocket(socket);
   }
+
+  initiateSso(audience: 'STAFF' | 'ADMIN') {
+    return this.data<{ redirectUrl: string; expiresAt: string }>('POST', '/auth/sso/initiate', {
+      audience,
+    });
+  }
 }
 
 export class StudentActor extends ApiActor {

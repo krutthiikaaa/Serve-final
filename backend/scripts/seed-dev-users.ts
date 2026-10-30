@@ -34,6 +34,7 @@ async function firebaseUid(authClient: Auth, email: string, displayName: string)
   let uid: string;
   try {
     uid = (await authClient.getUserByEmail(email)).uid;
+    await authClient.updateUser(uid, { password, displayName });
   } catch {
     uid = (await authClient.createUser({ email, password, displayName })).uid;
   }
@@ -102,7 +103,7 @@ try {
 
   console.error(
     'Emulator demo accounts ready: admin@serve.dev, staff.kg@serve.dev (approved, K&G), ' +
-      'staff.pending@serve.dev (pending), student@serve.dev (Krishna). Password: $DEV_SEED_PASSWORD',
+      'staff.pending@serve.dev (pending), student@serve.dev (Krishna). Password: the DEV_SEED_PASSWORD you supplied',
   );
 } finally {
   await prisma.$disconnect();

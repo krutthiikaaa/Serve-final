@@ -53,6 +53,8 @@ class FakeServeApi extends ServeApi {
   Future<StudentOrder> Function(String canteenId, List<CartLineInput> items, String key)? onPlaceOrder;
   Future<StudentOrder> Function(String orderId, bool succeed)? onMockComplete;
   StudentMe Function(String name, String email, String hostelId)? onRegister;
+  Me Function(String name, String email, String? requestedCanteenId)? onRegisterStaff;
+  SsoHandoff Function(String audience)? onInitiateSso;
   List<AppNotification> notificationList = [];
   int unread = 0;
   final idempotencyKeys = <String>[];
@@ -67,6 +69,24 @@ class FakeServeApi extends ServeApi {
   Future<StudentMe> registerStudent({required String name, required String email, required String hostelId}) async {
     calls.add('register:$name:$email:$hostelId');
     return onRegister?.call(name, email, hostelId) ?? fx.studentMe();
+  }
+
+  @override
+  Future<SsoHandoff> initiateSso(String audience) async {
+    calls.add('sso:$audience');
+    return onInitiateSso?.call(audience) ??
+        SsoHandoff(
+          redirectUrl: audience == 'STAFF'
+              ? 'http://localhost:5173/sso/callback?code=test-staff-code-xx'
+              : 'http://localhost:5174/sso/callback?code=test-admin-code-xx',
+          expiresAt: DateTime.now().add(const Duration(seconds: 60)),
+        );
+  }
+
+  @override
+  Future<Me> registerStaff({required String name, required String email, String? requestedCanteenId}) async {
+    calls.add('registerStaff:$name:$email:$requestedCanteenId');
+    return onRegisterStaff?.call(name, email, requestedCanteenId) ?? OtherRoleMe(role: 'STAFF', name: name);
   }
 
   @override
@@ -248,6 +268,12 @@ class FakeFirebase extends FirebaseAuthClient {
   Future<FirebaseSession> refresh(FirebaseSession session) async {
     calls.add('refresh');
     return _session(session.email ?? 'x');
+  }
+
+  @override
+  Future<void> sendPasswordReset(String email) async {
+    calls.add('reset:$email');
+    if (signInError != null) throw signInError!;
   }
 }
 

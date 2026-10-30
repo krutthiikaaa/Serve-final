@@ -39,7 +39,7 @@ no production default).
 | Status | Codes |
 |---|---|
 | 400 | `INVALID_JSON`, `IDEMPOTENCY_KEY_REQUIRED`, `BAD_REQUEST` |
-| 401 | `AUTH_REQUIRED`, `AUTH_TOKEN_INVALID`, `AUTH_TOKEN_EXPIRED`, `AUTH_TOKEN_REVOKED`, `AUTH_USER_DISABLED` |
+| 401 | `AUTH_REQUIRED`, `AUTH_TOKEN_INVALID`, `AUTH_TOKEN_EXPIRED`, `AUTH_TOKEN_REVOKED`, `AUTH_USER_DISABLED`, `SSO_CODE_INVALID` |
 | 403 | `ACCOUNT_NOT_REGISTERED`, `ACCOUNT_DISABLED`, `FORBIDDEN_ROLE`, `STAFF_NOT_APPROVED`, `STAFF_DEACTIVATED`, `EMAIL_DOMAIN_NOT_ALLOWED` |
 | 404 | `NOT_FOUND`, `ROUTE_NOT_FOUND`, `CANTEEN_NOT_FOUND`, `MENU_ITEM_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `ORDER_NOT_FOUND`, `NOTIFICATION_NOT_FOUND`, `STAFF_NOT_FOUND`, `HOSTEL_NOT_FOUND`, `CHANGE_REQUEST_NOT_FOUND`, `PAYMENT_NOT_FOUND`, `WEBHOOK_NOT_CONFIGURED` |
 | 409 | `ALREADY_REGISTERED`, `EMAIL_IN_USE`, `CANTEEN_INACTIVE`, `CANTEEN_NOT_ACCEPTING_ORDERS`, `INVALID_STATUS_TRANSITION`, `ORDER_STATE_CHANGED`, `ORDER_NOT_AWAITING_PAYMENT`, `ALREADY_PAID`, `PAYMENT_NOT_INITIATED`, `CHANGE_REQUEST_PENDING`, `CHANGE_REQUEST_ALREADY_REVIEWED`, `ALREADY_ASSIGNED`, `STAFF_ALREADY_DEACTIVATED`, `CATEGORY_EXISTS`, `MENU_ITEM_EXISTS`, `CANTEEN_NAME_TAKEN`, `CANTEEN_SLUG_TAKEN`, `HOSTEL_EXISTS`, `CONFLICT` |
@@ -65,6 +65,8 @@ no production default).
 | GET | `/auth/me` | — | The account from PostgreSQL (shapes below). |
 | POST | `/auth/student/register` | `{ name, email, hostelId }` | `201` with the `/auth/me` body. Creates **only** a Student. `email` must equal the token's email (case-insensitive). The hostel must exist and be active. Optional `STUDENT_EMAIL_DOMAINS` allowlist (empty by default). Rate limited. |
 | POST | `/auth/staff/register` | `{ name, email, requestedCanteenId? }` | `201`. Creates a `PENDING` staff account with no canteen. The optional access request notifies admins. |
+| POST | `/auth/sso/initiate` | `{ audience: "STAFF" \| "ADMIN" }` | Authenticated. Verifies the PostgreSQL role (approved staff with a canteen, or an active admin), then returns `{ redirectUrl, expiresAt }`. `redirectUrl` is the trusted dashboard `/sso/callback?code=` with a ~60s single-use code. The code is stored as a SHA-256 hash. Rate limited. |
+| POST | `/auth/sso/exchange` | `{ code, audience }` | **Public.** Consumes the code atomically, re-checks role/approval, and returns `{ customToken }` (Firebase Custom Token). Never put this token in a URL. Invalid, expired, reused or wrong-audience codes are `401 SSO_CODE_INVALID`. |
 
 `/auth/me` shapes:
 

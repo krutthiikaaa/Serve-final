@@ -24,6 +24,7 @@ if (!dbName.endsWith('_test')) {
   process.exit(1);
 }
 
+const singleDomain = Boolean(process.env.E2E_WEB_ROOT);
 const env = {
   ...process.env,
   NODE_ENV: 'test',
@@ -31,7 +32,12 @@ const env = {
   CORS_ORIGINS: `${E2E.staffUrl},${E2E.adminUrl},${E2E.studentUrl},${E2E.apiUrl}`,
   LOG_LEVEL: 'warn',
   ADMIN_BOOTSTRAP_PASSWORD: E2E.password,
-  ...(process.env.E2E_WEB_ROOT ? { WEB_ROOT: process.env.E2E_WEB_ROOT } : {}),
+  STUDENT_APP_URL: singleDomain ? E2E.apiUrl : E2E.studentUrl,
+  STAFF_DASHBOARD_URL: singleDomain ? `${E2E.apiUrl}/staff` : E2E.staffUrl,
+  ADMIN_PORTAL_URL: singleDomain ? `${E2E.apiUrl}/admin` : E2E.adminUrl,
+  // Short enough that the expired-callback e2e can wait it out.
+  SSO_CODE_TTL_SECONDS: '15',
+  ...(singleDomain ? { WEB_ROOT: process.env.E2E_WEB_ROOT } : {}),
 };
 const run = (cmd, args, input) =>
   execFileSync(cmd, args, {

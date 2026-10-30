@@ -42,6 +42,37 @@ const databaseName = (url: string): string | null => {
   }
 };
 
+/** Absolute http(s) app URL: origin, optional path, no query/hash/credentials. */
+const appUrl = z
+  .string()
+  .trim()
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value);
+        return (
+          (url.protocol === 'http:' || url.protocol === 'https:') &&
+          url.username === '' &&
+          url.password === '' &&
+          url.search === '' &&
+          url.hash === ''
+        );
+      } catch {
+        return false;
+      }
+    },
+    { error: 'Must be an absolute http(s) URL with no query, hash or credentials' },
+  )
+  .transform((value) => value.replace(/\/+$/, ''));
+
+const isLocalAppUrl = (value: string): boolean => {
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+};
+
 /** Comma-separated list of exact origins, e.g. "https://staff.serve.app,https://admin.serve.app". */
 const corsOrigins = z
   .string({ error: 'CORS_ORIGINS is required (comma-separated list of allowed origins)' })
@@ -131,6 +162,17 @@ const envSchema = z
     FIREBASE_AUTH_EMULATOR_HOST: optional(
       z.string().regex(/^[\w.-]+:\d+$/, { error: 'Expected host:port, e.g. 127.0.0.1:9099' }),
     ),
+
+    /**
+     * Public origin (+ optional path) of the student app, staff dashboard and
+     * admin portal. Used to build SSO callback URLs. No trailing slash.
+     * Development defaults to the local Vite / Flutter ports when unset.
+     */
+    STUDENT_APP_URL: optional(appUrl),
+    STAFF_DASHBOARD_URL: optional(appUrl),
+    ADMIN_PORTAL_URL: optional(appUrl),
+    /** Lifetime of a one-time SSO authorization code, in seconds. */
+    SSO_CODE_TTL_SECONDS: z.coerce.number().int().min(15).max(300).default(60),
 
     /**
      * Optional comma-separated list of email domains allowed to register as
@@ -244,6 +286,20 @@ const envSchema = z
         'PAYMENT_MODE',
         'The mock payment provider is not allowed in production (DEMO_MODE=true declares a public demo that takes no real money)',
       );
+    }
+
+    for (const key of ['STAFF_DASHBOARD_URL', 'ADMIN_PORTAL_URL', 'STUDENT_APP_URL'] as const) {
+      const value = env[key];
+      if (!value) {
+        issue(key, `${key} is required in production`);
+        continue;
+      }
+      if (value.startsWith('http://')) {
+        issue(key, `${key} must use https in production`);
+      }
+      if (isLocalAppUrl(value)) {
+        issue(key, `${key} must not be localhost in production`);
+      }
     }
   });
 
