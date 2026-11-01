@@ -32,6 +32,7 @@ void main() {
     await h.pumpSignedIn(tester);
     expect(find.text('Your Most Ordered'), findsOneWidget);
     expect(find.text("Tonight's Menu"), findsNothing);
+    await tester.ensureVisible(find.text('View Full Menu'));
     await tester.tap(find.text('View Full Menu'));
     await tester.pumpAndSettle();
     expect(find.text('Sandwiches'), findsWidgets);
@@ -74,7 +75,7 @@ void main() {
     await h.pumpSignedIn(tester);
     h.services.cart.add(fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'), canteenName: 'K&G');
     await tester.pump();
-    await tester.tap(find.text('Change'));
+    await tester.tap(find.text('Change Canteen'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Vedavathi Night Canteen'));
     await tester.pumpAndSettle();

@@ -3,12 +3,26 @@ import 'package:flutter/material.dart';
 import '../../theme/serve_theme.dart';
 
 /// Menu photo, or a category placeholder while `imageUrl` is null.
+///
+/// [imageUrl] is always the existing item source — this widget only sizes and
+/// clips it. Pass [width]/[height] for card/hero layouts; [size] stays the
+/// square thumbnail used on Home.
 class FoodImage extends StatelessWidget {
-  const FoodImage({super.key, required this.imageUrl, required this.category, this.size = 72, this.radius = 12});
+  const FoodImage({
+    super.key,
+    required this.imageUrl,
+    required this.category,
+    this.size = 72,
+    this.width,
+    this.height,
+    this.radius = 12,
+  });
 
   final String? imageUrl;
   final String? category;
   final double size;
+  final double? width;
+  final double? height;
   final double radius;
 
   static ({IconData icon, Color bg, Color fg}) placeholderFor(String? category) {
@@ -29,19 +43,37 @@ class FoodImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = placeholderFor(category);
-    final placeholder = Container(
-      width: size,
-      height: size,
-      color: p.bg,
-      alignment: Alignment.center,
-      child: Icon(p.icon, color: p.fg, size: size * 0.46),
-    );
+    final w = width ?? size;
+    final h = height ?? size;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: ExcludeSemantics(
-        child: imageUrl == null
-            ? placeholder
-            : Image.network(imageUrl!, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final extent = [
+              if (w.isFinite) w,
+              if (h.isFinite) h,
+              if (constraints.maxWidth.isFinite) constraints.maxWidth,
+              if (constraints.maxHeight.isFinite) constraints.maxHeight,
+            ].fold<double>(72, (a, b) => a < b ? a : b);
+            final placeholder = ColoredBox(
+              color: p.bg,
+              child: Center(child: Icon(p.icon, color: p.fg, size: (extent * 0.48).clamp(28, 84))),
+            );
+            final photo = imageUrl == null
+                ? placeholder
+                : Image.network(
+                    imageUrl!,
+                    width: w.isFinite ? w : double.infinity,
+                    height: h.isFinite ? h : double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => placeholder,
+                  );
+            return w.isFinite || h.isFinite
+                ? SizedBox(width: w.isFinite ? w : null, height: h.isFinite ? h : null, child: photo)
+                : photo;
+          },
+        ),
       ),
     );
   }

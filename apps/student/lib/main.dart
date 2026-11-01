@@ -7,6 +7,7 @@ import 'services/api/serve_api.dart';
 import 'services/auth/auth_controller.dart';
 import 'services/auth/firebase_auth_client.dart';
 import 'services/auth/session_store.dart';
+import 'services/favourites/favourites_store.dart';
 import 'services/realtime/realtime_service.dart';
 
 Future<void> main() async {
@@ -18,7 +19,7 @@ Future<void> main() async {
   final realtime = SocketRealtimeService(url: config.apiUrl, token: auth.idToken);
   runApp(
     ServeApp(
-      services: AppServices(config: config, auth: auth, api: api, realtime: realtime),
+      services: AppServices(config: config, auth: auth, api: api, realtime: realtime, favouritesStore: SecureFavouritesStore()),
     ),
   );
   // The opening animation plays while any saved session is restored.

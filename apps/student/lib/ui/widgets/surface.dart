@@ -122,9 +122,12 @@ class CanteenStatusLabel extends StatelessWidget {
           children: [
             const Icon(Icons.schedule_rounded, size: 14, color: ServeColors.muted),
             const SizedBox(width: 4),
-            Text(
-              hours,
-              style: const TextStyle(color: ServeColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+            Flexible(
+              child: Text(
+                hours,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: ServeColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
             ),
           ],
         ),

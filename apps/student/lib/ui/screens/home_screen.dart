@@ -8,10 +8,13 @@ import '../../services/auth/auth_controller.dart';
 import '../../services/realtime/realtime_service.dart';
 import '../../state/canteen_selection.dart';
 import '../../state/cart_controller.dart';
+import '../../state/favourites_controller.dart';
+import '../../theme/serve_layout.dart';
 import '../../theme/serve_theme.dart';
 import '../cart_actions.dart';
 import '../live_reload.dart';
 import '../navigation.dart';
+import '../widgets/favourite_button.dart';
 import '../widgets/food_image.dart';
 import '../widgets/order_status.dart';
 import '../widgets/quantity_control.dart';
@@ -108,8 +111,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
   Widget build(BuildContext context) {
     final student = context.select<AuthController, StudentMe?>((a) => a.student);
     final data = _data;
+    final width = MediaQuery.sizeOf(context).width;
+    final padding = ServeLayout.pagePadding(width);
     return Scaffold(
-      appBar: const ServeHeader(),
+      appBar: ServeHeader(onSearch: () => context.read<HomeTabs>().openMenuSearch()),
       body: RefreshIndicator(
         onRefresh: _load,
         child: data == null
@@ -123,57 +128,145 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
                       ],
                     )
                   : const SkeletonList(label: 'Loading home', count: 4))
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(ServeSpace.page, 8, ServeSpace.page, 32),
-                children: [
-                  Text('Hi, ${student?.firstName ?? 'there'}', style: Theme.of(context).textTheme.headlineMedium),
-                  const SizedBox(height: 4),
-                  Text('What are you craving tonight?', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
-                  const SizedBox(height: 20),
-                  _CanteenCard(canteen: data.menu.canteen),
-                  if (data.activeOrder != null) ...[const SizedBox(height: 14), _ActiveOrderCard(order: data.activeOrder!)],
-                  const SizedBox(height: ServeSpace.section),
-                  _Recommendations(data: data),
-                  if (_loading) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator(minHeight: 2)),
-                ],
+            : SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(padding, 8, padding, 36),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: ServeLayout.contentMax),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _Welcome(name: student?.firstName ?? 'there'),
+                        const SizedBox(height: 16),
+                        const _HomeSearchBar(),
+                        const SizedBox(height: 18),
+                        _CanteenCard(canteen: data.menu.canteen, hostelName: student?.hostel.name),
+                        if (data.activeOrder != null) ...[const SizedBox(height: 14), _ActiveOrderCard(order: data.activeOrder!)],
+                        const SizedBox(height: ServeSpace.section),
+                        _MostOrdered(data: data),
+                        const SizedBox(height: ServeSpace.section),
+                        _FavouritesPanel(menu: data.menu),
+                        const SizedBox(height: ServeSpace.section),
+                        const _FullMenuBanner(),
+                        if (_loading) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator(minHeight: 2)),
+                      ],
+                    ),
+                  ),
+                ),
               ),
       ),
     );
   }
 }
 
-class _CanteenCard extends StatelessWidget {
-  const _CanteenCard({required this.canteen});
-  final Canteen canteen;
+class _Welcome extends StatelessWidget {
+  const _Welcome({required this.name});
+  final String name;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Hi, $name', style: theme.textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text('What are you craving tonight?', style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
+      ],
+    );
+  }
+}
+
+class _HomeSearchBar extends StatelessWidget {
+  const _HomeSearchBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: ServeColors.white,
+      elevation: 0,
+      shadowColor: ServeColors.ink.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(28),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: () => context.read<HomeTabs>().openMenuSearch(),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: ServeColors.line),
+            boxShadow: [BoxShadow(color: ServeColors.ink.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 3))],
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.search_rounded, color: ServeColors.oliveInk),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Search for dishes, categories...',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: ServeColors.muted, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CanteenCard extends StatelessWidget {
+  const _CanteenCard({required this.canteen, this.hostelName});
+  final Canteen canteen;
+  final String? hostelName;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final place = (canteen.location != null && canteen.location!.trim().isNotEmpty) ? canteen.location! : hostelName;
+    return Material(
+      color: ServeColors.oliveTint,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ServeSpace.radiusCard)),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => openCanteenSelection(context),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const IconTile(icon: Icons.storefront_rounded),
+              const IconTile(icon: Icons.storefront_rounded, size: 48),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Expanded(child: Text('Picking up from', style: Theme.of(context).textTheme.bodySmall)),
+                        Text(
+                          'PICKING UP FROM',
+                          style: theme.textTheme.labelSmall?.copyWith(color: ServeColors.oliveInk, letterSpacing: 1),
+                        ),
                         const Text(
-                          'Change',
-                          style: TextStyle(color: ServeColors.oliveInk, fontWeight: FontWeight.w700),
+                          'Change Canteen',
+                          style: TextStyle(color: ServeColors.oliveInk, fontWeight: FontWeight.w800, fontSize: 13),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 1),
-                    Text(canteen.name, style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
+                    Text(canteen.name, style: theme.textTheme.titleMedium),
+                    if (place != null && place.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(place, style: theme.textTheme.bodySmall),
+                    ],
+                    const SizedBox(height: 10),
                     CanteenStatusLabel(canteen: canteen),
                   ],
                 ),
@@ -251,8 +344,8 @@ class _ActiveOrderCard extends StatelessWidget {
   }
 }
 
-class _Recommendations extends StatelessWidget {
-  const _Recommendations({required this.data});
+class _MostOrdered extends StatelessWidget {
+  const _MostOrdered({required this.data});
   final _HomeData data;
 
   @override
@@ -261,81 +354,127 @@ class _Recommendations extends StatelessWidget {
     final title = switch (rec.basis) {
       RecommendationBasis.mostOrdered => 'Your Most Ordered',
       RecommendationBasis.popular => 'Popular with Students',
-      // No order history anywhere yet: say so honestly instead of claiming popularity.
       RecommendationBasis.menu => 'From the Menu',
     };
     final subtitle = switch (rec.basis) {
-      RecommendationBasis.mostOrdered => 'Quick to reorder',
+      RecommendationBasis.mostOrdered => 'Your go-to favourites, just a tap away.',
       RecommendationBasis.popular => 'Ordered most at this canteen',
       RecommendationBasis.menu => 'A few picks to get you started',
     };
-    final items = rec.items.where((i) => i.availability != Availability.inactive).take(4).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionHeader(title: title, subtitle: subtitle),
-        const SizedBox(height: 12),
-        if (items.isEmpty)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text('No items available at this canteen right now.', style: TextStyle(color: ServeColors.muted)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = ServeLayout.homeColumns(constraints.maxWidth);
+        final items = rec.items.where((i) => i.availability != Availability.inactive).take(columns * 2).toList();
+        final gap = 12.0;
+        final cardWidth = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionHeader(
+              title: title,
+              subtitle: subtitle,
+              trailing: TextButton(onPressed: () => context.read<HomeTabs>().go(HomeTabs.menu), child: const Text('View All')),
             ),
-          )
-        else
-          for (final item in items)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: MenuItemRow(item: item, canteen: data.menu.canteen, categoryName: data.menu.categoryName(item.categoryId)),
-            ),
-        const SizedBox(height: 6),
-        OutlinedButton.icon(
-          onPressed: () => context.read<HomeTabs>().go(HomeTabs.menu),
-          icon: const Icon(Icons.restaurant_menu_rounded, size: 20),
-          label: const Text('View Full Menu'),
-        ),
-      ],
+            const SizedBox(height: 12),
+            if (items.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('No items available at this canteen right now.', style: TextStyle(color: ServeColors.muted)),
+                ),
+              )
+            else
+              Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (final item in items)
+                    SizedBox(
+                      width: cardWidth,
+                      child: _HomeFoodCard(
+                        item: item,
+                        canteen: data.menu.canteen,
+                        categoryName: data.menu.categoryName(item.categoryId),
+                        compact: columns >= 2,
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        );
+      },
     );
   }
 }
 
-/// One menu item with its add / quantity control. Used on Home and Menu.
-class MenuItemRow extends StatelessWidget {
-  const MenuItemRow({super.key, required this.item, required this.canteen, required this.categoryName});
+/// Medium home card: existing FoodImage, independent heart and add-to-cart.
+class _HomeFoodCard extends StatelessWidget {
+  const _HomeFoodCard({required this.item, required this.canteen, required this.categoryName, required this.compact});
+
   final MenuItem item;
   final Canteen canteen;
   final String? categoryName;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final quantity = context.select<CartController, int>((c) => c.quantityOf(item.id));
     final unavailable = item.availability == Availability.unavailable;
-    return Semantics(button: true, hint: 'Shows details', child: _rowBody(context, quantity, unavailable));
-  }
-
-  Widget _rowBody(BuildContext context, int quantity, bool unavailable) {
-    return Card(
-      child: InkWell(
-        onTap: () => openFoodDetails(context, item, categoryName: categoryName),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
+    return Semantics(
+      button: true,
+      hint: 'Shows details',
+      child: Card(
+        child: InkWell(
+          onTap: () => openFoodDetails(context, item, categoryName: categoryName),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Opacity(
-                opacity: item.isOrderable ? 1 : 0.5,
-                child: FoodImage(imageUrl: item.imageUrl, category: categoryName, size: 68),
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Opacity(
+                        opacity: item.isOrderable ? 1 : 0.5,
+                        child: FoodImage(
+                          imageUrl: item.imageUrl,
+                          category: categoryName,
+                          width: double.infinity,
+                          height: double.infinity,
+                          radius: 0,
+                        ),
+                      ),
+                    ),
+                    Positioned(top: 6, right: 6, child: FavouriteButton(itemId: item.id, itemName: item.name)),
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: FittedBox(
+                        child: QuantityControl(
+                          quantity: quantity,
+                          itemName: item.name,
+                          enabled: item.isOrderable,
+                          onAdd: () => addToCart(context, item, canteenName: canteen.name),
+                          onRemove: () => context.read<CartController>().decrement(item.id),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
+              Padding(
+                padding: EdgeInsets.fromLTRB(compact ? 8 : 10, 8, compact ? 8 : 10, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       item.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        height: 1.25,
+                        fontWeight: FontWeight.w700,
+                        fontSize: compact ? 13 : 14,
+                        height: 1.2,
                         color: item.isOrderable ? ServeColors.ink : ServeColors.muted,
                       ),
                     ),
@@ -345,29 +484,21 @@ class MenuItemRow extends StatelessWidget {
                         item.description!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: ServeColors.muted, fontSize: 13, height: 1.3),
+                        style: TextStyle(color: ServeColors.muted, fontSize: compact ? 11 : 12, height: 1.3),
                       ),
                     ],
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(formatRupees(item.pricePaise), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                        if (unavailable) const _Tag('Unavailable'),
-                      ],
+                    const SizedBox(height: 8),
+                    Text(
+                      formatRupees(item.pricePaise),
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: compact ? 13 : 14, color: ServeColors.oliveInk),
                     ),
+                    if (unavailable)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Text('Unavailable', style: TextStyle(color: ServeColors.orangeInk, fontSize: 11, fontWeight: FontWeight.w700)),
+                      ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              QuantityControl(
-                quantity: quantity,
-                itemName: item.name,
-                enabled: item.isOrderable,
-                onAdd: () => addToCart(context, item, canteenName: canteen.name),
-                onRemove: () => context.read<CartController>().decrement(item.id),
               ),
             ],
           ),
@@ -377,17 +508,132 @@ class MenuItemRow extends StatelessWidget {
   }
 }
 
-class _Tag extends StatelessWidget {
-  const _Tag(this.text);
-  final String text;
+class _FavouritesPanel extends StatelessWidget {
+  const _FavouritesPanel({required this.menu});
+  final Menu menu;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final favourites = context.watch<FavouritesController>();
+    final available = favourites.visibleOn(menu);
+    final empty = favourites.count == 0;
+    final countLine = empty
+        ? 'Tap the heart on a dish to save it here.'
+        : available.isEmpty
+        ? 'None of your ${favourites.count} saved dishes are on this menu.'
+        : available.length == 1
+        ? '1 saved dish is available on this menu.'
+        : '${available.length} saved dishes are available on this menu.';
+    final copy = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Your Favourites', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 2),
+        Text('Your saved food items, when available.', style: theme.textTheme.bodySmall),
+        const SizedBox(height: 4),
+        Text(countLine, style: const TextStyle(color: ServeColors.muted, fontSize: 12)),
+      ],
+    );
+    final action = TextButton(onPressed: () => openFavourites(context), child: const Text('View Favourites'));
+    final narrow = MediaQuery.sizeOf(context).width < 400;
+    return Material(
+      color: ServeColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(ServeSpace.radiusCard),
+        side: const BorderSide(color: ServeColors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => openFavourites(context),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+          child: narrow
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const IconTile(icon: Icons.favorite_rounded, size: 52, background: ServeColors.orangeTint, color: ServeColors.orange),
+                    const SizedBox(height: 12),
+                    copy,
+                    const SizedBox(height: 4),
+                    action,
+                  ],
+                )
+              : Row(
+                  children: [
+                    const IconTile(icon: Icons.favorite_rounded, size: 52, background: ServeColors.orangeTint, color: ServeColors.orange),
+                    const SizedBox(width: 14),
+                    Expanded(child: copy),
+                    const SizedBox(width: 8),
+                    action,
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FullMenuBanner extends StatelessWidget {
+  const _FullMenuBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: ServeColors.oliveDark),
+        child: Stack(
+          children: [
+            Positioned(right: -28, top: -36, child: _BannerBlob(size: 140, opacity: 0.16)),
+            Positioned(left: -20, bottom: -40, child: _BannerBlob(size: 110, opacity: 0.12)),
+            Positioned(right: 48, bottom: -18, child: _BannerBlob(size: 70, opacity: 0.10)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const IconTile(icon: Icons.restaurant_menu_rounded, size: 48, background: Color(0x33FFFFFF), color: ServeColors.white),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Explore the Full Menu',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: ServeColors.white),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Browse all items, filter, and find something delicious.',
+                    style: TextStyle(color: Color(0xFFE8EDD4), fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: ServeColors.white,
+                      foregroundColor: ServeColors.oliveInk,
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                    ),
+                    onPressed: () => context.read<HomeTabs>().go(HomeTabs.menu),
+                    child: const Text('View Full Menu'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BannerBlob extends StatelessWidget {
+  const _BannerBlob({required this.size, required this.opacity});
+  final double size;
+  final double opacity;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(color: ServeColors.orangeTint, borderRadius: BorderRadius.circular(6)),
-    child: Text(
-      text,
-      style: const TextStyle(color: ServeColors.orangeInk, fontSize: 12, fontWeight: FontWeight.w700),
-    ),
+    width: size,
+    height: size,
+    decoration: BoxDecoration(shape: BoxShape.circle, color: ServeColors.white.withValues(alpha: opacity)),
   );
 }

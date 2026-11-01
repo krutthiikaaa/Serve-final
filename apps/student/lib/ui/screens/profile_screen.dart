@@ -112,6 +112,13 @@ class ProfileScreen extends StatelessWidget {
             child: Column(
               children: [
                 ListTile(
+                  leading: const IconTile(icon: Icons.favorite_rounded, size: 36),
+                  title: const Text('Favourites'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => openFavourites(context),
+                ),
+                const Divider(indent: 68, endIndent: 16),
+                ListTile(
                   leading: const IconTile(icon: Icons.receipt_long_rounded, size: 36),
                   title: const Text('Your orders'),
                   trailing: const Icon(Icons.chevron_right_rounded),

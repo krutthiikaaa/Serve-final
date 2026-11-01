@@ -11,6 +11,7 @@ import 'package:serve_student/services/api/serve_api.dart';
 import 'package:serve_student/services/auth/auth_controller.dart';
 import 'package:serve_student/services/auth/firebase_auth_client.dart';
 import 'package:serve_student/services/auth/session_store.dart';
+import 'package:serve_student/services/favourites/favourites_store.dart';
 import 'package:serve_student/services/realtime/realtime_service.dart';
 
 import 'fixtures.dart' as fx;
@@ -278,9 +279,9 @@ class FakeFirebase extends FirebaseAuthClient {
 }
 
 class TestHarness {
-  TestHarness({FakeServeApi? api}) : api = api ?? FakeServeApi() {
+  TestHarness({FakeServeApi? api, FavouritesStore? favouritesStore}) : api = api ?? FakeServeApi() {
     auth = AuthController(firebase: firebase, store: store)..attach(this.api.me);
-    services = AppServices(config: testConfig, auth: auth, api: this.api, realtime: realtime);
+    services = AppServices(config: testConfig, auth: auth, api: this.api, realtime: realtime, favouritesStore: favouritesStore);
   }
 
   final FakeServeApi api;

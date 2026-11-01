@@ -6,9 +6,12 @@ import 'services/api/models.dart';
 import 'services/api/serve_api.dart';
 import 'services/auth/auth_controller.dart';
 import 'services/realtime/realtime_service.dart';
+import 'services/favourites/favourites_store.dart';
 import 'state/canteen_selection.dart';
 import 'state/cart_controller.dart';
+import 'state/favourites_controller.dart';
 import 'state/notifications_controller.dart';
+import 'state/recently_viewed_controller.dart';
 import 'theme/serve_theme.dart';
 import 'ui/navigation.dart';
 import 'ui/screens/home_shell.dart';
@@ -17,10 +20,12 @@ import 'ui/screens/status_screens.dart';
 
 /// Everything the UI needs, created once in main() (or by tests with fakes).
 class AppServices {
-  AppServices({required this.config, required this.auth, required this.api, required this.realtime})
+  AppServices({required this.config, required this.auth, required this.api, required this.realtime, FavouritesStore? favouritesStore})
     : cart = CartController(),
       selection = CanteenSelection(),
       notifications = NotificationsController(api, realtime),
+      recentlyViewed = RecentlyViewedController(),
+      favourites = FavouritesController(favouritesStore ?? MemoryFavouritesStore()),
       tabs = HomeTabs();
 
   final AppConfig config;
@@ -30,6 +35,8 @@ class AppServices {
   final CartController cart;
   final CanteenSelection selection;
   final NotificationsController notifications;
+  final RecentlyViewedController recentlyViewed;
+  final FavouritesController favourites;
   final HomeTabs tabs;
 }
 
@@ -48,6 +55,8 @@ class ServeApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: services.cart),
         ChangeNotifierProvider.value(value: services.selection),
         ChangeNotifierProvider.value(value: services.notifications),
+        ChangeNotifierProvider.value(value: services.recentlyViewed),
+        ChangeNotifierProvider.value(value: services.favourites),
         ChangeNotifierProvider.value(value: services.tabs),
       ],
       child: MaterialApp(
@@ -84,6 +93,16 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   @override
+  void didUpdateWidget(AuthGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.services == widget.services) return;
+    oldWidget.services.auth.removeListener(_onAuth);
+    _sessionActive = false;
+    s.auth.addListener(_onAuth);
+    _onAuth();
+  }
+
+  @override
   void dispose() {
     s.auth.removeListener(_onAuth);
     super.dispose();
@@ -101,6 +120,7 @@ class _AuthGateState extends State<AuthGate> {
       s.realtime.stop();
       s.notifications.stop();
       s.cart.clear();
+      s.recentlyViewed.clear();
       s.selection.reset();
       s.tabs.go(HomeTabs.home);
       Navigator.of(context).popUntil((route) => route.isFirst);
