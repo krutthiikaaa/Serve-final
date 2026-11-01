@@ -22,6 +22,6 @@ Future<void> main() async {
       services: AppServices(config: config, auth: auth, api: api, realtime: realtime, favouritesStore: SecureFavouritesStore()),
     ),
   );
-  // The opening animation plays while any saved session is restored.
+  // The logo splash plays while any saved session is restored.
   await auth.restore();
 }

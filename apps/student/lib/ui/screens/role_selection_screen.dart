@@ -15,7 +15,7 @@ import '../widgets/auth_info_pane.dart';
 import '../widgets/auth_layout.dart';
 import '../widgets/forgot_password_form.dart';
 import '../widgets/login_form.dart';
-import '../widgets/sandwich_intro.dart';
+import '../widgets/serve_splash.dart';
 import '../widgets/staff_register_form.dart';
 import '../widgets/states.dart';
 import '../widgets/student_register_form.dart';
@@ -24,17 +24,17 @@ import '../widgets/surface.dart';
 const _headline = 'Welcome to SERVE';
 const _description = 'Choose how you would like to continue.';
 
-/// The opening transformation, as fractions of [RoleSelectionScreen.introDuration].
+/// Role-card reveal, as fractions of [RoleSelectionScreen.introDuration].
 ///
-/// Paper washes in over the assembled ingredients; content eases in on top
-/// of that wash so the card is never an empty white sheet.
+/// The splash holds the first ~2.4 s; the existing card then eases in on the
+/// same olive field so the launch feels like one continuous sequence.
 abstract final class _Intro {
-  static const card = (0.76, 0.90);
-  static const settle = (0.84, 1.0);
-  static const brand = (0.76, 0.90);
-  static const headline = (0.78, 0.92);
-  static const body = (0.80, 0.94);
-  static const cards = [(0.82, 0.94), (0.84, 0.96), (0.86, 0.98)];
+  static const card = (0.74, 0.90);
+  static const settle = (0.82, 1.0);
+  static const brand = (0.74, 0.90);
+  static const headline = (0.76, 0.92);
+  static const body = (0.78, 0.94);
+  static const cards = [(0.80, 0.94), (0.82, 0.96), (0.84, 0.98)];
 }
 
 double _span(double t, (double, double) phase) => ((t - phase.$1) / (phase.$2 - phase.$1)).clamp(0.0, 1.0);
@@ -55,21 +55,19 @@ enum _Pane {
 
 /// Students continue in the app; staff and admins are sent to their web portals.
 ///
-/// Opening experience: the sandwich at the centre of the light-green field
-/// bursts into its ingredients; those pieces travel into a centred popup and
-/// become it. Choosing a role transforms the popup's contents into that role's
-/// authentication interface. Every later step (login, create account, password
-/// reset, verification) reuses the same popup. The sandwich is not replayed.
+/// Opening experience: a short logo splash on the warm olive field, then the
+/// existing centred role card. Choosing a role transforms the popup's contents
+/// into that role's authentication interface. The splash is not replayed.
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key, this.completeEmail});
 
   /// When a Firebase user has no SERVE profile yet, open student registration
-  /// on this email inside the popup (no sandwich replay).
+  /// on this email inside the popup (no splash replay).
   final String? completeEmail;
 
-  static const introDuration = Duration(milliseconds: 4800);
+  static const introDuration = Duration(milliseconds: 3200);
 
-  /// The longest the intro waits for the sandwich images before starting
+  /// The longest the intro waits for the official logo before starting
   /// anyway; until then only the page colour shows.
   @visibleForTesting
   static Duration maxImageWait = const Duration(milliseconds: 1500);
@@ -136,7 +134,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
       _intro.value = 1;
       return;
     }
-    SandwichIntroStage.precache(context).then((_) => _begin());
+    ServeSplashStage.precache(context).then((_) => _begin());
     if (_imageWait.duration == Duration.zero) {
       _begin();
     } else {
@@ -239,13 +237,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     return dest.path.contains('/sso/callback') && (params['code'] ?? '').length >= 16;
   }
 
-  Rect? _popupRect() {
-    final popup = _popupKey.currentContext?.findRenderObject();
-    final stage = _stageKey.currentContext?.findRenderObject();
-    if (popup is! RenderBox || stage is! RenderBox || !popup.hasSize || !popup.attached) return null;
-    return popup.localToGlobal(Offset.zero, ancestor: stage) & popup.size;
-  }
-
   _LoginSlot _slotFor(_Pane pane) => switch (pane) {
     _Pane.staffLogin || _Pane.staffRegister || _Pane.staffForgot || _Pane.staffPending => _staff,
     _Pane.adminLogin || _Pane.adminForgot || _Pane.adminProvision => _admin,
@@ -336,17 +327,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
           child: Stack(
             key: _stageKey,
             children: [
+              const Positioned.fill(child: IgnorePointer(child: _AmbientField())),
               if (_playing)
                 Positioned.fill(
-                  child: IgnorePointer(
-                    child: AnimatedBuilder(
-                      animation: _intro,
-                      builder: (context, _) {
-                        final fallback = SandwichIntroStage.sandwichRectFor(MediaQuery.sizeOf(context));
-                        return SandwichIntroStage(progress: _intro, popup: _popupRect() ?? fallback);
-                      },
-                    ),
-                  ),
+                  child: IgnorePointer(child: ServeSplashStage(progress: _intro)),
                 ),
               Positioned.fill(
                 child: IgnorePointer(
@@ -427,35 +411,21 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
           }
         },
       ),
-      _Pane.staffRegister => StaffRegisterForm(
-        onBackToLogin: () => _show(_Pane.staffLogin),
-        onSubmitted: () => _show(_Pane.staffPending),
-      ),
-      _Pane.studentForgot => ForgotPasswordForm(
-        initialEmail: _student.email.text,
-        onBackToLogin: () => _show(_Pane.studentLogin),
-      ),
-      _Pane.staffForgot => ForgotPasswordForm(
-        initialEmail: _staff.email.text,
-        onBackToLogin: () => _show(_Pane.staffLogin),
-      ),
-      _Pane.adminForgot => ForgotPasswordForm(
-        initialEmail: _admin.email.text,
-        onBackToLogin: () => _show(_Pane.adminLogin),
-      ),
+      _Pane.staffRegister => StaffRegisterForm(onBackToLogin: () => _show(_Pane.staffLogin), onSubmitted: () => _show(_Pane.staffPending)),
+      _Pane.studentForgot => ForgotPasswordForm(initialEmail: _student.email.text, onBackToLogin: () => _show(_Pane.studentLogin)),
+      _Pane.staffForgot => ForgotPasswordForm(initialEmail: _staff.email.text, onBackToLogin: () => _show(_Pane.staffLogin)),
+      _Pane.adminForgot => ForgotPasswordForm(initialEmail: _admin.email.text, onBackToLogin: () => _show(_Pane.adminLogin)),
       _Pane.staffPending => AuthInfoPane(
         icon: Icons.schedule_rounded,
         heading: 'Request sent',
-        body:
-            'Your staff account is pending admin approval. You will be able to open the staff dashboard after an administrator reviews your request.',
+        body: 'Your staff account is pending admin approval. You will be able to open the staff dashboard after an administrator reviews your request.',
         actionLabel: 'Back to login',
         onAction: () => _show(_Pane.staffLogin),
       ),
       _Pane.adminProvision => AuthInfoPane(
         icon: Icons.admin_panel_settings_rounded,
         heading: 'Admin accounts are provisioned',
-        body:
-            'SERVE does not offer public admin sign-up. Admin access is created through a controlled invitation or setup process. If you were provisioned, sign in with that email.',
+        body: 'SERVE does not offer public admin sign-up. Admin access is created through a controlled invitation or setup process. If you were provisioned, sign in with that email.',
         actionLabel: 'Back to login',
         onAction: () => _show(_Pane.adminLogin),
       ),
@@ -489,7 +459,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
 }
 
 /// The centred role-selection card. During the intro its paper surface and
-/// contents grow in as the sandwich pieces arrive to build it.
+/// contents ease in after the logo splash.
 class _RolePopup extends StatelessWidget {
   const _RolePopup({
     required this.roles,
@@ -746,6 +716,46 @@ class _SkipButton extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Soft olive field behind the existing card. Never overlaps the card.
+class _AmbientField extends StatelessWidget {
+  const _AmbientField();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _AmbientFieldPainter(), child: const SizedBox.expand());
+  }
+}
+
+class _AmbientFieldPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height * 0.46);
+    final wash = Paint()
+      ..shader = RadialGradient(colors: [ServeColors.white.withValues(alpha: 0.28), ServeColors.oliveTint.withValues(alpha: 0)])
+          .createShader(Rect.fromCircle(center: c, radius: size.shortestSide * 0.62));
+    canvas.drawCircle(c, size.shortestSide * 0.62, wash);
+
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = ServeColors.olive.withValues(alpha: 0.08);
+    canvas.drawCircle(c, size.shortestSide * 0.42, ring);
+    canvas.drawCircle(Offset(size.width * 0.16, size.height * 0.22), size.shortestSide * 0.18, ring);
+    canvas.drawCircle(Offset(size.width * 0.88, size.height * 0.78), size.shortestSide * 0.22, ring);
+
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = ServeColors.oliveDark.withValues(alpha: 0.06)
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(Rect.fromCircle(center: Offset(size.width * 0.12, size.height * 0.82), radius: 70), -0.4, 1.6, false, arc);
+    canvas.drawArc(Rect.fromCircle(center: Offset(size.width * 0.92, size.height * 0.16), radius: 64), 2.2, 1.4, false, arc);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _Roles {

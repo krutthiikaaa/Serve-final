@@ -4,7 +4,7 @@ import 'package:serve_student/core/api_exception.dart';
 import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/services/auth/auth_controller.dart';
 import 'package:serve_student/ui/screens/role_selection_screen.dart';
-import 'package:serve_student/ui/widgets/sandwich_intro.dart';
+import 'package:serve_student/ui/widgets/serve_splash.dart';
 
 import '../support/fakes.dart';
 
@@ -101,11 +101,11 @@ void main() {
     expect(find.text('Order. Track. Collect.'), findsOneWidget);
     expect(find.byType(AppBar), findsNothing);
     expect(find.byType(RoleSelectionScreen), findsOneWidget);
-    expect(find.byType(SandwichIntroStage), findsNothing);
+    expect(find.byType(ServeSplashStage), findsNothing);
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
     expect(find.text('Welcome back'), findsOneWidget);
-    expect(find.byType(SandwichIntroStage), findsNothing);
+    expect(find.byType(ServeSplashStage), findsNothing);
   });
 
   testWidgets('registration validates required fields', (tester) async {
@@ -157,7 +157,7 @@ void main() {
     await tester.tap(find.text('Back to login'));
     await tester.pumpAndSettle();
     expect(find.text('Welcome back'), findsOneWidget);
-    expect(find.byType(SandwichIntroStage), findsNothing);
+    expect(find.byType(ServeSplashStage), findsNothing);
   });
 
   testWidgets('staff create account requests access and stays pending', (tester) async {

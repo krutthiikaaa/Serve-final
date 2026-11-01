@@ -10,8 +10,8 @@ import 'package:serve_student/services/api/serve_api.dart';
 import 'package:serve_student/services/auth/auth_controller.dart';
 import 'package:serve_student/ui/screens/role_selection_screen.dart';
 import 'package:serve_student/ui/widgets/auth_layout.dart';
-import 'package:serve_student/ui/widgets/sandwich_intro.dart';
 import 'package:serve_student/ui/widgets/serve_logo.dart';
+import 'package:serve_student/ui/widgets/serve_splash.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 
@@ -64,12 +64,10 @@ Future<TestHarness> _open(WidgetTester tester) async {
 }
 
 final _skip = find.text('Skip');
-
-const _layerNames = ['bread_top', 'lettuce', 'tomato', 'cheese', 'cucumber', 'bread_bottom'];
-Finder _layerFinder(String name) => find.image(AssetImage('assets/images/sandwich/$name.webp'));
-
-/// The intro's copy of a layer: the last one in the tree.
-Rect _layer(WidgetTester tester, String name) => tester.getRect(_layerFinder(name).last);
+final _splash = find.byType(ServeSplashStage);
+final _sandwichLayer = find.image(const AssetImage('assets/images/sandwich/bread_top.webp'));
+Finder _splashLogo() => find.descendant(of: _splash, matching: find.byType(ServeLogo));
+Finder _splashTagline() => find.descendant(of: _splash, matching: find.text(serveTagline));
 
 void main() {
   late _FakeLauncher launcher;
@@ -93,7 +91,8 @@ void main() {
       usePhoneSize(tester);
       await _start(tester);
       expect(_skip, findsOneWidget);
-      expect(find.byType(SandwichIntroStage), findsOneWidget);
+      expect(_splash, findsOneWidget);
+      expect(_sandwichLayer, findsNothing);
 
       await tester.pump(const Duration(milliseconds: 1500));
       await tester.tap(find.text('Student'), warnIfMissed: false);
@@ -102,48 +101,49 @@ void main() {
 
       await tester.pump(RoleSelectionScreen.introDuration);
       expect(_skip, findsNothing);
-      expect(find.byType(SandwichIntroStage), findsNothing);
+      expect(_splash, findsNothing);
+      expect(_sandwichLayer, findsNothing);
       expect(tester.binding.transientCallbackCount, 0, reason: 'nothing left animating');
 
       await _tapRole(tester, 'Student');
       expect(find.text('Welcome back'), findsOneWidget);
     });
 
-    testWidgets('lasts about 4.8 seconds', (tester) async {
+    testWidgets('lasts about 3.2 seconds', (tester) async {
       usePhoneSize(tester);
       await _start(tester);
-      await tester.pump(const Duration(milliseconds: 4600));
+      await tester.pump(const Duration(milliseconds: 3000));
       expect(_skip, findsOneWidget);
       await tester.pump(const Duration(milliseconds: 300));
       expect(_skip, findsNothing);
     });
 
     for (final size in [const Size(360, 800), const Size(1440, 900)]) {
-      testWidgets('bursts into separate ingredients that stay on screen at ${size.width.toInt()}', (tester) async {
+      testWidgets('shows the official logo and tagline, never the sandwich, at ${size.width.toInt()}', (tester) async {
         _useSize(tester, size);
         await _start(tester);
 
         await tester.pump(const Duration(milliseconds: 600));
-        final assembledGap = (_layer(tester, 'bread_top').center - _layer(tester, 'bread_bottom').center).distance;
+        expect(_splash, findsOneWidget);
+        expect(_splashLogo(), findsOneWidget);
+        expect(_sandwichLayer, findsNothing);
+        final logo = tester.getRect(_splashLogo());
+        expect(logo.left, greaterThanOrEqualTo(-4));
+        expect(logo.right, lessThanOrEqualTo(size.width + 4));
+        expect(logo.top, greaterThanOrEqualTo(-4));
+        expect(logo.bottom, lessThanOrEqualTo(size.height + 4));
 
         await tester.pump(const Duration(milliseconds: 1200));
-        final top = _layer(tester, 'bread_top');
-        final bottom = _layer(tester, 'bread_bottom');
-        expect((top.center - bottom.center).distance, greaterThan(assembledGap * 2), reason: 'the slices fly apart');
-        expect(_layer(tester, 'tomato').center.dx, lessThan(_layer(tester, 'cheese').center.dx), reason: 'fillings spread to both sides');
-        for (final name in _layerNames) {
-          final r = _layer(tester, name);
-          expect(r.left, greaterThanOrEqualTo(-4), reason: '$name clipped left');
-          expect(r.right, lessThanOrEqualTo(size.width + 4), reason: '$name clipped right');
-          expect(r.top, greaterThanOrEqualTo(-4), reason: '$name clipped top');
-          expect(r.bottom, lessThanOrEqualTo(size.height + 4), reason: '$name clipped bottom');
-        }
+        expect(_splashTagline(), findsOneWidget);
+        expect(_sandwichLayer, findsNothing);
 
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
+        expect(_splash, findsNothing);
+        expect(find.text('Welcome to SERVE'), findsOneWidget);
       });
 
-      testWidgets('ingredients travel into the centred popup at ${size.width.toInt()}', (tester) async {
+      testWidgets('fades into the centred popup at ${size.width.toInt()}', (tester) async {
         _useSize(tester, size);
         await _start(tester);
         double studentOpacity() => tester
@@ -151,56 +151,53 @@ void main() {
             .map((o) => o.opacity)
             .reduce(math.min);
 
-        await tester.pump(const Duration(milliseconds: 2200));
-        final burst = {for (final n in _layerNames) n: _layer(tester, n).center};
+        await tester.pump(const Duration(milliseconds: 1600));
+        expect(_splash, findsOneWidget);
         expect(studentOpacity(), 0);
 
         await tester.pump(const Duration(milliseconds: 1800));
         final popup = tester.getRect(find.ancestor(of: find.text('Welcome to SERVE'), matching: find.byType(Material)).first);
-        for (final n in _layerNames) {
-          final r = _layer(tester, n);
-          expect((r.center - burst[n]!).distance, greaterThan(8), reason: '$n left its burst position');
-          expect(r.center.dx, inInclusiveRange(popup.left - 48, popup.right + 48), reason: '$n is at the popup');
-          expect(r.center.dy, inInclusiveRange(popup.top - 48, popup.bottom + 48), reason: '$n is at the popup');
-        }
         expect(popup.width, lessThanOrEqualTo(440));
+        expect(_sandwichLayer, findsNothing);
 
         await tester.pumpAndSettle();
         expect(studentOpacity(), 1);
-        expect(find.byType(SandwichIntroStage), findsNothing);
+        expect(_splash, findsNothing);
       });
     }
 
-    testWidgets('opens the app with no splash screen and is not restarted by session restore', (tester) async {
+    testWidgets('opens the app with a logo splash and is not restarted by session restore', (tester) async {
       usePhoneSize(tester);
       final h = TestHarness();
       // Still initialising: no saved session has been looked at yet.
       await tester.pumpWidget(h.app);
       expect(find.byType(RoleSelectionScreen), findsOneWidget);
       expect(_skip, findsOneWidget);
+      expect(_splash, findsOneWidget);
       final screen = tester.state(find.byType(RoleSelectionScreen));
 
-      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pump(const Duration(milliseconds: 1200));
       await h.auth.restore();
       await tester.pump();
       expect(tester.state(find.byType(RoleSelectionScreen)), same(screen));
       expect(_skip, findsOneWidget, reason: 'the intro carries on');
 
-      await tester.pump(RoleSelectionScreen.introDuration - const Duration(milliseconds: 1400));
+      await tester.pump(RoleSelectionScreen.introDuration - const Duration(milliseconds: 1100));
       expect(_skip, findsNothing);
       await _tapRole(tester, 'Student');
       expect(find.text('Welcome back'), findsOneWidget);
     });
 
-    testWidgets('waits (at most 1.5 s) for the sandwich images, showing only the page colour', (tester) async {
+    testWidgets('waits (at most 1.5 s) for the official logo, showing only the page colour', (tester) async {
       usePhoneSize(tester);
       RoleSelectionScreen.maxImageWait = const Duration(milliseconds: 1500);
       await _start(tester);
-      final opacities = tester.widgetList<Opacity>(find.ancestor(of: _layerFinder('bread_top').last, matching: find.byType(Opacity)));
-      expect(opacities.any((o) => o.opacity == 0), isTrue, reason: 'nothing drawn before the images are ready');
+      final opacities = tester.widgetList<Opacity>(find.ancestor(of: _splashLogo(), matching: find.byType(Opacity)));
+      expect(opacities.any((o) => o.opacity == 0), isTrue, reason: 'nothing drawn before the logo is ready');
       expect(_skip, findsOneWidget);
+      expect(_sandwichLayer, findsNothing);
 
-      // However long the images take, the intro is over within the wait plus its own length.
+      // However long the image takes, the intro is over within the wait plus its own length.
       await tester.pump(RoleSelectionScreen.maxImageWait + RoleSelectionScreen.introDuration + const Duration(milliseconds: 100));
       expect(_skip, findsNothing);
     });
@@ -237,7 +234,8 @@ void main() {
       await tester.tap(_skip);
       await tester.pump();
       expect(_skip, findsNothing);
-      expect(find.byType(SandwichIntroStage), findsNothing);
+      expect(_splash, findsNothing);
+      expect(_sandwichLayer, findsNothing);
       expect(tester.binding.transientCallbackCount, 0, reason: 'the intro controller has stopped');
       // Every role is fully shown and usable right away.
       for (final opacity in tester.widgetList<Opacity>(find.ancestor(of: find.text('Administrator'), matching: find.byType(Opacity)))) {
@@ -266,7 +264,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('Welcome to SERVE'), findsOneWidget);
       expect(_skip, findsNothing);
-      expect(find.byType(SandwichIntroStage), findsNothing);
+      expect(_splash, findsNothing);
+      expect(_sandwichLayer, findsNothing);
       await tester.pumpAndSettle();
       await _tapRole(tester, 'Administrator');
       expect(find.text('Admin sign in'), findsOneWidget);

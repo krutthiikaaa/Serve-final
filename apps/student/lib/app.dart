@@ -131,11 +131,9 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final auth = s.auth;
-    // There is no splash screen: the app opens on the signed-out flow, whose
-    // role selection plays the opening animation. It stays mounted while a
-    // saved session is restored or an account loads after sign-in, so the
-    // animation (or the sign-in form) isn't interrupted; a restored student
-    // then goes straight home.
+    // Signed-out launch plays the logo splash, then role selection. The flow
+    // stays mounted while a saved session is restored so the animation is not
+    // interrupted; a restored student then goes straight home.
     const signedOut = SignedOutFlow(key: ValueKey('signed-out'));
     final child = switch (auth.status) {
       AuthStatus.initializing || AuthStatus.signedOut => signedOut,

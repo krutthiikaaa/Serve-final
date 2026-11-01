@@ -66,8 +66,6 @@ flutter:
   # The official SERVE logo (transparent PNG, see brand/README.md).
   assets:
     - assets/images/serve_logo.png
-    # Welcome-screen sandwich, one transparent layer per ingredient.
-    - assets/images/sandwich/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
