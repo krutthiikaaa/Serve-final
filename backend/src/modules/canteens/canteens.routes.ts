@@ -2,10 +2,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../../context.js';
 import type { Services } from '../../services.js';
-import { createAuthenticate } from '../../middleware/auth.js';
+import { createAuthenticate, requireStudent } from '../../middleware/auth.js';
 import { id, idParams, parse } from '../../http/validation.js';
 
 const canteenParams = z.object({ canteenId: id });
+const servicePeriodQuery = z.object({
+  period: z.enum(['DAY', 'NIGHT']).optional(),
+});
 
 /** /api/canteens — browsing. Any authenticated user; visibility enforced by the service. */
 export function createCanteensRouter(ctx: AppContext, services: Services): Router {
@@ -21,11 +24,16 @@ export function createCanteensRouter(ctx: AppContext, services: Services): Route
   });
   router.get('/:canteenId/menu', async (req, res) => {
     const { canteenId } = parse(canteenParams, req.params);
-    res.json({ data: await services.canteens.menu(req.auth!.principal, canteenId) });
+    const { period } = parse(servicePeriodQuery, req.query);
+    res.json({ data: await services.canteens.menu(req.auth!.principal, canteenId, period) });
   });
   router.get('/:canteenId/categories', async (req, res) => {
     const { canteenId } = parse(canteenParams, req.params);
     res.json({ data: await services.canteens.categories(req.auth!.principal, canteenId) });
+  });
+  router.get('/:canteenId/payment-config', requireStudent, async (req, res) => {
+    const { canteenId } = parse(canteenParams, req.params);
+    res.json({ data: await services.canteens.paymentConfig(req.auth!.principal, canteenId) });
   });
   return router;
 }
@@ -36,7 +44,8 @@ export function createMenuRouter(ctx: AppContext, services: Services): Router {
   router.use(createAuthenticate(ctx));
   router.get('/items/:id', async (req, res) => {
     const { id: itemId } = parse(idParams, req.params);
-    res.json({ data: await services.canteens.item(req.auth!.principal, itemId) });
+    const { period } = parse(servicePeriodQuery, req.query);
+    res.json({ data: await services.canteens.item(req.auth!.principal, itemId, period) });
   });
   return router;
 }

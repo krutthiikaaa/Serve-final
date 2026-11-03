@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import type { AdminCanteen, Canteen } from '@serve/contracts';
+import type { AdminCanteen, Canteen, PublicCanteen, ServicePeriod } from '@serve/contracts';
 import {
   Button,
   EmptyState,
@@ -31,12 +31,34 @@ export function CanteenStatus({ canteen }: { canteen: Pick<Canteen, 'status'> })
   return <Tag tone="success">Accepting orders</Tag>;
 }
 
+const PERIOD_SHORT: Record<ServicePeriod, string> = { DAY: 'Day', NIGHT: 'Night' };
+
+function ServicePeriodTags({ live }: { live: PublicCanteen | undefined }) {
+  if (!live || live.services.length === 0) {
+    return <span className="muted">Not configured</span>;
+  }
+  return (
+    <span className="tag-row">
+      {live.services.map((service) => (
+        <Tag
+          key={service.period}
+          tone={!service.isEnabled ? 'neutral' : service.isOpenNow ? 'success' : 'warning'}
+        >
+          {PERIOD_SHORT[service.period]}
+          {service.isEnabled ? (service.isOpenNow ? ' · open' : ' · closed') : ' · off'}
+        </Tag>
+      ))}
+    </span>
+  );
+}
+
 /** Canteen administration: activate / deactivate, pause / resume order-taking, create and edit. */
 export function CanteensPage() {
   const api = useAdminApi();
   const toast = useToast();
   const { connectionEpoch } = useRealtime();
   const canteens = useResource(() => api.canteens(), [api, connectionEpoch]);
+  const live = useResource(() => api.browseCanteens(), [api, connectionEpoch]);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<{ canteen?: AdminCanteen } | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState<AdminCanteen | null>(null);
@@ -86,6 +108,7 @@ export function CanteensPage() {
                 <tr>
                   <th>Canteen</th>
                   <th>Status</th>
+                  <th>Services</th>
                   <th>Hostels</th>
                   <th>Active staff</th>
                   <th>Menu items</th>
@@ -108,6 +131,9 @@ export function CanteensPage() {
                     </td>
                     <td>
                       <CanteenStatus canteen={canteen} />
+                    </td>
+                    <td>
+                      <ServicePeriodTags live={live.data?.find((row) => row.id === canteen.id)} />
                     </td>
                     <td className="num">{canteen.counts.hostels}</td>
                     <td className="num">{canteen.counts.activeStaff}</td>

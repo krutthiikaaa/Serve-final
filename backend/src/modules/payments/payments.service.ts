@@ -9,6 +9,7 @@ import { writeNotifications } from '../notifications/notification.writer.js';
 import { canteenTakesOrders } from '../canteens/canteen.dto.js';
 import { orderInclude, toOrderDto } from '../orders/order.dto.js';
 import { queueOrderEvent } from '../orders/order.events.js';
+import { allocateReceiptNumber } from '../orders/receipt.js';
 import { MockPaymentProvider } from './mock.provider.js';
 import type { PaymentConfirmation, PaymentProvider } from './provider.js';
 
@@ -69,6 +70,10 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
 
       const payment = await tx.payment.findUniqueOrThrow({ where: { orderId: input.orderId } });
       const order = await tx.order.findUniqueOrThrow({ where: { id: input.orderId } });
+      const paymentConfig = await tx.canteenPaymentConfig.findUnique({
+        where: { canteenId: order.canteenId },
+      });
+      const isSimulated = (paymentConfig?.mode ?? 'DEMO') === 'DEMO';
       if (
         payment.amountPaise !== input.capturedAmountPaise ||
         order.totalPaise !== input.capturedAmountPaise
@@ -81,6 +86,7 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
       }
 
       const now = new Date();
+      const receiptNumber = order.receiptNumber ?? (await allocateReceiptNumber(tx));
       const paid = await tx.payment.updateMany({
         where: { id: payment.id, status: 'PENDING', providerOrderId: input.providerOrderId },
         data: {
@@ -89,11 +95,12 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
           signature: input.signature,
           paidAt: now,
           failureReason: null,
+          isSimulated,
         },
       });
       const confirmed = await tx.order.updateMany({
         where: { id: order.id, status: 'PLACED' },
-        data: { status: 'PAYMENT_CONFIRMED', paidAt: now },
+        data: { status: 'PAYMENT_CONFIRMED', paidAt: now, receiptNumber },
       });
       if (paid.count === 0 || confirmed.count === 0) {
         throw new ConflictError(
@@ -106,13 +113,15 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
         where: { id: order.id },
         include: orderInclude,
       });
-      await writeNotifications(tx, outbox, [{ kind: 'student', id: fresh.studentId }], {
-        type: 'PAYMENT_CONFIRMED',
-        title: 'Payment confirmed',
-        message: `Payment received. Order #${fresh.orderNumber} has been sent to the canteen.`,
-        orderId: fresh.id,
-        data: { orderNumber: fresh.orderNumber, status: fresh.status },
-      });
+      if (fresh.studentId) {
+        await writeNotifications(tx, outbox, [{ kind: 'student', id: fresh.studentId }], {
+          type: 'PAYMENT_CONFIRMED',
+          title: 'Payment confirmed',
+          message: `Payment received. Order #${fresh.orderNumber} has been sent to the canteen.`,
+          orderId: fresh.id,
+          data: { orderNumber: fresh.orderNumber, status: fresh.status },
+        });
+      }
       return { duplicate: false as const, order: fresh };
     });
 
@@ -261,6 +270,28 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
         amountPaise: payment.amountPaise,
         currency: payment.currency,
       };
+    },
+
+    /**
+     * Store a student-submitted UTR. This is supporting information only —
+     * it never confirms payment.
+     */
+    async claim(student: StudentPrincipal, orderId: string, utr: string | null) {
+      const order = await ownedOrder(student, orderId);
+      if (order.payment.status === 'SUCCESS') {
+        throw new ConflictError('This order has already been paid.', 'ALREADY_PAID');
+      }
+      if (order.status !== 'PLACED') {
+        throw new ConflictError(
+          'This order is no longer awaiting payment.',
+          'ORDER_NOT_AWAITING_PAYMENT',
+        );
+      }
+      await prisma.payment.updateMany({
+        where: { id: order.payment.id, status: { in: ['PENDING', 'FAILED'] } },
+        data: { status: 'PENDING', utr, failureReason: null },
+      });
+      return currentOrderDto(order.id);
     },
 
     /**

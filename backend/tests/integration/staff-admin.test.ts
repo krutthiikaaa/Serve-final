@@ -340,7 +340,27 @@ describe('admin canteen and hostel management', () => {
     expect(res.body.data.staff.active).toBe(
       await prisma.staff.count({ where: { status: 'APPROVED' } }),
     );
-    expect(res.body.data.today.orderCount).toBeGreaterThanOrEqual(1);
+    expect(res.body.data.today.orderCount).toBe(
+      await prisma.order.count({
+        where: {
+          paidAt: { not: null },
+          status: { notIn: ['PLACED', 'CANCELLED'] },
+          payment: { status: 'SUCCESS', isSimulated: false },
+        },
+      }),
+    );
+    expect(res.body.data.today.revenuePaise).toBe(
+      (
+        await prisma.order.aggregate({
+          where: {
+            paidAt: { not: null },
+            status: { notIn: ['PLACED', 'CANCELLED'] },
+            payment: { status: 'SUCCESS', isSimulated: false },
+          },
+          _sum: { totalPaise: true },
+        })
+      )._sum.totalPaise ?? 0,
+    );
     expect(res.body.data.canteens).toMatchObject({
       paused: await prisma.canteen.count({ where: { isActive: true, isAcceptingOrders: false } }),
       inactive: await prisma.canteen.count({ where: { isActive: false } }),

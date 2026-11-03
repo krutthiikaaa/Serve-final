@@ -106,12 +106,19 @@ void main() {
       if (wide) {
         await tester.tap(find.widgetWithText(TextButton, 'Menu'));
       } else {
-        await tester.tap(navTab('Menu'));
+        await tester.tap(
+          find.descendant(of: find.byType(NavigationBar), matching: find.byIcon(Icons.restaurant_menu_outlined)),
+        );
       }
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Veg Grilled Sandwich'), findsOneWidget);
+      final sandwich = find.text('Veg Grilled Sandwich');
+      for (var i = 0; i < 8 && sandwich.evaluate().isEmpty; i++) {
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -280));
+        await tester.pumpAndSettle();
+      }
+      expect(sandwich, findsOneWidget);
       expect(find.byType(FoodProductCard), findsWidgets);
       if (wide) {
         expect(find.byType(MenuFilterPanel), findsOneWidget);

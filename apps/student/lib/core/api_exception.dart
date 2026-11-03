@@ -29,8 +29,15 @@ class ApiException implements Exception {
         return message.isNotEmpty ? message : 'This is no longer available.';
       case 409:
         if (code == 'CANTEEN_NOT_ACCEPTING_ORDERS') return 'This canteen is currently not accepting orders.';
+        if (code == 'CANTEEN_INACTIVE') return 'This canteen is closed.';
+        if (code == 'SERVICE_CLOSED') return 'This service is closed right now.';
+        if (code == 'SERVICE_DISABLED') return 'This service is not available at this canteen.';
+        if (code == 'SERVICE_SCHEDULE_NOT_CONFIGURED') return 'Opening hours have not been set up for this service yet.';
+        if (code == 'PERIOD_PRICE_NOT_CONFIGURED') return 'Some items are not priced for this service yet.';
         return message.isNotEmpty ? message : 'This changed in the meantime. Please refresh and try again.';
       case 422:
+        if (code == 'LIVE_CONFIG_INCOMPLETE') return 'This canteen is not ready to take payments yet.';
+        if (code == 'ITEM_UNAVAILABLE') return 'An item in your cart is no longer available.';
         return message.isNotEmpty && message != 'Validation failed' ? message : 'Please check your details and try again.';
       case 429:
         return 'Too many requests. Please wait a moment and try again.';

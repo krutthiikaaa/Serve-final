@@ -45,10 +45,22 @@ class OrderConfirmationScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 22),
-                    Text('Payment confirmed', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall),
+                    Text(
+                      order.payment?.isSimulated == true
+                          ? 'Demo order recorded'
+                          : order.payment?.isSuccess == true
+                          ? 'Payment confirmed'
+                          : 'Order placed',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall,
+                    ),
                     const SizedBox(height: 6),
                     Text(
-                      'The canteen has your order.',
+                      order.payment?.isSimulated == true
+                          ? 'This is a simulated payment. No real money was received.'
+                          : order.payment?.isSuccess == true
+                          ? 'The canteen has your order.'
+                          : 'Payment is still pending cashier confirmation.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted),
                     ),
@@ -71,15 +83,41 @@ class OrderConfirmationScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Collect at ${order.canteen.name}',
+                              'Pickup token ${order.pickupToken}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              [
+                                'Collect at ${order.canteen.name}',
+                                if (order.servicePeriod != null) order.servicePeriod!.label,
+                              ].join(' · '),
                               textAlign: TextAlign.center,
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider()),
                             Text(
-                              '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'} · ${formatRupees(order.totalPaise)} · paid',
+                              [
+                                '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
+                                formatRupees(order.totalPaise),
+                                if (order.payment?.isSimulated == true)
+                                  'DEMO'
+                                else if (order.payment?.isSuccess == true)
+                                  'paid'
+                                else
+                                  'payment pending',
+                              ].join(' · '),
                               style: const TextStyle(color: ServeColors.muted, fontWeight: FontWeight.w600),
                             ),
+                            if (order.payment?.isSimulated == true) ...[
+                              const SizedBox(height: 10),
+                              const Text(
+                                'DEMO TRANSACTION — NO REAL PAYMENT',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontWeight: FontWeight.w800, color: ServeColors.orangeInk),
+                              ),
+                            ],
                           ],
                         ),
                       ),

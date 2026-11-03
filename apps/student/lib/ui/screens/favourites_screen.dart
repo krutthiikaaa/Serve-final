@@ -34,7 +34,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
     final generation = ++_generation;
     setState(() => _error = null);
     try {
-      final menu = await context.read<ServeApi>().menu(id);
+      final menu = await context.read<ServeApi>().menu(id, period: context.read<CanteenSelection>().period);
       if (mounted && generation == _generation) setState(() => _menu = menu);
     } catch (e) {
       if (mounted && generation == _generation) setState(() => _error = e);

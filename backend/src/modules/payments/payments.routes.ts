@@ -4,7 +4,7 @@ import type { AppContext } from '../../context.js';
 import type { Services } from '../../services.js';
 import { createAuthenticate, currentStudent, requireStudent } from '../../middleware/auth.js';
 import { sensitiveLimiter } from '../../middleware/rate-limit.js';
-import { id, parse } from '../../http/validation.js';
+import { id, optionalText, parse } from '../../http/validation.js';
 
 const orderParams = z.object({ orderId: id });
 const confirmationBody = z.strictObject({
@@ -54,6 +54,15 @@ export function createPaymentsRouter(ctx: AppContext, services: Services): Route
   router.post('/:orderId/initiate', limiter, async (req, res) => {
     const { orderId } = parse(orderParams, req.params);
     res.json({ data: await services.payments.initiate(currentStudent(req), orderId) });
+  });
+
+  router.post('/:orderId/claim', limiter, async (req, res) => {
+    const { orderId } = parse(orderParams, req.params);
+    const { utr } = parse(
+      z.strictObject({ utr: optionalText(64) }),
+      req.body ?? {},
+    );
+    res.json({ data: await services.payments.claim(currentStudent(req), orderId, utr ?? null) });
   });
 
   router.post('/:orderId/verify', limiter, async (req, res) => {

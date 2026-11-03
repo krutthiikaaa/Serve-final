@@ -40,6 +40,7 @@ describe('admin routing (decided only by /api/auth/me)', () => {
       role: 'STAFF',
       status: 'APPROVED',
       canteen: null,
+      assignments: [],
       pendingChangeRequest: null,
     });
     expect(screen.getByText('Not an admin account')).toBeInTheDocument();

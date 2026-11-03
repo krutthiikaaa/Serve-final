@@ -1,6 +1,9 @@
+import type { Logger } from 'pino';
 import type { ChangeRequestStatus, Prisma } from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../lib/prisma.js';
+import { writeAudit } from '../../lib/audit.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors.js';
+import { ensureOperatingAssignment } from '../staff/assignments.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
 import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
 import { pageArgs, toPage, type Pagination } from '../../http/validation.js';
@@ -37,7 +40,11 @@ export function toChangeRequestDto(request: ChangeRequestRow) {
  * Staff canteen access / reassignment requests. Only admins review them; the
  * reviewer is always an Admin principal, so staff can never approve their own.
  */
-export function createChangeRequestsService(prisma: PrismaClient, events: EventPublisher) {
+export function createChangeRequestsService(
+  prisma: PrismaClient,
+  events: EventPublisher,
+  logger: Logger,
+) {
   return {
     async create(
       staff: StaffPrincipal,
@@ -161,6 +168,7 @@ export function createChangeRequestsService(prisma: PrismaClient, events: EventP
             where: { id: existing.staffId },
             data: { status: 'APPROVED', canteenId: existing.requestedCanteenId },
           });
+          await ensureOperatingAssignment(tx, existing.staffId, existing.requestedCanteenId);
           await writeNotifications(tx, outbox, staffRecipient, {
             type: wasApproved ? 'STAFF_CANTEEN_ASSIGNED' : 'STAFF_APPROVED',
             title: wasApproved ? 'Canteen assignment updated' : 'Access approved',
@@ -213,6 +221,19 @@ export function createChangeRequestsService(prisma: PrismaClient, events: EventP
         outbox.emit('staff.rejected', targets, { staffId: existing.staffId, status: 'REJECTED' });
       }
       outbox.flush(events);
+      if (decision === 'APPROVED') {
+        writeAudit(logger, {
+          actor: { role: 'ADMIN', id: admin.id },
+          action: 'admin.staff.assigned',
+          target: { type: 'staff', id: existing.staffId },
+          before: { status: existing.staff.status, canteenId: existing.staff.canteenId },
+          after: {
+            status: 'APPROVED',
+            canteenId: existing.requestedCanteenId,
+            capabilities: ['KITCHEN', 'MENU', 'PAUSE'],
+          },
+        });
+      }
       return dto;
     },
   };

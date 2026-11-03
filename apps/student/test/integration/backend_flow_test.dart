@@ -50,13 +50,34 @@ void main() {
     throw TimeoutException('condition not met; events: ${events.map((e) => e.type).toList()}');
   }
 
-  Future<void> staffSetStatus(String orderId, String status) async {
+  Future<http.Response> staffRequest(String method, String path, {Object? body, String? canteenId}) async {
     final email = env['SERVE_STAFF_EMAIL'] ?? 'staff.kg@serve.dev';
     final staff = await FirebaseAuthClient(config).signIn(email, env['DEV_SEED_PASSWORD'] ?? '');
-    final res = await http.patch(
-      Uri.parse('${config.apiUrl}/api/staff/orders/$orderId/status'),
-      headers: {'Authorization': 'Bearer ${staff.idToken}', 'Content-Type': 'application/json'},
-      body: jsonEncode({'status': status}),
+    final uri = Uri.parse('${config.apiUrl}$path').replace(
+      queryParameters: canteenId == null ? null : {'canteenId': canteenId},
+    );
+    final request = http.Request(method, uri)
+      ..headers.addAll({'Authorization': 'Bearer ${staff.idToken}', 'Content-Type': 'application/json'});
+    if (body != null) request.body = jsonEncode(body);
+    return http.Response.fromStream(await http.Client().send(request));
+  }
+
+  Future<void> staffConfirmDemo(String orderId, String canteenId) async {
+    final res = await staffRequest(
+      'POST',
+      '/api/staff/orders/$orderId/confirm-demo-payment',
+      body: {'simulatedPaymentReceived': true},
+      canteenId: canteenId,
+    );
+    expect(res.statusCode, 200, reason: res.body);
+  }
+
+  Future<void> staffSetStatus(String orderId, String status, String canteenId) async {
+    final res = await staffRequest(
+      'PATCH',
+      '/api/staff/orders/$orderId/status',
+      body: {'status': status},
+      canteenId: canteenId,
     );
     expect(res.statusCode, 200, reason: res.body);
   }
@@ -76,7 +97,7 @@ void main() {
     realtime.dispose();
   });
 
-  test('register → browse → quote → idempotent order → mock payment → live kitchen updates → pickup', () async {
+  test('register → browse → quote → idempotent order → demo claim → cashier confirm → live kitchen updates → pickup', () async {
     // 1. Firebase account + SERVE registration (hostel decides the default canteen).
     final email = 'flutter.${DateTime.now().millisecondsSinceEpoch}@serve.test';
     await auth.createAccount(email, 'flutter-pass-1');
@@ -92,32 +113,51 @@ void main() {
     await eventually(() => realtime.state == LiveState.connected ? true : null);
     expect(await realtime.subscribeMenu(me.defaultCanteen.id), isTrue);
 
-    // 3. Menu, recommendations and an authoritative quote.
-    final menu = await api.menu(me.defaultCanteen.id);
+    // 3. Menu, recommendations and an authoritative quote for the selected period.
+    final menu = await api.menu(me.defaultCanteen.id, period: ServicePeriod.night);
     final item = menu.visibleCategories.expand((c) => c.items).firstWhere((i) => i.isOrderable);
     final recommendations = await api.recommendations(me.defaultCanteen.id);
     expect(recommendations.items, isNotEmpty);
-    final quote = await api.quote(me.defaultCanteen.id, [CartLineInput(item.id, 2)]);
+    final quote = await api.quote(me.defaultCanteen.id, [CartLineInput(item.id, 2)], period: ServicePeriod.night);
     expect(quote.totalPaise, item.pricePaise * 2);
+    expect(quote.servicePeriod, ServicePeriod.night);
+
+    final payConfig = await api.paymentConfig(me.defaultCanteen.id);
+    expect(payConfig.mode, PaymentMode.demo);
+    expect(payConfig.demoQr?.warning, 'DEMO ONLY — NOT PAYABLE');
+    expect(payConfig.upiVpa, isNull);
 
     // 4. One key per checkout attempt: a retry returns the same order.
     final key = uuidV4();
-    final placed = await api.placeOrder(me.defaultCanteen.id, [CartLineInput(item.id, 2)], idempotencyKey: key);
-    final replay = await api.placeOrder(me.defaultCanteen.id, [CartLineInput(item.id, 2)], idempotencyKey: key);
+    final placed = await api.placeOrder(
+      me.defaultCanteen.id,
+      [CartLineInput(item.id, 2)],
+      period: ServicePeriod.night,
+      idempotencyKey: key,
+    );
+    final replay = await api.placeOrder(
+      me.defaultCanteen.id,
+      [CartLineInput(item.id, 2)],
+      period: ServicePeriod.night,
+      idempotencyKey: key,
+    );
     expect(replay.id, placed.id);
     expect(placed.status, OrderStatus.placed);
     expect(placed.totalPaise, quote.totalPaise);
 
-    // 5. Mock gateway.
-    final session = await api.initiatePayment(placed.id);
-    expect(session.amountPaise, placed.totalPaise);
-    final paid = await api.completeMockPayment(placed.id);
+    // 5. Student UTR claim does not confirm payment. Cashier demo confirmation does.
+    final claimed = await api.claimPayment(placed.id, utr: 'FLUTTERUTR1');
+    expect(claimed.status, OrderStatus.placed);
+    expect(claimed.payment?.status, 'PENDING');
+    await staffConfirmDemo(placed.id, placed.canteen.id);
+    final paid = await api.order(placed.id);
     expect(paid.status, OrderStatus.paymentConfirmed);
+    expect(paid.payment?.isSimulated, isTrue);
     await eventually(() => events.where((e) => e.type == 'order.payment_confirmed' && e.orderId == placed.id).firstOrNull);
 
     // 6. The kitchen moves the order; the student sees each step live.
     for (final (status, event) in [('PREPARING', 'order.preparing'), ('READY', 'order.ready')]) {
-      await staffSetStatus(placed.id, status);
+      await staffSetStatus(placed.id, status, placed.canteen.id);
       final live = await eventually(() => events.where((e) => e.type == event && e.orderId == placed.id).firstOrNull);
       final order = StudentOrder.fromJson((live.data['order'] as Map).cast<String, dynamic>());
       expect(order.orderNumber, placed.orderNumber);
@@ -128,7 +168,7 @@ void main() {
     expect(notes.items.map((n) => n.type), contains('ORDER_READY'));
 
     // 7. Pickup.
-    await staffSetStatus(placed.id, 'COLLECTED');
+    await staffSetStatus(placed.id, 'COLLECTED', placed.canteen.id);
     final collected = await api.order(placed.id);
     expect(collected.status, OrderStatus.collected);
     expect(collected.timeline.map((t) => t.status), [

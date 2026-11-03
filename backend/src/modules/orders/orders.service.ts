@@ -15,6 +15,9 @@ import { writeNotifications } from '../notifications/notification.writer.js';
 import type { StudentPrincipal } from '../auth/principal.js';
 import type { ApprovedStaffPrincipal } from '../../middleware/auth.js';
 import { pageArgs, toPage, type Pagination } from '../../http/validation.js';
+import type { Clock } from '../../lib/time.js';
+import { systemClock } from '../../lib/time.js';
+import { DEFAULT_SERVICE_PERIOD, type ServicePeriod } from '../canteens/availability.js';
 import { priceCart, type CartLineInput } from './pricing.js';
 import {
   ACTIVE_STATUSES,
@@ -30,6 +33,7 @@ import { queueOrderEvent } from './order.events.js';
 export interface CreateOrderInput {
   canteenId: string;
   items: CartLineInput[];
+  servicePeriod?: ServicePeriod;
 }
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,128}$/;
@@ -38,6 +42,7 @@ const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,128}$/;
 function requestHash(input: CreateOrderInput): string {
   const normalized = {
     canteenId: input.canteenId,
+    servicePeriod: input.servicePeriod ?? DEFAULT_SERVICE_PERIOD,
     items: [...input.items]
       .map((line) => ({ menuItemId: line.menuItemId, quantity: line.quantity }))
       .sort((a, b) => a.menuItemId.localeCompare(b.menuItemId)),
@@ -78,8 +83,10 @@ export function createOrdersService(deps: {
   events: EventPublisher;
   payments: PaymentProvider;
   logger: Logger;
+  clock?: Clock;
 }) {
   const { prisma, events, payments, logger } = deps;
+  const now = () => (deps.clock ?? systemClock)();
 
   async function loadOrder(where: Prisma.OrderWhereInput): Promise<OrderWithDetails> {
     const order = await prisma.order.findFirst({ where, include: orderInclude });
@@ -129,7 +136,11 @@ export function createOrdersService(deps: {
 
   return {
     async quote(input: CreateOrderInput) {
-      return priceCart(prisma, input.canteenId, input.items);
+      return priceCart(prisma, input.canteenId, input.items, {
+        servicePeriod: input.servicePeriod,
+        now: now(),
+        logger,
+      });
     },
 
     /**
@@ -164,11 +175,16 @@ export function createOrdersService(deps: {
       let order: OrderWithDetails;
       try {
         order = await prisma.$transaction(async (tx) => {
-          const priced = await priceCart(tx, input.canteenId, input.items);
+          const priced = await priceCart(tx, input.canteenId, input.items, {
+            servicePeriod: input.servicePeriod,
+            now: now(),
+            logger,
+          });
           const created = await tx.order.create({
             data: {
               studentId: student.id,
               canteenId: priced.canteen.id,
+              servicePeriod: priced.servicePeriod,
               totalPaise: priced.totalPaise,
               idempotencyKey,
               requestHash: hash,
@@ -282,7 +298,7 @@ export function createOrdersService(deps: {
             : STAFF_VISIBLE_STATUSES;
       const visible = statuses.filter((s) => STAFF_VISIBLE_STATUSES.includes(s));
       const rows = await prisma.order.findMany({
-        where: { canteenId, status: { in: visible } },
+        where: { canteenId, channel: 'APP', status: { in: visible } },
         include: orderInclude,
         ...pageArgs(page),
       });
@@ -292,7 +308,12 @@ export function createOrdersService(deps: {
 
     async getForCanteen(canteenId: string, orderId: string) {
       return toOrderDto(
-        await loadOrder({ id: orderId, canteenId, status: { in: STAFF_VISIBLE_STATUSES } }),
+        await loadOrder({
+          id: orderId,
+          canteenId,
+          channel: 'APP',
+          status: { in: STAFF_VISIBLE_STATUSES },
+        }),
         'staff',
       );
     },
@@ -323,14 +344,16 @@ export function createOrdersService(deps: {
      * conditional update so concurrent changes cannot skip states.
      */
     async updateStatusByStaff(
-      staff: ApprovedStaffPrincipal,
+      _staff: ApprovedStaffPrincipal,
+      canteenId: string,
       orderId: string,
       target: StaffSettableStatus,
       reason?: string | null,
     ) {
       const order = await loadOrder({
         id: orderId,
-        canteenId: staff.canteenId,
+        canteenId,
+        channel: 'APP',
         status: { in: STAFF_VISIBLE_STATUSES },
       });
       assertTransition(order.status, target);
@@ -339,7 +362,7 @@ export function createOrdersService(deps: {
       const timestampColumn = STATUS_TIMESTAMP[target];
       let updated = await prisma.$transaction(async (tx) => {
         const changed = await tx.order.updateMany({
-          where: { id: order.id, canteenId: staff.canteenId, status: order.status },
+          where: { id: order.id, canteenId, status: order.status },
           data: {
             status: target,
             ...(timestampColumn ? { [timestampColumn]: new Date() } : {}),
@@ -357,7 +380,7 @@ export function createOrdersService(deps: {
           include: orderInclude,
         });
         const copy = STATUS_COPY[target];
-        if (copy) {
+        if (copy && fresh.studentId) {
           await writeNotifications(tx, outbox, [{ kind: 'student', id: fresh.studentId }], {
             type: copy.type,
             title: copy.title,

@@ -4,9 +4,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { vi, type Mock } from 'vitest';
 import type {
   AdminCanteen,
+  AdminCanteenDetail,
   AdminDashboard,
   ChangeRequest,
   MeAdmin,
+  PublicCanteen,
   StaffDetail,
   StaffSummary,
 } from '@serve/contracts';
@@ -23,6 +25,44 @@ import { AdminApiContext } from '../src/useAdminApi';
 let seq = 0;
 export const uuid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
 const at = '2026-10-06T18:00:00.000Z';
+
+export function publicCanteen(
+  canteen: Pick<AdminCanteen, 'id' | 'name' | 'slug' | 'location' | 'openingHours' | 'isActive' | 'isAcceptingOrders' | 'status'>,
+  overrides: Partial<PublicCanteen> = {},
+): PublicCanteen {
+  return {
+    ...canteen,
+    supportedPeriods: ['NIGHT'],
+    services: [
+      { period: 'NIGHT', isEnabled: true, override: 'FORCE_OPEN', isOpenNow: true },
+    ],
+    configurationWarnings: [],
+    ...overrides,
+  };
+}
+
+export function adminCanteenDetail(
+  canteen: AdminCanteen,
+  overrides: Partial<AdminCanteenDetail> = {},
+): AdminCanteenDetail {
+  const { counts: _counts, ...base } = canteen;
+  return {
+    ...base,
+    hostels: [],
+    staff: [],
+    menuSummary: { categories: 1, items: 1, availableItems: 1, byCategory: [] },
+    services: [
+      {
+        period: 'NIGHT',
+        isEnabled: true,
+        override: 'FORCE_OPEN',
+        schedules: [],
+      },
+    ],
+    configurationWarnings: [],
+    ...overrides,
+  };
+}
 
 export function adminCanteen(name: string, overrides: Partial<AdminCanteen> = {}): AdminCanteen {
   return {
@@ -71,8 +111,9 @@ export function staffSummary(overrides: Partial<StaffSummary> = {}): StaffSummar
 export function staffDetail(
   summary: StaffSummary,
   requests: StaffDetail['changeRequests'] = [],
+  extra: Partial<StaffDetail> = {},
 ): StaffDetail {
-  return { ...summary, changeRequests: requests };
+  return { ...summary, changeRequests: requests, ...extra };
 }
 
 export function adminDashboard(overrides: Partial<AdminDashboard> = {}): AdminDashboard {
@@ -108,13 +149,22 @@ export function fakeAdminApi(): MockedApi {
   const names: (keyof AdminApi)[] = [
     'dashboard',
     'canteens',
+    'browseCanteens',
     'canteen',
+    'liveCanteen',
     'createCanteen',
     'updateCanteen',
+    'updateCanteenServices',
+    'updateCanteenSchedule',
+    'paymentConfig',
+    'updatePaymentConfig',
     'hostels',
+    'menuCatalogue',
+    'updateMenuItemServices',
     'staff',
     'staffMember',
     'assignStaff',
+    'updateStaffAssignments',
     'deactivateStaff',
     'changeRequests',
     'approveRequest',

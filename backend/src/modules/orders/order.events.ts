@@ -27,11 +27,14 @@ export function queueOrderEvent(
   previousStatus: OrderStatus | null,
 ): void {
   const name = ORDER_STATUS_EVENTS[order.status];
-  outbox.emit(name, [rooms.student(order.studentId)], {
-    order: toOrderDto(order, 'student'),
-    previousStatus,
-  });
-  if (order.paidAt !== null) {
+  if (order.studentId) {
+    outbox.emit(name, [rooms.student(order.studentId)], {
+      order: toOrderDto(order, 'student'),
+      previousStatus,
+    });
+  }
+  // Walk-in POS bills must not appear on the app kitchen board.
+  if (order.paidAt !== null && order.channel === 'APP') {
     outbox.emit(name, [rooms.canteen(order.canteenId)], {
       order: toOrderDto(order, 'staff'),
       previousStatus,

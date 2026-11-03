@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:serve_student/core/api_exception.dart';
 import 'package:serve_student/services/api/api_client.dart';
+import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/services/api/serve_api.dart';
 
 http.Response json(int status, Object body) => http.Response(jsonEncode(body), status, headers: {'content-type': 'application/json'});
@@ -103,11 +104,12 @@ void main() {
       );
     }
 
-    test('placeOrder sends only canteenId + item ids/quantities and the Idempotency-Key', () async {
+    test('placeOrder sends only canteenId + period + item ids/quantities and the Idempotency-Key', () async {
       final a = api((_) => json(201, {'data': _orderJson}));
-      await a.placeOrder('c1', const [CartLineInput('i1', 2)], idempotencyKey: 'key-123456789');
+      await a.placeOrder('c1', const [CartLineInput('i1', 2)], period: ServicePeriod.day, idempotencyKey: 'key-123456789');
       expect(jsonDecode(requests.single.body), {
         'canteenId': 'c1',
+        'servicePeriod': 'DAY',
         'items': [
           {'menuItemId': 'i1', 'quantity': 2},
         ],
@@ -133,14 +135,11 @@ void main() {
       );
     });
 
-    test('mock payment posts the outcome only', () async {
-      final a = api(
-        (_) => json(200, {
-          'data': {'order': _orderJson, 'confirmation': {}},
-        }),
-      );
-      await a.completeMockPayment('o1', succeed: false);
-      expect(jsonDecode(requests.single.body), {'outcome': 'failure'});
+    test('claim payment posts only the UTR and does not confirm', () async {
+      final a = api((_) => json(200, {'data': _orderJson}));
+      await a.claimPayment('o1', utr: 'AXIS123');
+      expect(requests.single.url.path, endsWith('/payments/o1/claim'));
+      expect(jsonDecode(requests.single.body), {'utr': 'AXIS123'});
     });
   });
 }

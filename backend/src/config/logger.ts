@@ -22,6 +22,11 @@ export const REDACT_PATHS = [
   'DATABASE_URL',
   'FIREBASE_PRIVATE_KEY',
   'PAYMENT_SECRET',
+  '*.upiVpa',
+  '*.qrStorageKey',
+  '*.ifsc',
+  '*.accountNumber',
+  '*.bankAccount',
 ];
 
 export function createLogger(

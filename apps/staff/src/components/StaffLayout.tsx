@@ -2,11 +2,13 @@ import { Link, Outlet } from 'react-router-dom';
 import type { MeStaff } from '@serve/contracts';
 import {
   ConnectionBanner,
+  IconBag,
   IconBell,
   IconGrid,
   IconReceipt,
   IconUser,
   IconUtensils,
+  Select,
   Shell,
   Tag,
   useAuth,
@@ -14,35 +16,58 @@ import {
   useRealtime,
   useServerEvent,
 } from '@serve/web-shared';
+import { useStaffCanteen } from '../staffCanteen';
 
 /** Staff application shell: sidebar, assigned canteen, live status and notifications. */
 export function StaffLayout({ me }: { me: MeStaff }) {
   const { signOut, refreshMe } = useAuth();
   const { state } = useRealtime();
   const { unreadCount } = useNotifications();
-  const canteen = me.canteen!;
+  const { canteenId, assignment, assignments, selectCanteen, hasCapability } = useStaffCanteen();
+  const canteen = assignment?.canteen ?? me.canteen!;
 
-  // Assignment changes are decided by an admin; the gate re-routes from /auth/me.
   useServerEvent('staff.canteen_assigned', () => void refreshMe());
   useServerEvent('staff.deactivated', () => void refreshMe());
   useServerEvent('canteen.status_changed', () => void refreshMe());
+
+  const nav = [
+    { to: '/', label: 'Dashboard', icon: <IconGrid /> },
+    ...(hasCapability('KITCHEN')
+      ? [{ to: '/orders', label: 'Orders', icon: <IconReceipt /> }]
+      : []),
+    ...(hasCapability('MENU') ? [{ to: '/menu', label: 'Menu', icon: <IconUtensils /> }] : []),
+    ...(hasCapability('CASHIER') ? [{ to: '/cashier', label: 'Cashier', icon: <IconBag /> }] : []),
+    { to: '/notifications', label: 'Notifications', icon: <IconBell />, count: unreadCount },
+    { to: '/account', label: 'Account', icon: <IconUser /> },
+  ];
 
   return (
     <Shell
       product="Staff dashboard"
       context={
-        <>
-          <small>Assigned canteen</small>
-          {canteen.name}
-        </>
+        assignments.length > 1 ? (
+          <>
+            <small>Working at</small>
+            <Select
+              aria-label="Selected canteen"
+              value={canteenId}
+              onChange={(event) => selectCanteen(event.target.value)}
+            >
+              {assignments.map((row) => (
+                <option key={row.canteenId} value={row.canteenId}>
+                  {row.canteen.name}
+                </option>
+              ))}
+            </Select>
+          </>
+        ) : (
+          <>
+            <small>Assigned canteen</small>
+            {canteen.name}
+          </>
+        )
       }
-      nav={[
-        { to: '/', label: 'Dashboard', icon: <IconGrid /> },
-        { to: '/orders', label: 'Orders', icon: <IconReceipt /> },
-        { to: '/menu', label: 'Menu', icon: <IconUtensils /> },
-        { to: '/notifications', label: 'Notifications', icon: <IconBell />, count: unreadCount },
-        { to: '/account', label: 'Account', icon: <IconUser /> },
-      ]}
+      nav={nav}
       onSignOut={() => void signOut()}
       banner={<ConnectionBanner state={state} />}
       topbar={

@@ -2,7 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { DashboardPage } from '../src/pages/DashboardPage';
-import { canteen, dashboard, fakeStaffApi, order, renderStaff } from './fixtures';
+import { CANTEEN_ID, canteen, dashboard, fakeStaffApi, meStaff, order, renderStaff } from './fixtures';
 
 describe('staff dashboard', () => {
   it('shows the counters returned by the backend', async () => {
@@ -47,5 +47,27 @@ describe('staff dashboard', () => {
       }),
     );
     await waitFor(() => expect(api.dashboard).toHaveBeenCalledTimes(2));
+  });
+
+  it('hides pause and kitchen queues without those capabilities', async () => {
+    const api = fakeStaffApi();
+    api.dashboard.mockResolvedValue(dashboard());
+    renderStaff(<DashboardPage />, {
+      api,
+      me: meStaff({
+        assignments: [
+          {
+            canteenId: CANTEEN_ID,
+            canteen: { id: CANTEEN_ID, name: canteen.name, isActive: true, isAcceptingOrders: true },
+            capabilities: ['CASHIER'],
+          },
+        ],
+      }),
+    });
+    expect(await screen.findByText('Payment pending')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause orders' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Awaiting preparation')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Active orders' })).not.toBeInTheDocument();
+    expect(api.orders).not.toHaveBeenCalled();
   });
 });

@@ -20,6 +20,7 @@ import {
   menuItemSchema,
   menuSchema,
   notificationSchema,
+  publicCanteenSchema,
   orderEventSchema,
   page,
   quoteSchema,
@@ -27,6 +28,7 @@ import {
   staffOrderSchema,
   staffSummarySchema,
   studentOrderSchema,
+  studentPaymentConfigSchema,
 } from '../helpers/contract.js';
 
 /**
@@ -90,11 +92,11 @@ describe('student client', () => {
 
   it('browses canteens, the menu and an item', async () => {
     expectShape(
-      z_data(canteenSchema),
+      z_data(publicCanteenSchema),
       (await api().get('/api/canteens').set(bearer(student.token)).expect(200)).body,
     );
     expectShape(
-      canteenSchema,
+      publicCanteenSchema,
       (await api().get(`/api/canteens/${canteenId}`).set(bearer(student.token)).expect(200)).body
         .data,
     );
@@ -107,7 +109,23 @@ describe('student client', () => {
     const item = (
       await api().get(`/api/menu/items/${itemId}`).set(bearer(student.token)).expect(200)
     ).body.data;
-    expectShape(menuItemSchema.extend({ category: categoryRef, canteen: canteenSchema }), item);
+    expectShape(
+      menuItemSchema.extend({
+        category: categoryRef,
+        canteen: publicCanteenSchema,
+        servicePeriod: z.enum(['DAY', 'NIGHT']),
+      }),
+      item,
+    );
+    expectShape(
+      studentPaymentConfigSchema,
+      (
+        await api()
+          .get(`/api/canteens/${canteenId}/payment-config`)
+          .set(bearer(student.token))
+          .expect(200)
+      ).body.data,
+    );
   });
 
   it('gets an authoritative quote and places an order', async () => {

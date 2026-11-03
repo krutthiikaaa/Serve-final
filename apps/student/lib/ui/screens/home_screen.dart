@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
   Object? _error;
   bool _loading = true;
   String? _canteenId;
+  ServicePeriod? _period;
   int _generation = 0;
   late final CanteenSelection _selection;
 
@@ -60,8 +61,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
 
   void _onCanteenChanged() {
     final id = _selection.id;
-    if (id == null || id == _canteenId) return;
+    final period = _selection.period;
+    if (id == null) return;
+    if (id == _canteenId && period == _period) return;
     _canteenId = id;
+    _period = period;
     _data = null;
     _load();
     context.read<RealtimeService>().subscribeMenu(id);
@@ -69,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
 
   Future<void> _load() async {
     final id = _canteenId;
+    final period = _period ?? ServicePeriod.night;
     if (id == null) return;
     final generation = ++_generation;
     final api = context.read<ServeApi>();
@@ -77,10 +82,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
       _error = null;
     });
     try {
-      final results = await Future.wait([api.menu(id), api.recommendations(id), api.orders(status: 'active', limit: 1)]);
+      final results = await Future.wait([
+        api.menu(id, period: period),
+        api.recommendations(id),
+        api.orders(status: 'active', limit: 1),
+      ]);
       if (!mounted || generation != _generation) return;
+      final menu = results[0] as Menu;
+      context.read<CanteenSelection>().applyCanteen(menu.canteen);
       final active = results[2] as PageResult<StudentOrder>;
-      setState(() => _data = _HomeData(results[0] as Menu, results[1] as Recommendations, active.items.firstOrNull));
+      setState(() => _data = _HomeData(menu, results[1] as Recommendations, active.items.firstOrNull));
     } catch (e) {
       if (mounted && generation == _generation) setState(() => _error = e);
     } finally {
@@ -141,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
                         const SizedBox(height: 16),
                         const _HomeSearchBar(),
                         const SizedBox(height: 18),
-                        _CanteenCard(canteen: data.menu.canteen, hostelName: student?.hostel.name),
+                        _CanteenCard(canteen: data.menu.canteen, hostelName: student?.hostel.name, period: data.menu.servicePeriod),
                         if (data.activeOrder != null) ...[const SizedBox(height: 14), _ActiveOrderCard(order: data.activeOrder!)],
                         const SizedBox(height: ServeSpace.section),
                         _MostOrdered(data: data),
@@ -220,8 +231,9 @@ class _HomeSearchBar extends StatelessWidget {
 }
 
 class _CanteenCard extends StatelessWidget {
-  const _CanteenCard({required this.canteen, this.hostelName});
+  const _CanteenCard({required this.canteen, required this.period, this.hostelName});
   final Canteen canteen;
+  final ServicePeriod period;
   final String? hostelName;
 
   @override
@@ -268,6 +280,29 @@ class _CanteenCard extends StatelessWidget {
                     ],
                     const SizedBox(height: 10),
                     CanteenStatusLabel(canteen: canteen),
+                    const SizedBox(height: 10),
+                    ServiceAvailabilityPills(canteen: canteen),
+                    const SizedBox(height: 12),
+                    ServicePeriodToggle(
+                      value: period,
+                      enabledPeriods: {
+                        for (final p in ServicePeriod.values)
+                          if (canteen.supports(p) || canteen.supportedPeriods.isEmpty) p,
+                      },
+                      onChanged: (next) async {
+                        if (!context.mounted) return;
+                        if (!await confirmCartContextChange(context, canteenId: canteen.id, period: next)) return;
+                        if (!context.mounted) return;
+                        context.read<CanteenSelection>().selectPeriod(next);
+                      },
+                    ),
+                    if (canteen.orderingBlockReason(period) != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        canteen.orderingBlockReason(period)!,
+                        style: const TextStyle(color: ServeColors.orangeInk, fontWeight: FontWeight.w600, height: 1.35),
+                      ),
+                    ],
                   ],
                 ),
               ),

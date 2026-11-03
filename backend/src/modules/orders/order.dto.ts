@@ -20,9 +20,13 @@ export const orderInclude = {
       status: true,
       amountPaise: true,
       currency: true,
+      utr: true,
+      verifiedAt: true,
+      verifiedBy: { select: { id: true, name: true } },
       paidAt: true,
       refundedAt: true,
       failureReason: true,
+      isSimulated: true,
     },
   },
 } satisfies Prisma.OrderInclude;
@@ -44,6 +48,22 @@ export function orderTimeline(order: OrderWithDetails) {
   return steps.filter((step): step is { status: string; at: Date } => step.at !== null);
 }
 
+function paymentDto(payment: OrderWithDetails['payment']) {
+  if (!payment) return null;
+  return {
+    provider: payment.provider,
+    status: payment.status,
+    amountPaise: payment.amountPaise,
+    currency: payment.currency,
+    utr: payment.utr,
+    verifiedAt: payment.verifiedAt,
+    paidAt: payment.paidAt,
+    refundedAt: payment.refundedAt,
+    failureReason: payment.failureReason,
+    isSimulated: payment.isSimulated,
+  };
+}
+
 /**
  * Order representation. Students see their own orders; staff and admins also
  * see who placed it (name only — no contact details).
@@ -52,13 +72,17 @@ export function toOrderDto(order: OrderWithDetails, audience: OrderAudience) {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    receiptNumber: order.receiptNumber,
+    channel: order.channel,
+    guestName: order.guestName,
     status: order.status,
+    servicePeriod: order.servicePeriod,
     totalPaise: order.totalPaise,
     currency: 'INR',
     canteen: order.canteen,
     ...(audience === 'student' ? {} : { student: order.student }),
     items: order.items,
-    payment: order.payment,
+    payment: paymentDto(order.payment),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
     paidAt: order.paidAt,

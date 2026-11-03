@@ -196,6 +196,16 @@ export function createAuthService({ prisma, env, events }: Deps) {
           select: {
             status: true,
             canteen: { select: { id: true, name: true, isActive: true, isAcceptingOrders: true } },
+            assignments: {
+              select: {
+                canteenId: true,
+                canteen: {
+                  select: { id: true, name: true, isActive: true, isAcceptingOrders: true },
+                },
+                capabilities: { select: { capability: true }, orderBy: { capability: 'asc' } },
+              },
+              orderBy: { createdAt: 'asc' },
+            },
             changeRequests: {
               where: { status: 'PENDING' },
               select: {
@@ -211,6 +221,11 @@ export function createAuthService({ prisma, env, events }: Deps) {
           ...base,
           status: staff.status,
           canteen: staff.canteen,
+          assignments: staff.assignments.map((row) => ({
+            canteenId: row.canteenId,
+            canteen: row.canteen,
+            capabilities: row.capabilities.map((entry) => entry.capability),
+          })),
           pendingChangeRequest: staff.changeRequests[0] ?? null,
         };
       }

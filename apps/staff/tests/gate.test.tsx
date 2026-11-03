@@ -101,4 +101,37 @@ describe('staff routing (decided only by /api/auth/me)', () => {
     expect(screen.getAllByText('Krishna & Godavari Night Canteen').length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
   });
+
+  it('shows a canteen switcher and only authorised nav for multi-canteen cashier', () => {
+    renderGate(
+      meStaff({
+        assignments: [
+          {
+            canteenId: '7d2c6a52-6f3e-4a35-9a3b-1c2d3e4f5a60',
+            canteen: {
+              id: '7d2c6a52-6f3e-4a35-9a3b-1c2d3e4f5a60',
+              name: 'Krishna & Godavari Night Canteen',
+              isActive: true,
+              isAcceptingOrders: true,
+            },
+            capabilities: ['CASHIER'],
+          },
+          {
+            canteenId: '8d2c6a52-6f3e-4a35-9a3b-1c2d3e4f5a61',
+            canteen: {
+              id: '8d2c6a52-6f3e-4a35-9a3b-1c2d3e4f5a61',
+              name: 'Yamuna & Narmada Night Canteen',
+              isActive: true,
+              isAcceptingOrders: true,
+            },
+            capabilities: ['CASHIER'],
+          },
+        ],
+      }),
+    );
+    expect(screen.getByLabelText('Selected canteen')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cashier' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Menu' })).not.toBeInTheDocument();
+  });
 });

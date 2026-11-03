@@ -13,6 +13,7 @@ import { id, idParams, paginationQuery, parse, quantity } from '../../http/valid
  */
 export const cartBody = z.strictObject({
   canteenId: id,
+  servicePeriod: z.enum(['DAY', 'NIGHT']).optional(),
   items: z
     .array(z.strictObject({ menuItemId: id, quantity }))
     .min(1, { error: 'Add at least one item' })

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/state/cart_controller.dart';
 
 import '../support/fixtures.dart';
@@ -11,9 +12,9 @@ void main() {
 
   test('adds, increments and decrements lines', () {
     final cart = CartController();
-    expect(cart.add(veg, canteenName: 'K&G'), AddResult.added);
-    cart.add(veg, canteenName: 'K&G');
-    cart.add(tea, canteenName: 'K&G');
+    expect(cart.add(veg, canteenName: 'K&G', period: ServicePeriod.night), AddResult.added);
+    cart.add(veg, canteenName: 'K&G', period: ServicePeriod.night);
+    cart.add(tea, canteenName: 'K&G', period: ServicePeriod.night);
     expect(cart.itemCount, 3);
     expect(cart.quantityOf('i1'), 2);
     cart.decrement('i1');
@@ -23,31 +24,38 @@ void main() {
   });
 
   test('a cart belongs to one canteen', () {
-    final cart = CartController()..add(veg, canteenName: 'K&G');
-    expect(cart.conflictsWith(vedId), isTrue);
-    expect(cart.add(other, canteenName: 'Vedavathi'), AddResult.differentCanteen);
+    final cart = CartController()..add(veg, canteenName: 'K&G', period: ServicePeriod.night);
+    expect(cart.conflictsWith(canteenId: vedId, period: ServicePeriod.night), isTrue);
+    expect(cart.add(other, canteenName: 'Vedavathi', period: ServicePeriod.night), AddResult.differentCanteen);
     expect(cart.itemCount, 1);
     cart.clear();
     expect(cart.canteenId, isNull);
-    expect(cart.add(other, canteenName: 'Vedavathi'), AddResult.added);
+    expect(cart.add(other, canteenName: 'Vedavathi', period: ServicePeriod.night), AddResult.added);
   });
 
   test('refuses unorderable items and caps quantities at 20', () {
     final cart = CartController();
-    expect(cart.add(soldOut, canteenName: 'K&G'), AddResult.notOrderable);
+    expect(cart.add(soldOut, canteenName: 'K&G', period: ServicePeriod.night), AddResult.notOrderable);
     for (var i = 0; i < CartController.maxQuantity; i++) {
-      cart.add(veg, canteenName: 'K&G');
+      cart.add(veg, canteenName: 'K&G', period: ServicePeriod.night);
     }
-    expect(cart.add(veg, canteenName: 'K&G'), AddResult.limitReached);
+    expect(cart.add(veg, canteenName: 'K&G', period: ServicePeriod.night), AddResult.limitReached);
     expect(cart.quantityOf('i1'), 20);
   });
 
   test('submits only item ids and quantities', () {
     final cart = CartController()
-      ..add(veg, canteenName: 'K&G')
-      ..add(veg, canteenName: 'K&G');
+      ..add(veg, canteenName: 'K&G', period: ServicePeriod.night)
+      ..add(veg, canteenName: 'K&G', period: ServicePeriod.night);
     expect(cart.toInputs().map((i) => i.toJson()), [
       {'menuItemId': 'i1', 'quantity': 2},
     ]);
+  });
+
+  test('a cart belongs to one service period', () {
+    final cart = CartController()..add(veg, canteenName: 'K&G', period: ServicePeriod.night);
+    expect(cart.add(tea, canteenName: 'K&G', period: ServicePeriod.day), AddResult.differentPeriod);
+    expect(cart.period, ServicePeriod.night);
+    expect(cart.conflictsWith(canteenId: kgId, period: ServicePeriod.day), isTrue);
   });
 }

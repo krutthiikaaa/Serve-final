@@ -55,6 +55,13 @@ enum OrderStatus {
 enum PaymentProvider {
   MOCK
   RAZORPAY
+  UPI
+  CASH
+}
+
+enum OrderChannel {
+  APP
+  WALK_IN
 }
 
 enum PaymentStatus {
@@ -67,6 +74,31 @@ enum PaymentStatus {
 enum SsoAudience {
   STAFF
   ADMIN
+}
+
+enum ServicePeriod {
+  DAY
+  NIGHT
+}
+
+enum ScheduleOverride {
+  AUTO
+  FORCE_OPEN
+  FORCE_CLOSED
+}
+
+/// Explicit staff powers on one canteen. Not a new Firebase identity.
+enum StaffCapability {
+  KITCHEN
+  MENU
+  PAUSE
+  CASHIER
+}
+
+/// Per-canteen settlement mode. DEMO never counts as real revenue.
+enum PaymentMode {
+  DEMO
+  LIVE
 }
 
 enum NotificationType {
@@ -107,6 +139,62 @@ model Canteen {
   orders                  Order[]
   requestedChangeRequests CanteenChangeRequest[] @relation("RequestedCanteen")
   fromChangeRequests      CanteenChangeRequest[] @relation("FromCanteen")
+  services                CanteenService[]
+  paymentConfig           CanteenPaymentConfig?
+  staffAssignments        StaffCanteenAssignment[]
+}
+
+/// One DAY or NIGHT offering for a canteen. Migrated canteens start as NIGHT + FORCE_OPEN.
+model CanteenService {
+  id        String           @id @default(uuid()) @db.Uuid
+  canteenId String           @db.Uuid
+  period    ServicePeriod
+  isEnabled Boolean          @default(true)
+  override  ScheduleOverride @default(FORCE_OPEN)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  canteen   Canteen                    @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  schedules CanteenOperatingSchedule[]
+
+  @@unique([canteenId, period])
+  @@index([canteenId])
+}
+
+model CanteenOperatingSchedule {
+  id               String   @id @default(uuid()) @db.Uuid
+  canteenServiceId String   @db.Uuid
+  /// 1 = Monday … 7 = Sunday, Asia/Kolkata.
+  weekday          Int
+  /// Minutes from 00:00 IST, 0–1439.
+  opensAtMinutes   Int
+  /// Minutes from 00:00 IST. Overnight when closesAtMinutes < opensAtMinutes.
+  closesAtMinutes  Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  canteenService CanteenService @relation(fields: [canteenServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([canteenServiceId, weekday])
+}
+
+model CanteenPaymentConfig {
+  id           String      @id @default(uuid()) @db.Uuid
+  canteenId    String      @unique @db.Uuid
+  /// DEMO until an admin saves complete official details and switches to LIVE.
+  mode         PaymentMode @default(DEMO)
+  upiVpa       String?
+  merchantName String?
+  /// Official LIVE QR only. Demo placeholders are generated, never stored here.
+  qrImageUrl   String?
+  /// Managed object key, e.g. canteen-qr/{canteenId}.png.
+  qrStorageKey String?
+  instructions String?
+  isActive     Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  canteen Canteen @relation(fields: [canteenId], references: [id], onDelete: Cascade)
 }
 
 model Hostel {
@@ -157,12 +245,42 @@ model Staff {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  canteen        Canteen?               @relation(fields: [canteenId], references: [id], onDelete: Restrict)
-  changeRequests CanteenChangeRequest[]
-  notifications  Notification[]
+  canteen           Canteen?                 @relation(fields: [canteenId], references: [id], onDelete: Restrict)
+  changeRequests    CanteenChangeRequest[]
+  notifications     Notification[]
+  assignments       StaffCanteenAssignment[]
+  verifiedPayments  Payment[]                @relation("PaymentVerifiedBy")
 
   @@index([canteenId])
   @@index([status])
+}
+
+/// Additive multi-canteen assignment. Staff.canteenId remains the primary canteen.
+model StaffCanteenAssignment {
+  id        String   @id @default(uuid()) @db.Uuid
+  staffId   String   @db.Uuid
+  canteenId String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff        Staff                       @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  canteen      Canteen                     @relation(fields: [canteenId], references: [id], onDelete: Restrict)
+  capabilities StaffAssignmentCapability[]
+
+  @@unique([staffId, canteenId])
+  @@index([staffId])
+  @@index([canteenId])
+}
+
+model StaffAssignmentCapability {
+  id           String          @id @default(uuid()) @db.Uuid
+  assignmentId String          @db.Uuid
+  capability   StaffCapability
+  createdAt    DateTime        @default(now())
+
+  assignment StaffCanteenAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, capability])
 }
 
 model Admin {
@@ -234,7 +352,8 @@ model MenuItem {
   categoryId  String   @db.Uuid
   name        String
   description String?
-  /// Current price in paise (> 0, CHECK constraint).
+  /// Catalogue default / migration source in paise (> 0, CHECK constraint).
+  /// Authoritative DAY/NIGHT sell prices live on MenuItemService.
   pricePaise  Int
   imageUrl    String?
   isAvailable Boolean  @default(true)
@@ -243,10 +362,11 @@ model MenuItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  canteen    Canteen      @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  canteen    Canteen           @relation(fields: [canteenId], references: [id], onDelete: Cascade)
   /// Composite FK: the category must belong to the same canteen as the item.
-  category   MenuCategory @relation(fields: [categoryId, canteenId], references: [id, canteenId], onDelete: Restrict, onUpdate: Cascade)
+  category   MenuCategory      @relation(fields: [categoryId, canteenId], references: [id, canteenId], onDelete: Restrict, onUpdate: Cascade)
   orderItems OrderItem[]
+  services   MenuItemService[]
 
   @@unique([canteenId, name])
   @@index([canteenId])
@@ -254,20 +374,45 @@ model MenuItem {
   @@index([canteenId, isAvailable])
 }
 
+/// Period-specific price and availability for one MenuItem. Do not duplicate MenuItem rows.
+model MenuItemService {
+  id          String        @id @default(uuid()) @db.Uuid
+  menuItemId  String        @db.Uuid
+  period      ServicePeriod
+  /// Authoritative sell price for this canteen + period (paise, > 0).
+  pricePaise  Int
+  isAvailable Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, period])
+  @@index([period])
+}
+
 // ---------------------------------------------------------------------------
 // Orders and payments
 // ---------------------------------------------------------------------------
 
 model Order {
-  id             String      @id @default(uuid()) @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
   /// Public, human-friendly number, e.g. "SV1024". Generated by a PostgreSQL sequence.
-  orderNumber    String      @unique @default(dbgenerated("('SV'::text || nextval('order_number_seq'::regclass))"))
-  studentId      String      @db.Uuid
-  canteenId      String      @db.Uuid
-  status         OrderStatus @default(PLACED)
+  orderNumber    String         @unique @default(dbgenerated("('SV'::text || nextval('order_number_seq'::regclass))"))
+  /// Set only after payment SUCCESS. Distinct from orderNumber. Null while pending.
+  receiptNumber  String?        @unique
+  /// APP orders require a student; WALK_IN POS bills do not.
+  channel        OrderChannel   @default(APP)
+  studentId      String?        @db.Uuid
+  /// Counter display name for walk-in bills (optional).
+  guestName      String?
+  canteenId      String         @db.Uuid
+  status         OrderStatus    @default(PLACED)
+  /// Null on historical orders placed before day/night services existed.
+  servicePeriod  ServicePeriod?
   /// Server-calculated sum of line totals, in paise (> 0).
   totalPaise     Int
-  /// Client-supplied Idempotency-Key, unique per student.
+  /// Client-supplied Idempotency-Key, unique per student for APP orders.
   idempotencyKey String
   /// SHA-256 of the normalized order request; detects key reuse with a different body.
   requestHash    String
@@ -280,7 +425,7 @@ model Order {
   cancelledAt    DateTime?
   cancelReason   String?
 
-  student       Student        @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  student       Student?       @relation(fields: [studentId], references: [id], onDelete: Restrict)
   canteen       Canteen        @relation(fields: [canteenId], references: [id], onDelete: Restrict)
   items         OrderItem[]
   payment       Payment?
@@ -289,6 +434,7 @@ model Order {
   @@unique([studentId, idempotencyKey])
   @@index([studentId, createdAt])
   @@index([canteenId, status, createdAt])
+  @@index([canteenId, channel, status, createdAt])
   @@index([status])
   @@index([createdAt])
   @@index([idempotencyKey])
@@ -326,15 +472,24 @@ model Payment {
   providerOrderId   String?         @unique
   providerPaymentId String?         @unique
   signature         String?
+  /// Student- or cashier-submitted UPI reference. Supporting info, not proof.
+  utr               String?
+  /// Cashier who confirmed actual credit or cash received.
+  verifiedByStaffId String?         @db.Uuid
+  verifiedAt        DateTime?
+  /// True only for per-canteen DEMO cashier/POS confirmation. Historical rows stay false.
+  isSimulated       Boolean         @default(false)
   failureReason     String?
   paidAt            DateTime?
   refundedAt        DateTime?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  order      Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  verifiedBy Staff? @relation("PaymentVerifiedBy", fields: [verifiedByStaffId], references: [id], onDelete: SetNull)
 
   @@index([status])
+  @@index([verifiedByStaffId])
 }
 
 /// One-time SSO handoff from the student app to a staff or admin dashboard.

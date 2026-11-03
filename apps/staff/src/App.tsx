@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import type { MeStaff } from '@serve/contracts';
 import {
   AuthProvider,
   Button,
@@ -13,10 +14,12 @@ import {
   isConnectivityError,
   ssoLog,
   useAuth,
+  type ApiClient,
 } from '@serve/web-shared';
 import { config } from './config';
 import { staffApi } from './api/staff';
 import { StaffApiContext } from './useStaffApi';
+import { StaffCanteenProvider, useStaffCanteen } from './staffCanteen';
 import { LoginPage } from './pages/LoginPage';
 import { CreateAccountPage } from './pages/CreateAccountPage';
 import { CompleteRegistrationPage } from './pages/CompleteRegistrationPage';
@@ -25,6 +28,7 @@ import { StaffLayout } from './components/StaffLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { MenuPage } from './pages/MenuPage';
+import { CashierPage } from './pages/CashierPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { AccountPage } from './pages/AccountPage';
 
@@ -119,19 +123,38 @@ function AccountGate() {
           ) : me.status !== 'APPROVED' || !me.canteen ? (
             <AccessStatusPage me={me} />
           ) : (
-            <Routes>
-              <Route element={<StaffLayout me={me} />}>
-                <Route index element={<DashboardPage />} />
-                <Route path="orders" element={<OrdersPage />} />
-                <Route path="menu" element={<MenuPage />} />
-                <Route path="notifications" element={<NotificationsPage />} />
-                <Route path="account" element={<AccountPage me={me} />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Route>
-            </Routes>
+            <OperationalApp me={me} api={api} />
           )}
         </NotificationsProvider>
       </RealtimeProvider>
+    </StaffApiContext.Provider>
+  );
+}
+
+function OperationalApp({ me, api }: { me: MeStaff; api: ApiClient }) {
+  return (
+    <StaffCanteenProvider me={me}>
+      <ScopedStaffApi api={api} me={me} />
+    </StaffCanteenProvider>
+  );
+}
+
+function ScopedStaffApi({ me, api }: { me: MeStaff; api: ApiClient }) {
+  const { canteenId } = useStaffCanteen();
+  const client = useMemo(() => staffApi(api, canteenId), [api, canteenId]);
+  return (
+    <StaffApiContext.Provider value={client}>
+      <Routes>
+        <Route element={<StaffLayout me={me} />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="menu" element={<MenuPage />} />
+          <Route path="cashier" element={<CashierPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="account" element={<AccountPage me={me} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
     </StaffApiContext.Provider>
   );
 }

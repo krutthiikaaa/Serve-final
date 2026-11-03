@@ -60,9 +60,13 @@ try {
   );
 
   const approvedUid = await firebaseUid(auth, 'staff.kg@serve.dev', 'Dev Staff (K&G)');
-  await prisma.staff.upsert({
+  const approvedStaff = await prisma.staff.upsert({
     where: { firebaseUid: approvedUid },
-    update: {},
+    update: {
+      name: 'Dev Staff (K&G)',
+      status: 'APPROVED',
+      canteenId: kg.id,
+    },
     create: {
       firebaseUid: approvedUid,
       email: 'staff.kg@serve.dev',
@@ -71,6 +75,20 @@ try {
       canteenId: kg.id,
     },
   });
+  const assignment = await prisma.staffCanteenAssignment.upsert({
+    where: {
+      staffId_canteenId: { staffId: approvedStaff.id, canteenId: kg.id },
+    },
+    update: {},
+    create: { staffId: approvedStaff.id, canteenId: kg.id },
+  });
+  for (const capability of ['KITCHEN', 'MENU', 'PAUSE'] as const) {
+    await prisma.staffAssignmentCapability.upsert({
+      where: { assignmentId_capability: { assignmentId: assignment.id, capability } },
+      update: {},
+      create: { assignmentId: assignment.id, capability },
+    });
+  }
 
   const pendingUid = await firebaseUid(auth, 'staff.pending@serve.dev', 'Dev Staff (pending)');
   const pending = await prisma.staff.upsert({

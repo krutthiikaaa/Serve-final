@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import '../services/api/models.dart';
+
 final _rupees = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 final _rupeesWithPaise = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
 
@@ -9,6 +11,8 @@ String formatRupees(int paise) => paise % 100 == 0 ? _rupees.format(paise ~/ 100
 String formatTime(DateTime at) => DateFormat('h:mm a').format(at.toLocal());
 
 String formatDateTime(DateTime at) => DateFormat('d MMM, h:mm a').format(at.toLocal());
+
+String formatServicePeriod(ServicePeriod? period) => period?.label ?? 'Service period not recorded';
 
 String timeAgo(DateTime at, {DateTime? now}) {
   final diff = (now ?? DateTime.now()).difference(at);

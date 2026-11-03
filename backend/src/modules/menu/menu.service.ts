@@ -3,6 +3,7 @@ import type { EventPublisher } from '../../realtime/events.js';
 import { Outbox, rooms } from '../../realtime/events.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
+import { DEFAULT_SERVICE_PERIOD } from '../canteens/availability.js';
 import { canteenTakesOrders } from '../canteens/canteen.dto.js';
 import {
   categorySelect,
@@ -98,6 +99,20 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
     });
   }
 
+  /** Keep the NIGHT sell price in lockstep with the existing staff catalogue APIs. */
+  async function syncNightService(item: Pick<MenuItemRow, 'id' | 'pricePaise' | 'isAvailable'>) {
+    await prisma.menuItemService.upsert({
+      where: { menuItemId_period: { menuItemId: item.id, period: DEFAULT_SERVICE_PERIOD } },
+      create: {
+        menuItemId: item.id,
+        period: DEFAULT_SERVICE_PERIOD,
+        pricePaise: item.pricePaise,
+        isAvailable: item.isAvailable,
+      },
+      update: { pricePaise: item.pricePaise, isAvailable: item.isAvailable },
+    });
+  }
+
   function conflictOnName(err: unknown, what: 'category' | 'item'): never {
     if (isUniqueViolation(err)) {
       throw new ConflictError(
@@ -127,6 +142,42 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
             canteenTakesOrders: canteenTakesOrders(canteen),
           }),
         ),
+      }));
+    },
+
+    /**
+     * Admin catalogue: every category and item, including inactive rows, with
+     * every MenuItemService (DAY/NIGHT price and period availability).
+     * Does not invent missing period prices.
+     */
+    async adminCatalogue(canteenId: string) {
+      const canteen = await canteenState(canteenId);
+      const categories = await prisma.menuCategory.findMany({
+        where: { canteenId },
+        select: {
+          ...categorySelect,
+          items: {
+            select: {
+              ...menuItemSelect,
+              services: {
+                select: { period: true, pricePaise: true, isAvailable: true },
+                orderBy: { period: 'asc' },
+              },
+            },
+            orderBy: { name: 'asc' },
+          },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      });
+      return categories.map(({ items, ...category }) => ({
+        ...toCategoryDto(category),
+        items: items.map((item) => ({
+          ...toMenuItemDto(item, {
+            categoryActive: category.isActive,
+            canteenTakesOrders: canteenTakesOrders(canteen),
+          }),
+          services: item.services,
+        })),
       }));
     },
 
@@ -195,6 +246,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
       } catch (err) {
         conflictOnName(err, 'item');
       }
+      await syncNightService(item);
       const dto = await itemDto(item);
       const outbox = new Outbox();
       outbox.emit('menu.item_updated', menuRooms(canteenId), { item: dto, change: 'created' });
@@ -224,6 +276,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
       } catch (err) {
         conflictOnName(err, 'item');
       }
+      await syncNightService(item);
       const dto = await itemDto(item);
       const targets = menuRooms(item.canteenId);
       const outbox = new Outbox();

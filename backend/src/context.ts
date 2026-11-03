@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { Env } from './config/env.js';
 import type { IdentityVerifier } from './lib/firebase.js';
+import type { Clock } from './lib/time.js';
 import type { PrismaClient } from './lib/prisma.js';
 import type { EventPublisher } from './realtime/events.js';
 import type { PaymentProvider } from './modules/payments/provider.js';
@@ -13,4 +14,6 @@ export interface AppContext {
   verifier: IdentityVerifier;
   events: EventPublisher;
   payments: PaymentProvider;
+  /** Injectable clock for schedule evaluation. Defaults to the system clock. */
+  clock?: Clock;
 }

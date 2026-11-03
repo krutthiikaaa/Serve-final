@@ -6,6 +6,10 @@ import type { PrismaClient } from '../lib/prisma.js';
  * Idempotent and non-destructive: every record is upserted by its natural key
  * with an empty `update`, so re-running never duplicates rows and never
  * overwrites changes made through the app (e.g. a price edited by staff).
+ * Each canteen gets a NIGHT service with FORCE_OPEN and no schedule rows.
+ * Each menu item gets a NIGHT MenuItemService copying the catalogue price.
+ * DAY services, operating hours and CASHIER are not seeded. Each canteen gets
+ * a DEMO payment config with no official UPI/QR (never LIVE, never invented VPA).
  *
  * Frontends must never depend on these values; they read everything through
  * the API.
@@ -197,6 +201,23 @@ export async function seedDatabase(prisma: PrismaClient): Promise<SeedResult> {
     });
     result.canteens += 1;
 
+    await prisma.canteenService.upsert({
+      where: { canteenId_period: { canteenId: canteen.id, period: 'NIGHT' } },
+      update: {},
+      create: {
+        canteenId: canteen.id,
+        period: 'NIGHT',
+        isEnabled: true,
+        override: 'FORCE_OPEN',
+      },
+    });
+
+    await prisma.canteenPaymentConfig.upsert({
+      where: { canteenId: canteen.id },
+      update: {},
+      create: { canteenId: canteen.id, mode: 'DEMO', isActive: false },
+    });
+
     for (const hostelName of seedCanteen.hostels) {
       await prisma.hostel.upsert({
         where: { name: hostelName },
@@ -215,7 +236,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<SeedResult> {
       result.categories += 1;
 
       for (const item of section.items) {
-        await prisma.menuItem.upsert({
+        const menuItem = await prisma.menuItem.upsert({
           where: { canteenId_name: { canteenId: canteen.id, name: item.name } },
           update: {},
           create: {
@@ -230,6 +251,17 @@ export async function seedDatabase(prisma: PrismaClient): Promise<SeedResult> {
           },
         });
         result.items += 1;
+
+        await prisma.menuItemService.upsert({
+          where: { menuItemId_period: { menuItemId: menuItem.id, period: 'NIGHT' } },
+          update: {},
+          create: {
+            menuItemId: menuItem.id,
+            period: 'NIGHT',
+            pricePaise: menuItem.pricePaise,
+            isAvailable: menuItem.isAvailable,
+          },
+        });
       }
     }
   }

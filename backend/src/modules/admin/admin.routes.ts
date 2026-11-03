@@ -3,7 +3,19 @@ import { z } from 'zod';
 import type { AppContext } from '../../context.js';
 import type { Services } from '../../services.js';
 import { createAuthenticate, currentAdmin, requireAdmin } from '../../middleware/auth.js';
-import { id, idParams, name, optionalText, paginationQuery, parse } from '../../http/validation.js';
+import {
+  httpsUrl,
+  id,
+  idParams,
+  name,
+  optionalText,
+  paginationQuery,
+  parse,
+  scheduleOverride,
+  servicePeriod,
+  staffCapability,
+  upiVpa,
+} from '../../http/validation.js';
 import {
   availabilityBody,
   createCategoryBody,
@@ -55,6 +67,67 @@ const orderQuery = paginationQuery.extend({
     .optional(),
 });
 const canteenParams = z.object({ canteenId: id });
+const periodParams = z.object({ id, period: servicePeriod });
+const weekday = z.number({ error: 'Weekday must be an integer' }).int();
+const minutes = z.number({ error: 'Minutes must be an integer' }).int();
+const servicePricePaise = z
+  .number({ error: 'Must be an integer number of paise' })
+  .int({ error: 'Must be an integer number of paise' })
+  .positive({ error: 'Price must be greater than 0' });
+
+const canteenServicesBody = z.strictObject({
+  services: z
+    .array(
+      z.strictObject({
+        period: servicePeriod,
+        isEnabled: z.boolean(),
+        override: scheduleOverride,
+      }),
+    )
+    .min(1, { error: 'Provide at least one service' }),
+});
+const serviceScheduleBody = z.strictObject({
+  schedules: z.array(
+    z.strictObject({
+      weekday,
+      opensAtMinutes: minutes,
+      closesAtMinutes: minutes,
+    }),
+  ),
+});
+const menuItemServicesBody = z.strictObject({
+  services: z
+    .array(
+      z.strictObject({
+        period: servicePeriod,
+        pricePaise: servicePricePaise,
+        isAvailable: z.boolean(),
+      }),
+    )
+    .min(1, { error: 'Provide at least one service price' }),
+});
+const nullableHttpsUrl = z.union([z.literal('').transform(() => null), httpsUrl, z.null()]).optional();
+const nullableUpiVpa = z.union([z.literal('').transform(() => null), upiVpa, z.null()]).optional();
+const paymentConfigBody = z.strictObject({
+  mode: z.enum(['DEMO', 'LIVE']).optional(),
+  upiVpa: nullableUpiVpa,
+  merchantName: optionalText(120),
+  qrImageUrl: nullableHttpsUrl,
+  qrStorageKey: optionalText(512),
+  instructions: optionalText(500),
+  isActive: z.boolean().optional(),
+});
+const staffAssignmentsBody = z.strictObject({
+  primaryCanteenId: id,
+  assignments: z
+    .array(
+      z.strictObject({
+        canteenId: id,
+        capabilities: z.array(staffCapability),
+      }),
+    )
+    .min(1, { error: 'Provide at least one canteen assignment' }),
+});
 
 /** /api/admin — platform administration. Admin role required (PostgreSQL). */
 export function createAdminRouter(ctx: AppContext, services: Services): Router {
@@ -84,6 +157,37 @@ export function createAdminRouter(ctx: AppContext, services: Services): Router {
       ),
     });
   });
+  router.put('/canteens/:id/services', async (req, res) => {
+    const { id: canteenId } = parse(idParams, req.params);
+    const { services } = parse(canteenServicesBody, req.body);
+    res.json({
+      data: await admin.updateCanteenServices(currentAdmin(req), canteenId, services),
+    });
+  });
+  router.put('/canteens/:id/services/:period/schedule', async (req, res) => {
+    const { id: canteenId, period } = parse(periodParams, req.params);
+    const { schedules } = parse(serviceScheduleBody, req.body);
+    res.json({
+      data: await admin.updateCanteenServiceSchedule(
+        currentAdmin(req),
+        canteenId,
+        period,
+        schedules,
+      ),
+    });
+  });
+  router.get('/canteens/:id/payment-config', async (req, res) => {
+    res.json({ data: await admin.getPaymentConfig(parse(idParams, req.params).id) });
+  });
+  router.put('/canteens/:id/payment-config', async (req, res) => {
+    res.json({
+      data: await admin.updatePaymentConfig(
+        currentAdmin(req),
+        parse(idParams, req.params).id,
+        parse(paymentConfigBody, req.body ?? {}),
+      ),
+    });
+  });
 
   // Hostels
   router.get('/hostels', async (_req, res) => {
@@ -110,6 +214,15 @@ export function createAdminRouter(ctx: AppContext, services: Services): Router {
     const { canteenId } = parse(z.strictObject({ canteenId: id }), req.body);
     res.json({
       data: await admin.assignStaff(currentAdmin(req), parse(idParams, req.params).id, canteenId),
+    });
+  });
+  router.put('/staff/:id/assignments', async (req, res) => {
+    res.json({
+      data: await admin.updateStaffAssignments(
+        currentAdmin(req),
+        parse(idParams, req.params).id,
+        parse(staffAssignmentsBody, req.body),
+      ),
     });
   });
   router.post('/staff/:id/deactivate', async (req, res) => {
@@ -157,6 +270,11 @@ export function createAdminRouter(ctx: AppContext, services: Services): Router {
 
   // Menu management for any canteen
   const adminScope = { admin: true as const };
+  router.get('/canteens/:canteenId/menu/catalogue', async (req, res) => {
+    res.json({
+      data: await services.menu.adminCatalogue(parse(canteenParams, req.params).canteenId),
+    });
+  });
   router.get('/canteens/:canteenId/menu', async (req, res) => {
     res.json({ data: await services.menu.managedMenu(parse(canteenParams, req.params).canteenId) });
   });
@@ -206,6 +324,13 @@ export function createAdminRouter(ctx: AppContext, services: Services): Router {
         parse(idParams, req.params).id,
         parse(availabilityBody, req.body),
       ),
+    });
+  });
+  router.put('/menu/items/:id/services', async (req, res) => {
+    const { id: itemId } = parse(idParams, req.params);
+    const { services } = parse(menuItemServicesBody, req.body);
+    res.json({
+      data: await admin.updateMenuItemServices(currentAdmin(req), itemId, services),
     });
   });
 

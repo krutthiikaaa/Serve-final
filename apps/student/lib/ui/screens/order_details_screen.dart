@@ -29,6 +29,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
   bool _cancelling = false;
 
   @override
+  Duration? get livePollInterval => const Duration(seconds: 15);
+
+  @override
   void initState() {
     super.initState();
     startLive();
@@ -107,7 +110,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text('${order.canteen.name} · ${formatDateTime(order.createdAt)}', style: const TextStyle(color: ServeColors.muted)),
+                Text(
+                  [
+                    order.canteen.name,
+                    formatServicePeriod(order.servicePeriod),
+                    formatDateTime(order.createdAt),
+                  ].join(' · '),
+                  style: const TextStyle(color: ServeColors.muted),
+                ),
+                const SizedBox(height: 4),
+                Text('Pickup token ${order.pickupToken}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 if (order.status == OrderStatus.cancelled) ...[
                   const SizedBox(height: 14),
                   NoticeBanner(danger: true, icon: Icons.info_outline_rounded, message: cancellationMessage(order)),
@@ -138,11 +150,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
                         if (order.payment != null) ...[
                           const SizedBox(height: 8),
                           SummaryRow(label: 'Payment', value: _paymentLabel(order.payment!)),
+                          if (order.payment!.provider.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            SummaryRow(label: 'Method', value: order.payment!.provider),
+                          ],
                         ],
                       ],
                     ),
                   ),
                 ),
+                if (order.hasReceipt) ...[
+                  const SizedBox(height: 16),
+                  _ReceiptCard(order: order),
+                ],
                 const SizedBox(height: 16),
                 Card(
                   child: Padding(
@@ -165,10 +185,43 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
     );
   }
 
-  static String _paymentLabel(Payment p) => switch (p.status) {
-    'SUCCESS' => p.failureReason != null ? 'Paid · refund pending' : 'Paid',
-    'REFUNDED' => 'Refunded',
-    'FAILED' => 'Failed',
-    _ => 'Awaiting payment',
-  };
+  static String _paymentLabel(Payment p) {
+    if (p.isSimulated && p.isSuccess) return 'DEMO · simulated';
+    return switch (p.status) {
+      'SUCCESS' => p.failureReason != null ? 'Paid · refund pending' : 'Paid',
+      'REFUNDED' => 'Refunded',
+      'FAILED' => 'Failed · payment not received',
+      _ => 'PAYMENT PENDING',
+    };
+  }
+}
+
+class _ReceiptCard extends StatelessWidget {
+  const _ReceiptCard({required this.order});
+  final StudentOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final demo = order.payment?.isSimulated == true;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Receipt ${order.receiptNumber}', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text('Pickup token ${order.pickupToken}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            if (demo) ...[
+              const SizedBox(height: 10),
+              const NoticeBanner(
+                message: 'DEMO TRANSACTION — NO REAL PAYMENT',
+                icon: Icons.science_outlined,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

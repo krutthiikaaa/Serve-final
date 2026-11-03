@@ -62,7 +62,11 @@ class _CartScreenState extends State<CartScreen> {
     final generation = ++_generation;
     setState(() => _quoting = true);
     try {
-      final quote = await context.read<ServeApi>().quote(canteenId, _cart.toInputs());
+      final quote = await context.read<ServeApi>().quote(
+        canteenId,
+        _cart.toInputs(),
+        period: _cart.period ?? ServicePeriod.night,
+      );
       if (!mounted || generation != _generation) return;
       setState(() {
         _quote = quote;
@@ -118,7 +122,12 @@ class _CartScreenState extends State<CartScreen> {
     }
     final quote = _quote;
     final lineFor = {for (final l in quote?.items ?? const <QuoteLine>[]) l.menuItemId: l};
-    final paused = _error is ApiException && (_error! as ApiException).code == 'CANTEEN_NOT_ACCEPTING_ORDERS';
+    final paused =
+        _error is ApiException &&
+        ((_error! as ApiException).code == 'CANTEEN_NOT_ACCEPTING_ORDERS' ||
+            (_error! as ApiException).code == 'SERVICE_CLOSED' ||
+            (_error! as ApiException).code == 'SERVICE_DISABLED' ||
+            (_error! as ApiException).code == 'SERVICE_SCHEDULE_NOT_CONFIGURED');
     final canCheckout = quote != null && !_quoting && _issues.isEmpty && _error == null;
     return Scaffold(
       appBar: AppBar(
@@ -138,6 +147,10 @@ class _CartScreenState extends State<CartScreen> {
                   children: [
                     Text('Pickup from', style: Theme.of(context).textTheme.bodySmall),
                     Text(cart.canteenName ?? '', style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      cart.period?.label ?? 'Service',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                    ),
                   ],
                 ),
               ),
@@ -145,7 +158,10 @@ class _CartScreenState extends State<CartScreen> {
           ),
           const SizedBox(height: 16),
           if (paused) ...[
-            const NoticeBanner(message: 'This canteen is currently not accepting orders.', icon: Icons.pause_circle_outline_rounded),
+            NoticeBanner(
+              message: errorMessage(_error!),
+              icon: Icons.pause_circle_outline_rounded,
+            ),
             const SizedBox(height: 14),
           ] else if (_error != null) ...[
             NoticeBanner(message: errorMessage(_error!), danger: true, icon: Icons.error_outline_rounded),
@@ -274,7 +290,11 @@ class _CartLineRow extends StatelessWidget {
               quantity: line.quantity,
               itemName: line.item.name,
               enabled: line.quantity < CartController.maxQuantity,
-              onAdd: () => cart.add(line.item, canteenName: cart.canteenName ?? ''),
+              onAdd: () => cart.add(
+                line.item,
+                canteenName: cart.canteenName ?? '',
+                period: cart.period ?? ServicePeriod.night,
+              ),
               onRemove: () => cart.decrement(line.item.id),
             ),
         ],

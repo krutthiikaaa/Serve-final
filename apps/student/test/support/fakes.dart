@@ -50,9 +50,14 @@ class FakeServeApi extends ServeApi {
   List<StudentOrder> activeOrders = [];
   List<StudentOrder> pastOrders = [];
   Map<String, StudentOrder> ordersById = {};
-  Future<Quote> Function(String canteenId, List<CartLineInput> items)? onQuote;
+  Future<Quote> Function(String canteenId, List<CartLineInput> items, ServicePeriod period)? onQuote;
   Future<StudentOrder> Function(String canteenId, List<CartLineInput> items, String key)? onPlaceOrder;
   Future<StudentOrder> Function(String orderId, bool succeed)? onMockComplete;
+  Future<StudentOrder> Function(String orderId, String? utr)? onClaim;
+  Map<String, CanteenPaymentConfig> paymentConfigs = {
+    fx.kgId: CanteenPaymentConfig.fromJson(fx.paymentConfigJson()),
+    fx.vedId: CanteenPaymentConfig.fromJson(fx.paymentConfigJson(canteenId: fx.vedId)),
+  };
   StudentMe Function(String name, String email, String hostelId)? onRegister;
   Me Function(String name, String email, String? requestedCanteenId)? onRegisterStaff;
   SsoHandoff Function(String audience)? onInitiateSso;
@@ -94,13 +99,19 @@ class FakeServeApi extends ServeApi {
   Future<List<Canteen>> canteens() async => canteenList;
 
   @override
-  Future<Menu> menu(String canteenId) async {
-    calls.add('menu:$canteenId');
+  Future<Menu> menu(String canteenId, {ServicePeriod period = ServicePeriod.night}) async {
+    calls.add('menu:$canteenId:${period.apiValue}');
     return menus[canteenId]!;
   }
 
   @override
-  Future<MenuItemDetail> menuItem(String id) async {
+  Future<CanteenPaymentConfig> paymentConfig(String canteenId) async {
+    calls.add('paymentConfig:$canteenId');
+    return paymentConfigs[canteenId] ?? CanteenPaymentConfig.fromJson(fx.paymentConfigJson(canteenId: canteenId));
+  }
+
+  @override
+  Future<MenuItemDetail> menuItem(String id, {ServicePeriod period = ServicePeriod.night}) async {
     for (final m in menus.values) {
       for (final c in m.categories) {
         for (final i in c.items) {
@@ -115,9 +126,9 @@ class FakeServeApi extends ServeApi {
   Future<Recommendations> recommendations(String canteenId) async => recommendationsValue;
 
   @override
-  Future<Quote> quote(String canteenId, List<CartLineInput> items) async {
-    calls.add('quote:${items.map((i) => '${i.menuItemId}x${i.quantity}').join(',')}');
-    if (onQuote != null) return onQuote!(canteenId, items);
+  Future<Quote> quote(String canteenId, List<CartLineInput> items, {ServicePeriod period = ServicePeriod.night}) async {
+    calls.add('quote:${period.apiValue}:${items.map((i) => '${i.menuItemId}x${i.quantity}').join(',')}');
+    if (onQuote != null) return onQuote!(canteenId, items, period);
     final m = menus[canteenId]!;
     final lines = [
       for (final i in items)
@@ -134,6 +145,7 @@ class FakeServeApi extends ServeApi {
     ];
     return Quote.fromJson({
       'canteen': {'id': canteenId, 'name': m.canteen.name},
+      'servicePeriod': period.apiValue,
       'items': lines,
       'itemCount': items.fold<int>(0, (n, i) => n + i.quantity),
       'subtotalPaise': 99900,
@@ -144,7 +156,12 @@ class FakeServeApi extends ServeApi {
   }
 
   @override
-  Future<StudentOrder> placeOrder(String canteenId, List<CartLineInput> items, {required String idempotencyKey}) async {
+  Future<StudentOrder> placeOrder(
+    String canteenId,
+    List<CartLineInput> items, {
+    ServicePeriod period = ServicePeriod.night,
+    required String idempotencyKey,
+  }) async {
     idempotencyKeys.add(idempotencyKey);
     calls.add('placeOrder');
     if (onPlaceOrder != null) return onPlaceOrder!(canteenId, items, idempotencyKey);
@@ -168,6 +185,13 @@ class FakeServeApi extends ServeApi {
   Future<PaymentSession> initiatePayment(String orderId) async {
     calls.add('initiate:$orderId');
     return PaymentSession(orderId: orderId, provider: 'MOCK', providerOrderId: 'mock_order_1', amountPaise: 99900);
+  }
+
+  @override
+  Future<StudentOrder> claimPayment(String orderId, {String? utr}) async {
+    calls.add('claim:$orderId:${utr ?? ''}');
+    if (onClaim != null) return onClaim!(orderId, utr);
+    return fx.order(status: 'PLACED', total: 99900);
   }
 
   @override

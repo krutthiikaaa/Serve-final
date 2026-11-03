@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../services/api/models.dart';
 import '../../services/api/serve_api.dart';
 import '../../state/canteen_selection.dart';
-import '../../state/cart_controller.dart';
 import '../../theme/serve_theme.dart';
 import '../cart_actions.dart';
 import '../widgets/states.dart';
@@ -39,16 +38,14 @@ class _CanteenSelectionScreenState extends State<CanteenSelectionScreen> {
 
   Future<void> _choose(Canteen canteen) async {
     final selection = context.read<CanteenSelection>();
-    final cart = context.read<CartController>();
     if (canteen.id == selection.id) {
       Navigator.of(context).pop();
       return;
     }
-    if (cart.conflictsWith(canteen.id)) {
-      if (!await confirmSwitchCanteen(context)) return;
-      cart.clear();
-    }
-    selection.select(canteen.id, canteen.name);
+    final period = selection.period;
+    if (!await confirmCartContextChange(context, canteenId: canteen.id, period: period)) return;
+    if (!mounted) return;
+    selection.select(canteen.id, canteen.name, details: canteen);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -61,7 +58,11 @@ class _CanteenSelectionScreenState extends State<CanteenSelectionScreen> {
       body: canteens == null
           ? (_error != null ? ErrorView(error: _error!, onRetry: _load) : const SkeletonList(label: 'Loading canteens', header: false))
           : canteens.isEmpty
-          ? const EmptyView(icon: Icons.storefront_outlined, title: 'No canteens are open right now')
+          ? const EmptyView(
+              icon: Icons.storefront_outlined,
+              title: 'No canteens are available right now',
+              body: 'When a canteen is set up, it will appear here.',
+            )
           : ListView.separated(
               padding: const EdgeInsets.fromLTRB(ServeSpace.page, 4, ServeSpace.page, 24),
               itemCount: canteens.length + 1,
@@ -133,6 +134,8 @@ class _CanteenOption extends StatelessWidget {
                       ],
                       const SizedBox(height: 10),
                       CanteenStatusLabel(canteen: canteen),
+                      const SizedBox(height: 8),
+                      ServiceAvailabilityPills(canteen: canteen),
                     ],
                   ),
                 ),

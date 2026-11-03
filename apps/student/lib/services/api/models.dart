@@ -84,22 +84,126 @@ CanteenStatus _canteenStatus(String s) => switch (s) {
   _ => CanteenStatus.inactive,
 };
 
+enum ServicePeriod { day, night }
+
+ServicePeriod servicePeriodFrom(String s) => switch (s) {
+  'DAY' => ServicePeriod.day,
+  'NIGHT' => ServicePeriod.night,
+  _ => throw FormatException('Unknown service period $s'),
+};
+
+extension ServicePeriodX on ServicePeriod {
+  String get apiValue => this == ServicePeriod.day ? 'DAY' : 'NIGHT';
+  String get label => this == ServicePeriod.day ? 'Day' : 'Night';
+}
+
+enum ServiceAvailability { open, closed, disabled, notConfigured, paused }
+
+class CanteenService {
+  const CanteenService({
+    required this.period,
+    required this.isEnabled,
+    required this.override,
+    required this.isOpenNow,
+  });
+  factory CanteenService.fromJson(Map<String, dynamic> j) => CanteenService(
+    period: servicePeriodFrom(j['period'] as String),
+    isEnabled: j['isEnabled'] as bool,
+    override: j['override'] as String,
+    isOpenNow: j['isOpenNow'] as bool,
+  );
+  final ServicePeriod period;
+  final bool isEnabled;
+  final String override;
+  final bool isOpenNow;
+}
+
+class ConfigurationWarning {
+  const ConfigurationWarning({required this.period, required this.code});
+  factory ConfigurationWarning.fromJson(Map<String, dynamic> j) =>
+      ConfigurationWarning(period: servicePeriodFrom(j['period'] as String), code: j['code'] as String);
+  final ServicePeriod period;
+  final String code;
+}
+
 class Canteen {
-  const Canteen({required this.id, required this.name, required this.location, required this.openingHours, required this.status});
+  const Canteen({
+    required this.id,
+    required this.name,
+    required this.location,
+    required this.openingHours,
+    required this.status,
+    this.supportedPeriods = const [],
+    this.services = const [],
+    this.configurationWarnings = const [],
+  });
   factory Canteen.fromJson(Map<String, dynamic> j) => Canteen(
     id: j['id'] as String,
     name: j['name'] as String,
     location: j['location'] as String?,
     openingHours: j['openingHours'] as String?,
     status: _canteenStatus(j['status'] as String),
+    supportedPeriods: [
+      for (final p in (j['supportedPeriods'] as List?) ?? const [])
+        if (p is String) servicePeriodFrom(p),
+    ],
+    services: [for (final s in (j['services'] as List?) ?? const []) CanteenService.fromJson(_map(s))],
+    configurationWarnings: [
+      for (final w in (j['configurationWarnings'] as List?) ?? const []) ConfigurationWarning.fromJson(_map(w)),
+    ],
   );
   final String id;
   final String name;
   final String? location;
   final String? openingHours;
   final CanteenStatus status;
+  final List<ServicePeriod> supportedPeriods;
+  final List<CanteenService> services;
+  final List<ConfigurationWarning> configurationWarnings;
 
   bool get acceptingOrders => status == CanteenStatus.acceptingOrders;
+
+  bool supports(ServicePeriod period) => supportedPeriods.contains(period) || services.any((s) => s.period == period);
+
+  CanteenService? service(ServicePeriod period) {
+    for (final s in services) {
+      if (s.period == period) return s;
+    }
+    return null;
+  }
+
+  /// Backend-authored availability. Never uses the phone clock.
+  ServiceAvailability availabilityFor(ServicePeriod period) {
+    if (status == CanteenStatus.paused) return ServiceAvailability.paused;
+    if (status == CanteenStatus.inactive) return ServiceAvailability.closed;
+    final row = service(period);
+    if (row == null) return ServiceAvailability.notConfigured;
+    if (!row.isEnabled) return ServiceAvailability.disabled;
+    final misconfigured = configurationWarnings.any(
+      (w) => w.period == period && (w.code == 'AUTO_WITHOUT_SCHEDULE' || w.code == 'INVALID_SCHEDULE'),
+    );
+    if (misconfigured) return ServiceAvailability.notConfigured;
+    if (row.isOpenNow) return ServiceAvailability.open;
+    return ServiceAvailability.closed;
+  }
+
+  String availabilityLabel(ServicePeriod period) => switch (availabilityFor(period)) {
+    ServiceAvailability.open => 'Open now',
+    ServiceAvailability.closed => 'Closed',
+    ServiceAvailability.disabled => 'Disabled',
+    ServiceAvailability.notConfigured => 'Not configured',
+    ServiceAvailability.paused => 'Not accepting orders',
+  };
+
+  String? orderingBlockReason(ServicePeriod period) => switch (availabilityFor(period)) {
+    ServiceAvailability.open => null,
+    ServiceAvailability.paused => 'This canteen is not accepting orders right now.',
+    ServiceAvailability.disabled => 'This service is not available at this canteen.',
+    ServiceAvailability.notConfigured => 'This service has not been set up yet.',
+    ServiceAvailability.closed => openingHours == null
+        ? 'This service is closed right now.'
+        : 'This service is closed right now. Hours: $openingHours',
+  };
 }
 
 enum Availability { available, unavailable, inactive }
@@ -154,11 +258,15 @@ class MenuCategory {
 }
 
 class Menu {
-  const Menu({required this.canteen, required this.categories});
-  factory Menu.fromJson(Map<String, dynamic> j) =>
-      Menu(canteen: Canteen.fromJson(_map(j['canteen'])), categories: _list(j['categories']).map(MenuCategory.fromJson).toList());
+  const Menu({required this.canteen, required this.categories, required this.servicePeriod});
+  factory Menu.fromJson(Map<String, dynamic> j) => Menu(
+    canteen: Canteen.fromJson(_map(j['canteen'])),
+    categories: _list(j['categories']).map(MenuCategory.fromJson).toList(),
+    servicePeriod: j['servicePeriod'] is String ? servicePeriodFrom(j['servicePeriod'] as String) : ServicePeriod.night,
+  );
   final Canteen canteen;
   final List<MenuCategory> categories;
+  final ServicePeriod servicePeriod;
 
   /// INACTIVE items are never shown to students.
   List<MenuCategory> get visibleCategories => [
@@ -212,17 +320,25 @@ class QuoteLine {
 
 /// Authoritative prices and total from `POST /api/cart/quote`.
 class Quote {
-  const Quote({required this.canteen, required this.items, required this.itemCount, required this.totalPaise});
+  const Quote({
+    required this.canteen,
+    required this.items,
+    required this.itemCount,
+    required this.totalPaise,
+    required this.servicePeriod,
+  });
   factory Quote.fromJson(Map<String, dynamic> j) => Quote(
     canteen: Ref.fromJson(_map(j['canteen'])),
     items: _list(j['items']).map(QuoteLine.fromJson).toList(),
     itemCount: j['itemCount'] as int,
     totalPaise: j['totalPaise'] as int,
+    servicePeriod: j['servicePeriod'] is String ? servicePeriodFrom(j['servicePeriod'] as String) : ServicePeriod.night,
   );
   final Ref canteen;
   final List<QuoteLine> items;
   final int itemCount;
   final int totalPaise;
+  final ServicePeriod servicePeriod;
 }
 
 enum OrderStatus { placed, paymentConfirmed, preparing, ready, collected, cancelled }
@@ -265,17 +381,38 @@ class OrderLine {
 }
 
 class Payment {
-  const Payment({required this.provider, required this.status, required this.amountPaise, this.failureReason});
+  const Payment({
+    required this.provider,
+    required this.status,
+    required this.amountPaise,
+    this.failureReason,
+    this.utr,
+    this.isSimulated = false,
+    this.verifiedAt,
+    this.paidAt,
+  });
   factory Payment.fromJson(Map<String, dynamic> j) => Payment(
     provider: j['provider'] as String,
     status: j['status'] as String,
     amountPaise: j['amountPaise'] as int,
     failureReason: j['failureReason'] as String?,
+    utr: j['utr'] as String?,
+    isSimulated: j['isSimulated'] as bool? ?? false,
+    verifiedAt: _dateOrNull(j['verifiedAt']),
+    paidAt: _dateOrNull(j['paidAt']),
   );
   final String provider;
   final String status;
   final int amountPaise;
   final String? failureReason;
+  final String? utr;
+  final bool isSimulated;
+  final DateTime? verifiedAt;
+  final DateTime? paidAt;
+
+  bool get isPending => status == 'PENDING';
+  bool get isSuccess => status == 'SUCCESS';
+  bool get isFailed => status == 'FAILED';
 }
 
 class TimelineStep {
@@ -299,6 +436,8 @@ class StudentOrder {
     required this.updatedAt,
     required this.cancelReason,
     required this.timeline,
+    this.receiptNumber,
+    this.servicePeriod,
   });
   factory StudentOrder.fromJson(Map<String, dynamic> j) => StudentOrder(
     id: j['id'] as String,
@@ -312,6 +451,8 @@ class StudentOrder {
     updatedAt: _date(j['updatedAt']),
     cancelReason: j['cancelReason'] as String?,
     timeline: _list(j['timeline']).map(TimelineStep.fromJson).toList(),
+    receiptNumber: j['receiptNumber'] as String?,
+    servicePeriod: j['servicePeriod'] is String ? servicePeriodFrom(j['servicePeriod'] as String) : null,
   );
   final String id;
   final String orderNumber;
@@ -324,6 +465,13 @@ class StudentOrder {
   final DateTime updatedAt;
   final String? cancelReason;
   final List<TimelineStep> timeline;
+  final String? receiptNumber;
+  final ServicePeriod? servicePeriod;
+
+  /// Pickup token shown at the counter. Same as [orderNumber] for app orders.
+  String get pickupToken => orderNumber;
+
+  bool get hasReceipt => receiptNumber != null && payment?.isSuccess == true;
 
   int get itemCount => items.fold(0, (n, i) => n + i.quantity);
 
@@ -409,4 +557,64 @@ class CartIssue {
 
   /// NOT_IN_CANTEEN | INACTIVE | UNAVAILABLE
   final String reason;
+}
+
+enum PaymentMode { demo, live }
+
+PaymentMode paymentModeFrom(String s) => switch (s) {
+  'LIVE' => PaymentMode.live,
+  _ => PaymentMode.demo,
+};
+
+class DemoQr {
+  const DemoQr({required this.payload, required this.svg, required this.warning});
+  factory DemoQr.fromJson(Map<String, dynamic> j) => DemoQr(
+    payload: j['payload'] as String,
+    svg: j['svg'] as String,
+    warning: j['warning'] as String,
+  );
+  final String payload;
+  final String svg;
+  final String warning;
+
+  bool get isPayable => false;
+}
+
+/// Student-visible canteen payment config. Never includes Admin storage keys.
+class CanteenPaymentConfig {
+  const CanteenPaymentConfig({
+    required this.canteenId,
+    required this.mode,
+    required this.upiVpa,
+    required this.merchantName,
+    required this.qrImageUrl,
+    required this.instructions,
+    required this.isActive,
+    required this.demoQr,
+    required this.warnings,
+  });
+  factory CanteenPaymentConfig.fromJson(Map<String, dynamic> j) => CanteenPaymentConfig(
+    canteenId: j['canteenId'] as String,
+    mode: paymentModeFrom(j['mode'] as String),
+    upiVpa: j['upiVpa'] as String?,
+    merchantName: j['merchantName'] as String?,
+    qrImageUrl: j['qrImageUrl'] as String?,
+    instructions: j['instructions'] as String?,
+    isActive: j['isActive'] as bool,
+    demoQr: j['demoQr'] == null ? null : DemoQr.fromJson(_map(j['demoQr'])),
+    warnings: [for (final w in (j['warnings'] as List?) ?? const []) if (w is String) w],
+  );
+  final String canteenId;
+  final PaymentMode mode;
+  final String? upiVpa;
+  final String? merchantName;
+  final String? qrImageUrl;
+  final String? instructions;
+  final bool isActive;
+  final DemoQr? demoQr;
+  final List<String> warnings;
+
+  bool get isDemo => mode == PaymentMode.demo;
+  bool get liveReady => mode == PaymentMode.live && isActive && qrImageUrl != null && merchantName != null;
+  bool get incomplete => warnings.contains('LIVE_CONFIG_INCOMPLETE') || (mode == PaymentMode.live && !liveReady);
 }

@@ -10,7 +10,11 @@ import '../services/realtime/realtime_service.dart';
 mixin LiveReload<T extends StatefulWidget> on State<T>, WidgetsBindingObserver {
   StreamSubscription<RealtimeEvent>? _liveSub;
   RealtimeService? _realtime;
+  Timer? _poll;
   int _seenEpoch = -1;
+
+  /// Override to poll REST when the socket is down (order tracking / payment).
+  Duration? get livePollInterval => null;
 
   /// Call from initState.
   void startLive() {
@@ -21,6 +25,13 @@ mixin LiveReload<T extends StatefulWidget> on State<T>, WidgetsBindingObserver {
       if (mounted) onLiveEvent(event);
     });
     WidgetsBinding.instance.addObserver(this);
+    final interval = livePollInterval;
+    if (interval != null) {
+      _poll = Timer.periodic(interval, (_) {
+        if (!mounted) return;
+        if (_realtime?.state != LiveState.connected) onReconnect();
+      });
+    }
   }
 
   void _onRealtime() {
@@ -54,6 +65,7 @@ mixin LiveReload<T extends StatefulWidget> on State<T>, WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _liveSub?.cancel();
+    _poll?.cancel();
     _realtime?.removeListener(_onRealtime);
     super.dispose();
   }

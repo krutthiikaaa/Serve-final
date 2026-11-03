@@ -19,6 +19,7 @@ import {
 } from '@serve/web-shared/testing';
 import type { StaffApi } from '../src/api/staff';
 import { StaffApiContext } from '../src/useStaffApi';
+import { StaffCanteenProvider } from '../src/staffCanteen';
 
 export const CANTEEN_ID = '7d2c6a52-6f3e-4a35-9a3b-1c2d3e4f5a60';
 let seq = 0;
@@ -30,6 +31,9 @@ export function order(status: OrderStatus, overrides: Partial<StaffOrder> = {}):
   return {
     id,
     orderNumber: `SV${1000 + seq}`,
+    receiptNumber: null,
+    channel: 'APP',
+    guestName: null,
     status,
     totalPaise: 12_000,
     currency: 'INR',
@@ -50,9 +54,12 @@ export function order(status: OrderStatus, overrides: Partial<StaffOrder> = {}):
       status: 'SUCCESS',
       amountPaise: 12_000,
       currency: 'INR',
+      utr: null,
+      verifiedAt: null,
       paidAt: at,
       refundedAt: null,
       failureReason: null,
+      isSimulated: false,
     },
     createdAt: at,
     updatedAt: at,
@@ -138,6 +145,7 @@ export function dashboard(
       status: accepting ? 'ACCEPTING_ORDERS' : 'PAUSED',
     },
     orders: { active: 6, awaitingPreparation: 3, preparing: 2, ready: 1, ...overrides },
+    pendingPayments: 0,
     today: { since: '2026-10-05T18:30:00.000Z', orderCount: 14, revenuePaise: 186_000 },
   };
 }
@@ -153,6 +161,13 @@ export function meStaff(overrides: Partial<MeStaff> = {}): MeStaff {
     role: 'STAFF',
     status: 'APPROVED',
     canteen: { id: CANTEEN_ID, name: canteen.name, isActive: true, isAcceptingOrders: true },
+    assignments: [
+      {
+        canteenId: CANTEEN_ID,
+        canteen: { id: CANTEEN_ID, name: canteen.name, isActive: true, isAcceptingOrders: true },
+        capabilities: ['KITCHEN', 'MENU', 'PAUSE'],
+      },
+    ],
     pendingChangeRequest: null,
     ...overrides,
   };
@@ -183,6 +198,16 @@ export function fakeStaffApi(): MockedApi {
     'updateItem',
     'setAvailability',
     'disableItem',
+    'pendingPayments',
+    'confirmPayment',
+    'confirmDemoPayment',
+    'rejectPayment',
+    'posMenu',
+    'paymentConfig',
+    'completeWalkIn',
+    'completeDemoWalkIn',
+    'sales',
+    'receipt',
   ];
   return Object.fromEntries(names.map((n) => [n, notStubbed(n)])) as unknown as MockedApi;
 }
@@ -198,11 +223,13 @@ export function renderStaff(
   const tree = (epoch: number) => (
     <ToastProvider>
       <FakeAuthProvider me={me}>
-        <StaffApiContext.Provider value={api as unknown as StaffApi}>
-          <FakeRealtimeProvider fake={fake} connectionEpoch={epoch}>
-            <MemoryRouter>{ui}</MemoryRouter>
-          </FakeRealtimeProvider>
-        </StaffApiContext.Provider>
+        <StaffCanteenProvider me={me}>
+          <StaffApiContext.Provider value={api as unknown as StaffApi}>
+            <FakeRealtimeProvider fake={fake} connectionEpoch={epoch}>
+              <MemoryRouter>{ui}</MemoryRouter>
+            </FakeRealtimeProvider>
+          </StaffApiContext.Provider>
+        </StaffCanteenProvider>
       </FakeAuthProvider>
     </ToastProvider>
   );

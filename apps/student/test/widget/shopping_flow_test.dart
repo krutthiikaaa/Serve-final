@@ -73,7 +73,11 @@ void main() {
     usePhoneSize(tester);
     final h = TestHarness();
     await h.pumpSignedIn(tester);
-    h.services.cart.add(fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'), canteenName: 'K&G');
+    h.services.cart.add(
+      fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'),
+      canteenName: 'K&G',
+      period: ServicePeriod.night,
+    );
     await tester.pump();
     await tester.tap(find.text('Change Canteen'));
     await tester.pumpAndSettle();
@@ -99,7 +103,11 @@ void main() {
     usePhoneSize(tester);
     final h = TestHarness();
     await h.pumpSignedIn(tester);
-    h.services.cart.add(fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich', price: 5000), canteenName: 'K&G');
+    h.services.cart.add(
+      fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich', price: 5000),
+      canteenName: 'K&G',
+      period: ServicePeriod.night,
+    );
     await tester.pump();
     await tester.tap(find.bySemanticsLabel('Cart, 1'));
     await tester.pumpAndSettle();
@@ -111,10 +119,14 @@ void main() {
   testWidgets('sold-out lines block checkout until removed', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
-    h.api.onQuote = (_, _) async =>
+    h.api.onQuote = (_, _, _) async =>
         throw const CartIssuesException([CartIssue('a1000000-0000-4000-8000-000000000001', 'UNAVAILABLE')], 'unavailable');
     await h.pumpSignedIn(tester);
-    h.services.cart.add(fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'), canteenName: 'K&G');
+    h.services.cart.add(
+      fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'),
+      canteenName: 'K&G',
+      period: ServicePeriod.night,
+    );
     await tester.pump();
     await tester.tap(find.bySemanticsLabel('Cart, 1'));
     await tester.pumpAndSettle();
@@ -123,7 +135,7 @@ void main() {
     expect(checkout.onPressed, isNull);
   });
 
-  testWidgets('checkout reuses one Idempotency-Key across retries, then pays and confirms', (tester) async {
+  testWidgets('checkout reuses one Idempotency-Key across retries, then waits for cashier confirmation', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
     var attempts = 0;
@@ -133,7 +145,11 @@ void main() {
       return fx.order(status: 'PLACED', number: 'SV2001', total: 99900);
     };
     await h.pumpSignedIn(tester);
-    h.services.cart.add(fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'), canteenName: 'K&G');
+    h.services.cart.add(
+      fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'),
+      canteenName: 'K&G',
+      period: ServicePeriod.night,
+    );
     await tester.pump();
     await tester.tap(find.bySemanticsLabel('Cart, 1'));
     await tester.pumpAndSettle();
@@ -151,18 +167,35 @@ void main() {
     expect(h.services.cart.isEmpty, isTrue);
 
     expect(find.text('₹999'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, 'Pay ₹999'));
+    expect(find.text('DEMO ONLY — NOT PAYABLE'), findsOneWidget);
+    expect(find.textContaining('PAYMENT PENDING'), findsWidgets);
+    await tester.ensureVisible(find.byKey(const Key('utr-field')));
+    await tester.enterText(find.byKey(const Key('utr-field')), 'UTRTEST1');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save demo reference'));
     await tester.pumpAndSettle();
-    expect(h.api.calls, containsAllInOrder(['initiate:d8c5c17f-0000-4000-8000-000000000001', 'mockComplete:true']));
-    expect(find.text('Payment confirmed'), findsOneWidget);
-    expect(find.text('SV1002'), findsOneWidget);
+    expect(h.api.calls.where((c) => c.startsWith('claim:')), isNotEmpty);
+    expect(h.api.calls.where((c) => c.startsWith('mockComplete:')), isEmpty);
+    expect(find.text('Payment confirmed'), findsNothing);
+    expect(find.textContaining('still pending'), findsOneWidget);
   });
 
-  testWidgets('a failed mock payment explains and allows a retry', (tester) async {
+  testWidgets('LIVE checkout shows official QR and does not auto-confirm after a UTR', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
+    h.api.paymentConfigs[fx.kgId] = CanteenPaymentConfig.fromJson(
+      fx.paymentConfigJson(
+        mode: 'LIVE',
+        upiVpa: 'kg@okicici',
+        merchantName: 'KG Canteen',
+        qrImageUrl: 'https://cdn.example.com/official-qr.png',
+      ),
+    );
     await h.pumpSignedIn(tester);
-    h.services.cart.add(fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'), canteenName: 'K&G');
+    h.services.cart.add(
+      fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'),
+      canteenName: 'K&G',
+      period: ServicePeriod.night,
+    );
     await tester.pump();
     await tester.tap(find.bySemanticsLabel('Cart, 1'));
     await tester.pumpAndSettle();
@@ -170,9 +203,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Place order'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Simulate a failed payment'));
+    expect(find.text('KG Canteen'), findsOneWidget);
+    expect(find.text('kg@okicici'), findsOneWidget);
+    expect(find.text('DEMO ONLY — NOT PAYABLE'), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('utr-field')));
+    await tester.enterText(find.byKey(const Key('utr-field')), 'AXIS123456789');
+    await tester.tap(find.widgetWithText(FilledButton, 'Submit UPI reference'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Payment failed'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Pay ₹999'), findsOneWidget);
+    expect(h.api.calls, contains('claim:d8c5c17f-0000-4000-8000-000000000001:AXIS123456789'));
+    expect(find.text('Payment confirmed'), findsNothing);
+    expect(find.textContaining('PAYMENT PENDING'), findsWidgets);
   });
 }

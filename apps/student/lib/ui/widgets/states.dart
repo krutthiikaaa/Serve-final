@@ -50,6 +50,7 @@ class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderSt
         child: FadeTransition(
           opacity: Tween(begin: 0.55, end: 1.0).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
           child: ListView(
+            shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.all(ServeSpace.page),
             children: [

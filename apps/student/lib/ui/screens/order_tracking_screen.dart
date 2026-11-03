@@ -27,6 +27,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> with WidgetsB
   Object? _error;
 
   @override
+  Duration? get livePollInterval => const Duration(seconds: 12);
+
+  @override
   void initState() {
     super.initState();
     startLive();
@@ -107,7 +110,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> with WidgetsB
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                       leading: const IconTile(icon: Icons.storefront_rounded, size: 40),
                       title: Text(order.canteen.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text('${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'} · ${formatRupees(order.totalPaise)}'),
+                      subtitle: Text(
+                        [
+                          formatServicePeriod(order.servicePeriod),
+                          '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
+                          formatRupees(order.totalPaise),
+                          if (order.payment?.isSimulated == true) 'DEMO',
+                          if (order.status == OrderStatus.placed) 'payment pending',
+                        ].join(' · '),
+                      ),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => openOrderDetails(context, order.id),
                     ),

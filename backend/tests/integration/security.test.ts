@@ -22,7 +22,7 @@ import {
 const { app, prisma, env } = buildTestApp();
 const anyId = randomUUID();
 
-type Method = 'get' | 'post' | 'patch' | 'delete';
+type Method = 'get' | 'post' | 'patch' | 'put' | 'delete';
 type Route = [Method, string];
 
 const STUDENT_ROUTES: Route[] = [
@@ -34,7 +34,9 @@ const STUDENT_ROUTES: Route[] = [
   ['post', `/api/payments/${anyId}/initiate`],
   ['post', `/api/payments/${anyId}/verify`],
   ['post', `/api/payments/${anyId}/mock-complete`],
+  ['post', `/api/payments/${anyId}/claim`],
   ['get', '/api/students/me/recommendations'],
+  ['get', `/api/canteens/${anyId}/payment-config`],
 ];
 const STAFF_ROUTES: Route[] = [
   ['get', '/api/staff/dashboard'],
@@ -53,6 +55,16 @@ const STAFF_ROUTES: Route[] = [
   ['delete', `/api/staff/menu/items/${anyId}`],
   ['post', '/api/staff/change-requests'],
   ['get', '/api/staff/change-requests'],
+  ['get', '/api/staff/payments/pending'],
+  ['post', `/api/staff/orders/${anyId}/confirm-payment`],
+  ['post', `/api/staff/orders/${anyId}/confirm-demo-payment`],
+  ['post', `/api/staff/orders/${anyId}/reject-payment`],
+  ['get', '/api/staff/pos/menu'],
+  ['get', '/api/staff/canteen/payment-config'],
+  ['post', '/api/staff/pos/sales'],
+  ['post', '/api/staff/pos/demo-sales'],
+  ['get', '/api/staff/sales'],
+  ['get', `/api/staff/orders/${anyId}/receipt`],
 ];
 const ADMIN_ROUTES: Route[] = [
   ['get', '/api/admin/dashboard'],
@@ -66,13 +78,20 @@ const ADMIN_ROUTES: Route[] = [
   ['get', '/api/admin/staff'],
   ['get', `/api/admin/staff/${anyId}`],
   ['patch', `/api/admin/staff/${anyId}/assignment`],
+  ['put', `/api/admin/staff/${anyId}/assignments`],
   ['post', `/api/admin/staff/${anyId}/deactivate`],
+  ['put', `/api/admin/canteens/${anyId}/services`],
+  ['put', `/api/admin/canteens/${anyId}/services/NIGHT/schedule`],
+  ['get', `/api/admin/canteens/${anyId}/payment-config`],
+  ['put', `/api/admin/canteens/${anyId}/payment-config`],
+  ['put', `/api/admin/menu/items/${anyId}/services`],
   ['get', '/api/admin/change-requests'],
   ['post', `/api/admin/change-requests/${anyId}/approve`],
   ['post', `/api/admin/change-requests/${anyId}/reject`],
   ['get', '/api/admin/orders'],
   ['get', `/api/admin/orders/${anyId}`],
   ['get', `/api/admin/canteens/${anyId}/menu`],
+  ['get', `/api/admin/canteens/${anyId}/menu/catalogue`],
   ['post', `/api/admin/canteens/${anyId}/menu/categories`],
   ['patch', `/api/admin/menu/categories/${anyId}`],
   ['post', `/api/admin/canteens/${anyId}/menu/items`],

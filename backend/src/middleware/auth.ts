@@ -18,6 +18,8 @@ export interface AuthContext extends VerifiedIdentity {
 declare module 'express-serve-static-core' {
   interface Request {
     auth?: AuthContext;
+    /** Assigned canteen this request is operating on (never a client-trusted id). */
+    staffCanteenId?: string;
   }
 }
 

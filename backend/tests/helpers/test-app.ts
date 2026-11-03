@@ -4,7 +4,9 @@ import { createPrismaClient, type PrismaClient } from '../../src/lib/prisma.js';
 import { createFirebaseAuth, FirebaseIdentityVerifier } from '../../src/lib/firebase.js';
 import { createPaymentProvider } from '../../src/modules/payments/index.js';
 import { noopPublisher, type EventPublisher } from '../../src/realtime/events.js';
+import type { Logger } from 'pino';
 import type { AppContext } from '../../src/context.js';
+import type { Clock } from '../../src/lib/time.js';
 import { createApp } from '../../src/app.js';
 
 export function testEnv(overrides: Partial<Record<keyof Env, string>> = {}): Env {
@@ -26,21 +28,27 @@ export function buildTestContext(
     env?: Partial<Record<keyof Env, string>>;
     events?: EventPublisher;
     prisma?: PrismaClient;
+    clock?: Clock;
+    logger?: Logger;
   } = {},
 ): AppContext {
   const env = testEnv(options.env);
   return {
     env,
-    logger: createLogger(env),
+    logger: options.logger ?? createLogger(env),
     prisma: options.prisma ?? createPrismaClient(env.DATABASE_URL),
     verifier: new FirebaseIdentityVerifier(createFirebaseAuth(env)),
     payments: createPaymentProvider(env),
     events: options.events ?? noopPublisher,
+    clock: options.clock,
   };
 }
 
-export function buildTestApp(overrides: Partial<Record<keyof Env, string>> = {}) {
-  const ctx = buildTestContext({ env: overrides });
+export function buildTestApp(
+  overrides: Partial<Record<keyof Env, string>> = {},
+  options: { logger?: Logger } = {},
+) {
+  const ctx = buildTestContext({ env: overrides, logger: options.logger });
   return { app: createApp(ctx), env: ctx.env, prisma: ctx.prisma, ctx };
 }
 

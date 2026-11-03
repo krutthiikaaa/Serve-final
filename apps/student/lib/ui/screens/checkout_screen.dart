@@ -40,7 +40,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _error = null;
     });
     try {
-      final order = await api.placeOrder(canteenId, cart.toInputs(), idempotencyKey: _idempotencyKey);
+      final order = await api.placeOrder(
+        canteenId,
+        cart.toInputs(),
+        period: cart.period ?? widget.quote.servicePeriod,
+        idempotencyKey: _idempotencyKey,
+      );
       cart.clear();
       if (!mounted) return;
       // The cart flow is finished: Back from payment/tracking returns to the tabs.
@@ -83,7 +88,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       children: [
                         Text(quote.canteen.name, style: theme.textTheme.titleMedium),
                         const SizedBox(height: 4),
-                        Text('Collect in person at the counter. SERVE does not deliver.', style: theme.textTheme.bodySmall),
+                        Text(
+                          '${quote.servicePeriod.label} service · Collect in person at the counter. SERVE does not deliver.',
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ],
                     ),
                   ),

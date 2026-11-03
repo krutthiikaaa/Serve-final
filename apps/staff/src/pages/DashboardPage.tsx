@@ -25,16 +25,24 @@ import {
   errorMessage,
 } from '@serve/web-shared';
 import { useStaffApi } from '../useStaffApi';
+import { useStaffCanteen } from '../staffCanteen';
 import { CanteenStatusTag } from '../components/StaffLayout';
 
 /** Live overview of the assigned canteen. Every number comes from `/api/staff/dashboard`. */
 export function DashboardPage() {
   const api = useStaffApi();
+  const { hasCapability, canteenId } = useStaffCanteen();
   const { refreshMe } = useAuth();
   const toast = useToast();
   const { connectionEpoch } = useRealtime();
-  const dashboard = useResource(() => api.dashboard(), [api, connectionEpoch]);
-  const recent = useResource(() => api.orders('active', { limit: 8 }), [api, connectionEpoch]);
+  const canKitchen = hasCapability('KITCHEN');
+  const canPause = hasCapability('PAUSE');
+  const canCashier = hasCapability('CASHIER');
+  const dashboard = useResource(() => api.dashboard(), [api, connectionEpoch, canteenId]);
+  const recent = useResource(
+    () => (canKitchen ? api.orders('active', { limit: 8 }) : Promise.resolve({ data: [], nextCursor: null })),
+    [api, connectionEpoch, canteenId, canKitchen],
+  );
   const [toggling, setToggling] = useState(false);
 
   // Server events only trigger a refetch; the numbers are never computed client-side.
@@ -59,7 +67,7 @@ export function DashboardPage() {
 
   if (dashboard.error && !dashboard.data)
     return <ErrorState error={dashboard.error} onRetry={() => void dashboard.reload()} />;
-  const data = dashboard.data;
+  const data = dashboard.data?.canteen ? dashboard.data : undefined;
 
   const accepting = data ? data.canteen.isActive && data.canteen.isAcceptingOrders : false;
 
@@ -93,7 +101,7 @@ export function DashboardPage() {
                   : 'Order-taking is paused. Students can browse the menu but cannot place new orders.'}
             </p>
           </div>
-          {data.canteen.isActive ? (
+          {data.canteen.isActive && canPause ? (
             data.canteen.isAcceptingOrders ? (
               <Button
                 variant="secondary"
@@ -120,25 +128,40 @@ export function DashboardPage() {
         <KpiStrip
           label="Tonight's orders"
           items={[
-            {
-              label: 'Awaiting preparation',
-              value: data.orders.awaitingPreparation,
-              icon: <IconBag width={16} height={16} />,
-              attention: data.orders.awaitingPreparation > 0,
-              to: '/orders',
-            },
-            {
-              label: 'Preparing',
-              value: data.orders.preparing,
-              icon: <IconFlame width={16} height={16} />,
-              to: '/orders',
-            },
-            {
-              label: 'Ready for pickup',
-              value: data.orders.ready,
-              icon: <IconCheck width={16} height={16} />,
-              to: '/orders',
-            },
+            ...(canKitchen
+              ? [
+                  {
+                    label: 'Awaiting preparation',
+                    value: data.orders.awaitingPreparation,
+                    icon: <IconBag width={16} height={16} />,
+                    attention: data.orders.awaitingPreparation > 0,
+                    to: '/orders',
+                  },
+                  {
+                    label: 'Preparing',
+                    value: data.orders.preparing,
+                    icon: <IconFlame width={16} height={16} />,
+                    to: '/orders',
+                  },
+                  {
+                    label: 'Ready for pickup',
+                    value: data.orders.ready,
+                    icon: <IconCheck width={16} height={16} />,
+                    to: '/orders',
+                  },
+                ]
+              : []),
+            ...(canCashier
+              ? [
+                  {
+                    label: 'Payment pending',
+                    value: data.pendingPayments,
+                    icon: <IconBag width={16} height={16} />,
+                    attention: data.pendingPayments > 0,
+                    to: '/cashier',
+                  },
+                ]
+              : []),
             {
               label: "Today's orders",
               value: data.today.orderCount,
@@ -151,6 +174,7 @@ export function DashboardPage() {
         <SkeletonRows rows={2} />
       )}
 
+      {canKitchen ? (
       <section className="section">
         <div className="section-header">
           <h2>Active orders</h2>
@@ -181,7 +205,7 @@ export function DashboardPage() {
                     <td>
                       <strong className="order-number">{order.orderNumber}</strong>
                     </td>
-                    <td>{order.student.name}</td>
+                    <td>{order.student?.name ?? order.guestName ?? 'Walk-in'}</td>
                     <td className="muted">{itemCount(order.items)}</td>
                     <td className="num">{formatRupees(order.totalPaise)}</td>
                     <td className="muted">{order.paidAt ? formatTime(order.paidAt) : '—'}</td>
@@ -201,6 +225,7 @@ export function DashboardPage() {
           />
         )}
       </section>
+      ) : null}
     </>
   );
 }

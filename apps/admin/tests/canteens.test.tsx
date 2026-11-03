@@ -9,6 +9,7 @@ const row = (name: string) => screen.getByRole('link', { name }).closest('tr')!;
 describe('canteens', () => {
   it('lists canteens with their status and counts', async () => {
     const api = fakeAdminApi();
+    api.browseCanteens.mockResolvedValue([]);
     api.canteens.mockResolvedValue([
       adminCanteen('Vedavathi Night Canteen'),
       adminCanteen('New Hostel Night Canteen', { isAcceptingOrders: false, status: 'PAUSED' }),
@@ -33,6 +34,7 @@ describe('canteens', () => {
 
   it('pauses order-taking', async () => {
     const api = fakeAdminApi();
+    api.browseCanteens.mockResolvedValue([]);
     const c = adminCanteen('Vedavathi Night Canteen');
     api.canteens
       .mockResolvedValueOnce([c])
@@ -46,6 +48,7 @@ describe('canteens', () => {
 
   it('asks for confirmation before deactivating', async () => {
     const api = fakeAdminApi();
+    api.browseCanteens.mockResolvedValue([]);
     const c = adminCanteen('Vedavathi Night Canteen');
     api.canteens.mockResolvedValue([c]);
     api.updateCanteen.mockResolvedValue({ ...c, isActive: false, status: 'INACTIVE' });
@@ -59,6 +62,7 @@ describe('canteens', () => {
 
   it('creates a canteen', async () => {
     const api = fakeAdminApi();
+    api.browseCanteens.mockResolvedValue([]);
     api.canteens.mockResolvedValue([]);
     api.createCanteen.mockImplementation(async (body) => ({ ...adminCanteen(body.name) }));
     renderAdmin(<CanteensPage />, { api });
@@ -78,6 +82,7 @@ describe('canteens', () => {
 
   it('validates the slug locally', async () => {
     const api = fakeAdminApi();
+    api.browseCanteens.mockResolvedValue([]);
     api.canteens.mockResolvedValue([]);
     renderAdmin(<CanteensPage />, { api });
     await userEvent.click((await screen.findAllByRole('button', { name: 'Add canteen' }))[0]!);

@@ -64,27 +64,55 @@ class ServeApi {
 
   Future<List<Canteen>> canteens() async => _l(await client.data<Object>('GET', '/canteens')).map(Canteen.fromJson).toList();
 
-  Future<Menu> menu(String canteenId) async => Menu.fromJson(_m(await client.data<Object>('GET', '/canteens/$canteenId/menu')));
+  Future<Canteen> canteen(String canteenId) async =>
+      Canteen.fromJson(_m(await client.data<Object>('GET', '/canteens/$canteenId')));
 
-  Future<MenuItemDetail> menuItem(String id) async => MenuItemDetail.fromJson(_m(await client.data<Object>('GET', '/menu/items/$id')));
+  Future<Menu> menu(String canteenId, {ServicePeriod period = ServicePeriod.night}) async => Menu.fromJson(
+    _m(await client.data<Object>('GET', '/canteens/$canteenId/menu', query: {'period': period.apiValue})),
+  );
+
+  Future<MenuItemDetail> menuItem(String id, {ServicePeriod period = ServicePeriod.night}) async =>
+      MenuItemDetail.fromJson(_m(await client.data<Object>('GET', '/menu/items/$id', query: {'period': period.apiValue})));
+
+  Future<CanteenPaymentConfig> paymentConfig(String canteenId) async =>
+      CanteenPaymentConfig.fromJson(_m(await client.data<Object>('GET', '/canteens/$canteenId/payment-config')));
 
   Future<Recommendations> recommendations(String canteenId) async =>
       Recommendations.fromJson(_m(await client.data<Object>('GET', '/students/me/recommendations', query: {'canteenId': canteenId})));
 
-  Future<Quote> quote(String canteenId, List<CartLineInput> items) => _withCartIssues(
+  Future<Quote> quote(String canteenId, List<CartLineInput> items, {ServicePeriod period = ServicePeriod.night}) => _withCartIssues(
     () async => Quote.fromJson(
-      _m(await client.data<Object>('POST', '/cart/quote', body: {'canteenId': canteenId, 'items': items.map((i) => i.toJson()).toList()})),
+      _m(
+        await client.data<Object>(
+          'POST',
+          '/cart/quote',
+          body: {
+            'canteenId': canteenId,
+            'servicePeriod': period.apiValue,
+            'items': items.map((i) => i.toJson()).toList(),
+          },
+        ),
+      ),
     ),
   );
 
   /// [idempotencyKey] is generated once per checkout attempt and reused on retries.
-  Future<StudentOrder> placeOrder(String canteenId, List<CartLineInput> items, {required String idempotencyKey}) => _withCartIssues(
+  Future<StudentOrder> placeOrder(
+    String canteenId,
+    List<CartLineInput> items, {
+    ServicePeriod period = ServicePeriod.night,
+    required String idempotencyKey,
+  }) => _withCartIssues(
     () async => StudentOrder.fromJson(
       _m(
         await client.data<Object>(
           'POST',
           '/orders',
-          body: {'canteenId': canteenId, 'items': items.map((i) => i.toJson()).toList()},
+          body: {
+            'canteenId': canteenId,
+            'servicePeriod': period.apiValue,
+            'items': items.map((i) => i.toJson()).toList(),
+          },
           headers: {'Idempotency-Key': idempotencyKey},
         ),
       ),
@@ -103,7 +131,12 @@ class ServeApi {
   Future<PaymentSession> initiatePayment(String orderId) async =>
       PaymentSession.fromJson(_m(await client.data<Object>('POST', '/payments/$orderId/initiate')));
 
-  /// Development mock gateway. Real Razorpay checkout will call `/verify` instead.
+  /// Stores a UTR as supporting information. Does not confirm payment.
+  Future<StudentOrder> claimPayment(String orderId, {String? utr}) async => StudentOrder.fromJson(
+    _m(await client.data<Object>('POST', '/payments/$orderId/claim', body: {'utr': utr})),
+  );
+
+  /// Development mock gateway used only by integration tests against PAYMENT_MODE=mock.
   Future<StudentOrder> completeMockPayment(String orderId, {bool succeed = true}) async {
     final data = _m(
       await client.data<Object>('POST', '/payments/$orderId/mock-complete', body: {'outcome': succeed ? 'success' : 'failure'}),

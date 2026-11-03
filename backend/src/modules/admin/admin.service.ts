@@ -1,5 +1,7 @@
+import type { Logger } from 'pino';
 import type { Prisma, StaffStatus } from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../lib/prisma.js';
+import { writeAudit } from '../../lib/audit.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
 import { startOfIstDay } from '../../lib/time.js';
@@ -8,6 +10,8 @@ import { pageArgs, toPage, type Pagination } from '../../http/validation.js';
 import type { AdminPrincipal } from '../auth/principal.js';
 import { writeNotifications } from '../notifications/notification.writer.js';
 import { canteenSelect, orderTakingPayload, toCanteenDto } from '../canteens/canteen.dto.js';
+import { collectAdminWarnings, createAdminConfigService } from './admin-config.js';
+import { ensureOperatingAssignment, listStaffAssignments } from '../staff/assignments.js';
 
 export interface CanteenInput {
   name: string;
@@ -36,7 +40,8 @@ const slugify = (name: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-export function createAdminService(prisma: PrismaClient, events: EventPublisher) {
+export function createAdminService(prisma: PrismaClient, events: EventPublisher, logger: Logger) {
+  const config = createAdminConfigService(prisma, logger);
   function canteenConflict(err: unknown): never {
     if (isUniqueViolation(err, 'name'))
       throw new ConflictError('A canteen with this name already exists.', 'CANTEEN_NAME_TAKEN');
@@ -56,6 +61,8 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
   }
 
   return {
+    ...config,
+
     /** Platform overview, computed from live data (one round of parallel aggregate queries). */
     async dashboard() {
       const since = startOfIstDay();
@@ -70,7 +77,11 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
             _count: { _all: true },
           }),
           prisma.order.aggregate({
-            where: { paidAt: { gte: since }, status: { notIn: ['PLACED', 'CANCELLED'] } },
+            where: {
+              paidAt: { gte: since },
+              status: { notIn: ['PLACED', 'CANCELLED'] },
+              payment: { status: 'SUCCESS', isSimulated: false },
+            },
             _count: { _all: true },
             _sum: { totalPaise: true },
           }),
@@ -171,6 +182,13 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
       const { hostels, staff, categories, ...base } = canteen;
       return {
         ...toCanteenDto(base),
+        services: (canteen.services ?? []).map((service) => ({
+          period: service.period,
+          isEnabled: service.isEnabled,
+          override: service.override,
+          schedules: service.schedules,
+        })),
+        configurationWarnings: await collectAdminWarnings(prisma, base),
         hostels,
         staff,
         menuSummary: {
@@ -205,6 +223,7 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
             openingHours: input.openingHours ?? null,
             isActive: input.isActive ?? true,
             isAcceptingOrders: input.isAcceptingOrders ?? true,
+            paymentConfig: { create: { mode: 'DEMO', isActive: false } },
           },
           select: canteenSelect,
         });
@@ -340,7 +359,7 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
         },
       });
       if (!staff) throw new NotFoundError('Staff member not found.', 'STAFF_NOT_FOUND');
-      return staff;
+      return { ...staff, assignments: await listStaffAssignments(prisma, staffId) };
     },
 
     /**
@@ -370,6 +389,7 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
           where: { staffId, status: 'PENDING', requestedCanteenId: canteenId },
           data: { status: 'APPROVED', reviewedAt: new Date(), reviewedByAdminId: admin.id },
         });
+        await ensureOperatingAssignment(tx, staffId, canteenId);
         await writeNotifications(tx, outbox, [{ kind: 'staff', id: staffId }], {
           type: wasApproved ? 'STAFF_CANTEEN_ASSIGNED' : 'STAFF_APPROVED',
           title: wasApproved ? 'Canteen assignment updated' : 'Access approved',
@@ -389,6 +409,13 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
       if (!wasApproved) outbox.emit('staff.approved', targets, payload);
       outbox.emit('staff.canteen_assigned', targets, payload);
       outbox.flush(events);
+      writeAudit(logger, {
+        actor: { role: 'ADMIN', id: admin.id },
+        action: 'admin.staff.assigned',
+        target: { type: 'staff', id: staffId },
+        before: { status: staff.status, canteenId: staff.canteenId },
+        after: { status: 'APPROVED', canteenId, capabilities: ['KITCHEN', 'MENU', 'PAUSE'] },
+      });
       return updated;
     },
 
@@ -408,6 +435,7 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
           data: { status: 'DEACTIVATED', canteenId: null },
           select: staffSelect,
         });
+        await tx.staffCanteenAssignment.deleteMany({ where: { staffId } });
         await tx.canteenChangeRequest.updateMany({
           where: { staffId, status: 'PENDING' },
           data: {
@@ -430,6 +458,13 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher)
       });
       outbox.command({ type: 'disconnect-staff', staffId });
       outbox.flush(events);
+      writeAudit(logger, {
+        actor: { role: 'ADMIN', id: admin.id },
+        action: 'admin.staff.deactivated',
+        target: { type: 'staff', id: staffId },
+        before: { status: staff.status, canteenId: staff.canteenId },
+        after: { status: 'DEACTIVATED', canteenId: null },
+      });
       return updated;
     },
   };

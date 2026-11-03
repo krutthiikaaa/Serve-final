@@ -281,8 +281,12 @@ class OrderCard extends StatelessWidget {
                   runSpacing: 8,
                   children: [
                     _MetaChip(icon: Icons.restaurant_menu_rounded, label: '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}'),
+                    _MetaChip(icon: Icons.wb_twilight_outlined, label: formatServicePeriod(order.servicePeriod)),
                     _MetaChip(icon: Icons.payments_outlined, label: formatRupees(order.totalPaise)),
                     _MetaChip(icon: Icons.schedule_rounded, label: formatDateTime(order.createdAt)),
+                    if (order.payment?.isSimulated == true)
+                      const _MetaChip(icon: Icons.science_outlined, label: 'DEMO'),
+                    if (order.status == OrderStatus.placed) const _MetaChip(icon: Icons.hourglass_top_rounded, label: 'PAYMENT PENDING'),
                   ],
                 ),
                 if (order.status.isActive) ...[const SizedBox(height: 14), OrderStageStrip(status: order.status)],
@@ -314,19 +318,26 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: ServeColors.white.withValues(alpha: 0.72), borderRadius: BorderRadius.circular(20)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: ServeColors.oliveInk),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: ServeColors.ink),
-          ),
-        ],
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 48),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: ServeColors.white.withValues(alpha: 0.72), borderRadius: BorderRadius.circular(20)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: ServeColors.oliveInk),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: ServeColors.ink),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

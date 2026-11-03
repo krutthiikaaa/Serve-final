@@ -6,6 +6,7 @@ import '../../services/api/serve_api.dart';
 import '../../services/realtime/realtime_service.dart';
 import '../../state/canteen_selection.dart';
 import '../../state/cart_controller.dart';
+import '../cart_actions.dart';
 import '../../state/recently_viewed_controller.dart';
 import '../../theme/serve_layout.dart';
 import '../../theme/serve_theme.dart';
@@ -33,6 +34,7 @@ class _MenuScreenState extends State<MenuScreen> with WidgetsBindingObserver, Li
   Menu? _menu;
   Object? _error;
   String? _canteenId;
+  ServicePeriod? _period;
   MenuFilters _filters = MenuFilters.none;
   MenuFilters _draft = MenuFilters.none;
   MenuSort _sort = MenuSort.featured;
@@ -77,8 +79,11 @@ class _MenuScreenState extends State<MenuScreen> with WidgetsBindingObserver, Li
 
   void _onCanteenChanged() {
     final id = _selection.id;
-    if (id == null || id == _canteenId) return;
+    final period = _selection.period;
+    if (id == null) return;
+    if (id == _canteenId && period == _period) return;
     _canteenId = id;
+    _period = period;
     _menu = null;
     _filters = MenuFilters.none;
     _draft = MenuFilters.none;
@@ -91,12 +96,14 @@ class _MenuScreenState extends State<MenuScreen> with WidgetsBindingObserver, Li
 
   Future<void> _load() async {
     final id = _canteenId;
+    final period = _period ?? ServicePeriod.night;
     if (id == null) return;
     final generation = ++_generation;
     setState(() => _error = null);
     try {
-      final menu = await context.read<ServeApi>().menu(id);
+      final menu = await context.read<ServeApi>().menu(id, period: period);
       if (!mounted || generation != _generation) return;
+      context.read<CanteenSelection>().applyCanteen(menu.canteen);
       // Keep cart snapshots (names/prices shown in the cart) current.
       final cart = context.read<CartController>();
       for (final c in menu.categories) {
@@ -294,9 +301,12 @@ class _MenuBody extends StatelessWidget {
                   ),
                 ),
               if (menu.visibleCategories.isEmpty)
-                const SliverFillRemaining(
+                SliverFillRemaining(
                   hasScrollBody: false,
-                  child: EmptyView(icon: Icons.no_meals_rounded, title: 'No items available at this canteen right now.'),
+                  child: EmptyView(
+                    icon: Icons.no_meals_rounded,
+                    title: 'No items on the ${menu.servicePeriod.label.toLowerCase()} menu right now.',
+                  ),
                 )
               else
                 SliverPadding(
@@ -392,7 +402,25 @@ class _MenuIntro extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               CanteenStatusLabel(canteen: menu.canteen),
-              if (!menu.canteen.acceptingOrders) ...[
+              const SizedBox(height: 10),
+              ServiceAvailabilityPills(canteen: menu.canteen),
+              const SizedBox(height: 12),
+              ServicePeriodToggle(
+                value: menu.servicePeriod,
+                enabledPeriods: menu.canteen.supportedPeriods.isEmpty ? null : menu.canteen.supportedPeriods.toSet(),
+                onChanged: (next) async {
+                  if (!await confirmCartContextChange(context, canteenId: menu.canteen.id, period: next)) return;
+                  if (!context.mounted) return;
+                  context.read<CanteenSelection>().selectPeriod(next);
+                },
+              ),
+              if (menu.canteen.orderingBlockReason(menu.servicePeriod) != null) ...[
+                const SizedBox(height: 12),
+                NoticeBanner(
+                  message: menu.canteen.orderingBlockReason(menu.servicePeriod)!,
+                  icon: Icons.schedule_rounded,
+                ),
+              ] else if (!menu.canteen.acceptingOrders) ...[
                 const SizedBox(height: 12),
                 const NoticeBanner(
                   message: 'This canteen is currently not accepting orders. You can still browse the menu.',

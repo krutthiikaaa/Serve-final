@@ -32,6 +32,19 @@ export const errorSchema = z.strictObject({
 export const page = <T extends z.ZodType>(item: T) =>
   z.strictObject({ data: z.array(item), nextCursor: uuid.nullable() });
 
+export const servicePeriodSchema = z.enum(['DAY', 'NIGHT']);
+export const scheduleOverrideSchema = z.enum(['AUTO', 'FORCE_OPEN', 'FORCE_CLOSED']);
+export const canteenServiceSchema = z.strictObject({
+  period: servicePeriodSchema,
+  isEnabled: z.boolean(),
+  override: scheduleOverrideSchema,
+  isOpenNow: z.boolean(),
+});
+export const configurationWarningSchema = z.strictObject({
+  period: servicePeriodSchema,
+  code: z.enum(['AUTO_WITHOUT_SCHEDULE', 'INVALID_SCHEDULE']),
+});
+
 export const canteenSchema = z.strictObject({
   id: uuid,
   name: z.string(),
@@ -41,6 +54,13 @@ export const canteenSchema = z.strictObject({
   isActive: z.boolean(),
   isAcceptingOrders: z.boolean(),
   status: z.enum(['ACCEPTING_ORDERS', 'PAUSED', 'INACTIVE']),
+});
+
+/** Student-facing canteen (`GET /api/canteens`, menu). Extra service fields. */
+export const publicCanteenSchema = canteenSchema.extend({
+  supportedPeriods: z.array(servicePeriodSchema),
+  services: z.array(canteenServiceSchema),
+  configurationWarnings: z.array(configurationWarningSchema),
 });
 
 export const hostelSchema = z.strictObject({ id: uuid, name: z.string(), canteen: ref });
@@ -70,12 +90,28 @@ export const categorySchema = z.strictObject({
 });
 
 export const menuSchema = z.strictObject({
-  canteen: canteenSchema,
+  canteen: publicCanteenSchema,
+  servicePeriod: servicePeriodSchema,
   categories: z.array(categorySchema.extend({ items: z.array(menuItemSchema) })),
+});
+
+export const menuItemServiceConfigSchema = z.strictObject({
+  period: servicePeriodSchema,
+  pricePaise: paise,
+  isAvailable: z.boolean(),
+});
+
+/** Admin catalogue item (`GET /api/admin/canteens/:id/menu/catalogue`). */
+export const adminMenuItemSchema = menuItemSchema.extend({
+  services: z.array(menuItemServiceConfigSchema),
+});
+export const adminMenuCategorySchema = categorySchema.extend({
+  items: z.array(adminMenuItemSchema),
 });
 
 export const quoteSchema = z.strictObject({
   canteen: ref,
+  servicePeriod: servicePeriodSchema,
   items: z.array(
     z.strictObject({
       menuItemId: uuid,
@@ -91,10 +127,18 @@ export const quoteSchema = z.strictObject({
   currency: z.literal('INR'),
 });
 
+export const orderChannelSchema = z.enum(['APP', 'WALK_IN']);
+export const paymentProviderSchema = z.enum(['MOCK', 'RAZORPAY', 'UPI', 'CASH']);
+export const paymentStatusSchema = z.enum(['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED']);
+
 export const studentOrderSchema = z.strictObject({
   id: uuid,
   orderNumber: z.string().regex(/^SV\d+$/),
+  receiptNumber: z.string().nullable(),
+  channel: orderChannelSchema,
+  guestName: z.string().nullable(),
   status: orderStatusSchema,
+  servicePeriod: servicePeriodSchema.nullable().optional(),
   totalPaise: paise,
   currency: z.literal('INR'),
   canteen: ref,
@@ -110,13 +154,16 @@ export const studentOrderSchema = z.strictObject({
   ),
   payment: z
     .strictObject({
-      provider: z.enum(['MOCK', 'RAZORPAY']),
-      status: z.enum(['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED']),
+      provider: paymentProviderSchema,
+      status: paymentStatusSchema,
       amountPaise: paise,
       currency: z.string(),
+      utr: z.string().nullable(),
+      verifiedAt: isoDate.nullable(),
       paidAt: isoDate.nullable(),
       refundedAt: isoDate.nullable(),
       failureReason: z.string().nullable(),
+      isSimulated: z.boolean(),
     })
     .nullable(),
   createdAt: isoDate,
@@ -130,7 +177,37 @@ export const studentOrderSchema = z.strictObject({
   timeline: z.array(z.strictObject({ status: orderStatusSchema, at: isoDate })),
 });
 
-export const staffOrderSchema = studentOrderSchema.extend({ student: ref });
+export const staffOrderSchema = studentOrderSchema.extend({ student: ref.nullable() });
+
+export const receiptSchema = z.strictObject({
+  receiptNumber: z.string(),
+  orderNumber: z.string().regex(/^SV\d+$/),
+  pickupToken: z.string().nullable(),
+  channel: orderChannelSchema,
+  universityName: z.string(),
+  canteen: ref,
+  createdAt: isoDate,
+  paidAt: isoDate,
+  servicePeriod: servicePeriodSchema.nullable(),
+  items: z.array(
+    z.strictObject({
+      itemName: z.string(),
+      quantity: z.number().int(),
+      unitPricePaise: paise,
+      lineTotalPaise: paise,
+    }),
+  ),
+  totalPaise: paise,
+  currency: z.literal('INR'),
+  paymentMethod: paymentProviderSchema,
+  paymentStatus: z.literal('SUCCESS'),
+  utr: z.string().nullable(),
+  studentName: z.string().nullable(),
+  guestName: z.string().nullable(),
+  verifiedByName: z.string().nullable(),
+  simulated: z.boolean(),
+  notice: z.string().nullable(),
+});
 
 export const notificationSchema = z.strictObject({
   id: uuid,
@@ -169,11 +246,19 @@ export const meStudentSchema = z.strictObject({
   hostel: ref,
   defaultCanteen: canteenState,
 });
+export const staffCapabilitySchema = z.enum(['KITCHEN', 'MENU', 'PAUSE', 'CASHIER']);
+export const staffMeAssignmentSchema = z.strictObject({
+  canteenId: uuid,
+  canteen: canteenState,
+  capabilities: z.array(staffCapabilitySchema),
+});
+
 export const meStaffSchema = z.strictObject({
   ...meBase,
   role: z.literal('STAFF'),
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'DEACTIVATED']),
   canteen: canteenState.nullable(),
+  assignments: z.array(staffMeAssignmentSchema),
   pendingChangeRequest: z
     .strictObject({
       id: uuid,
@@ -215,6 +300,7 @@ export const staffDashboardSchema = z.strictObject({
     preparing: z.number(),
     ready: z.number(),
   }),
+  pendingPayments: z.number(),
   today: z.strictObject({ since: isoDate, orderCount: z.number(), revenuePaise: paise }),
 });
 
@@ -267,7 +353,10 @@ export const orderEventSchema = <T extends z.ZodType>(order: T) =>
 export type OrderStatus = z.infer<typeof orderStatusSchema>;
 export type ApiErrorBody = z.infer<typeof errorSchema>;
 export type Page<T> = { data: T[]; nextCursor: string | null };
+export type ServicePeriod = z.infer<typeof servicePeriodSchema>;
+export type ScheduleOverride = z.infer<typeof scheduleOverrideSchema>;
 export type Canteen = z.infer<typeof canteenSchema>;
+export type PublicCanteen = z.infer<typeof publicCanteenSchema>;
 export type Hostel = z.infer<typeof hostelSchema>;
 export type MenuItem = z.infer<typeof menuItemSchema>;
 export type Category = z.infer<typeof categorySchema>;
@@ -294,6 +383,31 @@ export type AdminCanteen = Canteen & {
   counts: { hostels: number; activeStaff: number; menuItems: number };
 };
 
+export type AdminOperatingSchedule = {
+  weekday: number;
+  opensAtMinutes: number;
+  closesAtMinutes: number;
+};
+
+export type AdminCanteenService = {
+  period: ServicePeriod;
+  isEnabled: boolean;
+  override: ScheduleOverride;
+  schedules: AdminOperatingSchedule[];
+};
+
+export type AdminConfigurationWarningCode =
+  | 'AUTO_WITHOUT_SCHEDULE'
+  | 'INVALID_SCHEDULE'
+  | 'SERVICE_WITHOUT_MENU_PRICES'
+  | 'SERVICE_DISABLED'
+  | 'PERIOD_SCHEDULE_OVERLAP';
+
+export type AdminConfigurationWarning = {
+  period: ServicePeriod | null;
+  code: AdminConfigurationWarningCode;
+};
+
 /** Admin canteen details (`GET /api/admin/canteens/:id`). */
 export type AdminCanteenDetail = Canteen & {
   hostels: { id: string; name: string; isActive: boolean }[];
@@ -310,10 +424,25 @@ export type AdminCanteenDetail = Canteen & {
       availableItems: number;
     }[];
   };
+  services?: AdminCanteenService[];
+  configurationWarnings?: AdminConfigurationWarning[];
+};
+
+export type StaffCapability = z.infer<typeof staffCapabilitySchema>;
+export type OrderChannel = z.infer<typeof orderChannelSchema>;
+export type PaymentProvider = z.infer<typeof paymentProviderSchema>;
+export type Receipt = z.infer<typeof receiptSchema>;
+
+export type StaffAssignment = {
+  canteenId: string;
+  canteen: { id: string; name: string; isActive?: boolean; isAcceptingOrders?: boolean };
+  capabilities: StaffCapability[];
 };
 
 /** Admin staff details (`GET /api/admin/staff/:id`). */
 export type StaffDetail = StaffSummary & {
+  canteenId?: string | null;
+  assignments?: StaffAssignment[];
   changeRequests: {
     id: string;
     status: ChangeRequest['status'];
@@ -325,6 +454,45 @@ export type StaffDetail = StaffSummary & {
     fromCanteen: { id: string; name: string } | null;
   }[];
 };
+
+export const paymentModeSchema = z.enum(['DEMO', 'LIVE']);
+export const demoQrSchema = z.strictObject({
+  payload: z.string(),
+  svg: z.string(),
+  warning: z.literal('DEMO ONLY — NOT PAYABLE'),
+});
+export const canteenPaymentConfigSchema = z.strictObject({
+  canteenId: uuid,
+  mode: paymentModeSchema,
+  upiVpa: z.string().nullable(),
+  merchantName: z.string().nullable(),
+  qrImageUrl: z.string().nullable(),
+  qrStorageKey: z.string().nullable().optional(),
+  instructions: z.string().nullable(),
+  isActive: z.boolean(),
+  demoQr: demoQrSchema.nullable(),
+  warnings: z.array(z.string()),
+  updatedAt: isoDate,
+});
+/** Student checkout config. Never includes `qrStorageKey` or Admin-only fields. */
+export const studentPaymentConfigSchema = canteenPaymentConfigSchema.omit({ qrStorageKey: true });
+export type PaymentMode = z.infer<typeof paymentModeSchema>;
+export type CanteenPaymentConfig = z.infer<typeof canteenPaymentConfigSchema>;
+export type StudentPaymentConfig = z.infer<typeof studentPaymentConfigSchema>;
+
+export type MenuItemServiceConfig = z.infer<typeof menuItemServiceConfigSchema>;
+
+export type MenuItemServices = {
+  id: string;
+  canteenId: string;
+  name: string;
+  pricePaise: number;
+  isAvailable: boolean;
+  services: MenuItemServiceConfig[];
+};
+
+export type AdminMenuItem = z.infer<typeof adminMenuItemSchema>;
+export type AdminMenuCategory = z.infer<typeof adminMenuCategorySchema>;
 
 export type AdminHostel = {
   id: string;
@@ -338,7 +506,7 @@ export type CartIssueReason = 'NOT_IN_CANTEEN' | 'INACTIVE' | 'UNAVAILABLE';
 export type PaymentSession = {
   orderId: string;
   orderNumber: string;
-  provider: 'MOCK' | 'RAZORPAY';
+  provider: PaymentProvider;
   providerOrderId: string;
   amountPaise: number;
   currency: string;

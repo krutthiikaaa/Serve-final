@@ -19,6 +19,7 @@ import {
 } from '@serve/web-shared';
 import { useAdminApi } from '../useAdminApi';
 import { RequestStatusTag } from './ChangeRequestsPage';
+import { StaffAssignmentsEditor } from './StaffAssignmentsEditor';
 
 const STATUS_FILTERS: { value: StaffStatus | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'All' },
@@ -154,7 +155,7 @@ export function StaffPage() {
                 <tr>
                   <th>Name</th>
                   <th>Status</th>
-                  <th>Canteen</th>
+                  <th>Primary canteen</th>
                   <th>Joined</th>
                   <th>
                     <span className="sr-only">Actions</span>
@@ -278,7 +279,7 @@ function StaffDetailModal({
             <dd>
               <StaffStatusTag status={s.status} />
             </dd>
-            <dt>Canteen</dt>
+            <dt>Primary canteen</dt>
             <dd>{s.canteen?.name ?? '—'}</dd>
             <dt>Joined</dt>
             <dd>{formatDateTime(s.createdAt)}</dd>
@@ -357,6 +358,15 @@ function StaffDetailModal({
               {assignLabel}
             </Button>
           </div>
+
+          <StaffAssignmentsEditor
+            staff={s}
+            canteens={canteens.data ?? []}
+            onChanged={() => {
+              void detail.reload();
+              onChanged();
+            }}
+          />
 
           {s.changeRequests.length > 0 ? (
             <div>

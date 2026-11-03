@@ -1,0 +1,107 @@
+/* Narrow thermal-style receipt. Printer model is not confirmed; this is
+   browser print only — not silent printing and not ESC/POS. */
+:root {
+  --receipt-width: 72mm;
+}
+
+.receipt-ticket {
+  width: min(var(--receipt-width), 100%);
+  margin: 0 auto;
+  padding: 12px 8px;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.receipt-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.receipt-university,
+.receipt-canteen {
+  text-align: center;
+  margin: 0;
+}
+.receipt-canteen {
+  font-weight: 650;
+}
+.receipt-meta {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+}
+.receipt-meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.receipt-meta dt {
+  color: var(--muted);
+}
+.receipt-meta dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.receipt-lines {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.receipt-lines th,
+.receipt-lines td {
+  padding: 3px 0;
+  text-align: left;
+}
+.receipt-lines th:not(:first-child),
+.receipt-lines td:not(:first-child) {
+  text-align: right;
+}
+.receipt-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  margin: 10px 0 6px;
+}
+.receipt-pay,
+.receipt-customer {
+  margin: 0 0 4px;
+}
+.receipt-demo {
+  margin: 8px 0;
+  padding: 6px 4px;
+  border: 1px dashed #9a3412;
+  color: #9a3412;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+@media print {
+  @page {
+    size: var(--receipt-width) auto;
+    margin: 4mm;
+  }
+  .sidebar,
+  .topbar,
+  .banner,
+  .page-header,
+  .no-print,
+  .nav,
+  .connection-banner {
+    display: none !important;
+  }
+  .shell,
+  .main,
+  .page {
+    display: block !important;
+    background: white !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .receipt-ticket {
+    width: var(--receipt-width);
+  }
+}

@@ -26,6 +26,7 @@ import {
   useToast,
 } from '@serve/web-shared';
 import { useStaffApi } from '../useStaffApi';
+import { useStaffCanteen } from '../staffCanteen';
 
 const MIN_PRICE_PAISE = 100;
 const MAX_PRICE_PAISE = 1_000_000;
@@ -33,9 +34,14 @@ const MAX_PRICE_PAISE = 1_000_000;
 /** Menu management for the assigned canteen. Prices are typed in rupees and sent as integer paise. */
 export function MenuPage() {
   const api = useStaffApi();
+  const { hasCapability } = useStaffCanteen();
   const toast = useToast();
   const { connectionEpoch } = useRealtime();
-  const menu = useResource(() => api.menu(), [api, connectionEpoch]);
+  const canManageMenu = hasCapability('MENU');
+  const menu = useResource(
+    () => (canManageMenu ? api.menu() : Promise.resolve([])),
+    [api, connectionEpoch, canManageMenu],
+  );
   const [itemModal, setItemModal] = useState<{ item?: MenuItem; categoryId?: string } | null>(null);
   const [categoryModal, setCategoryModal] = useState<{ category?: Category } | null>(null);
   const [pending, setPending] = useState<Record<string, boolean>>({});
@@ -93,6 +99,15 @@ export function MenuPage() {
   };
 
   const categories = menu.data ?? [];
+
+  if (!canManageMenu) {
+    return (
+      <EmptyState
+        title="Menu tools are not assigned"
+        body="An admin can add the menu capability for this canteen."
+      />
+    );
+  }
 
   return (
     <>

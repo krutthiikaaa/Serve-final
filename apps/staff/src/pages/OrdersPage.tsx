@@ -13,6 +13,7 @@ import {
   Modal,
   SkeletonRows,
   StatusPill,
+  Tag,
   TextArea,
   FormError,
   errorMessage,
@@ -27,6 +28,7 @@ import {
 } from '@serve/web-shared';
 import { NEXT_STATUS, canCancel, type StaffSettableStatus } from '../api/staff';
 import { useStaffApi } from '../useStaffApi';
+import { useStaffCanteen } from '../staffCanteen';
 
 type BoardColumn = { status: OrderStatus; title: string; empty: string; icon: ReactNode };
 
@@ -69,7 +71,16 @@ function useNow(intervalMs: number) {
 }
 
 export function OrdersPage() {
+  const { hasCapability } = useStaffCanteen();
   const [tab, setTab] = useState<'board' | 'COLLECTED' | 'CANCELLED'>('board');
+  if (!hasCapability('KITCHEN')) {
+    return (
+      <EmptyState
+        title="Kitchen tools are not assigned"
+        body="An admin can add the kitchen capability for this canteen."
+      />
+    );
+  }
   return (
     <>
       <div className="page-header">
@@ -231,11 +242,12 @@ function OrderBoard() {
                       >
                         <div className="order-card-top">
                           <span className="order-number">{order.orderNumber}</span>
+                          {order.payment?.isSimulated ? <Tag tone="warning">DEMO</Tag> : null}
                           <span className="muted small">
                             {order.paidAt ? timeAgo(order.paidAt, now) : ''}
                           </span>
                         </div>
-                        <div className="small">{order.student.name}</div>
+                        <div className="small">{order.student?.name ?? 'Walk-in'}</div>
                         <ul className="order-card-items">
                           {order.items.map((item) => (
                             <li key={item.id}>
@@ -369,13 +381,13 @@ export function OrderDetailModal({
         </div>
         <dl className="detail-grid">
           <dt>Student</dt>
-          <dd>{order.student.name}</dd>
+          <dd>{order.student?.name ?? order.guestName ?? 'Walk-in'}</dd>
           <dt>Pickup</dt>
           <dd>{order.canteen.name}</dd>
           <dt>Payment</dt>
           <dd>
             {order.payment
-              ? `${order.payment.status === 'SUCCESS' ? 'Paid' : order.payment.status.toLowerCase()} · ${order.payment.provider === 'MOCK' ? 'Test payment' : 'Razorpay'}`
+              ? `${order.payment.status === 'SUCCESS' ? 'Paid' : order.payment.status.toLowerCase()} · ${paymentProviderLabel(order.payment.provider)}`
               : '—'}
           </dd>
           {order.cancelReason ? (
@@ -454,7 +466,7 @@ function CancelOrderModal({
     >
       <div className="form">
         <p>
-          {order.student.name} paid {formatRupees(order.totalPaise)}. Cancelling refunds the payment
+          {order.student?.name ?? 'The student'} paid {formatRupees(order.totalPaise)}. Cancelling refunds the payment
           and notifies the student. This cannot be undone.
         </p>
         <Field label="Reason (shown to the student)" hint="For example: item ran out">
@@ -549,7 +561,7 @@ function OrderHistory({ status }: { status: 'COLLECTED' | 'CANCELLED' }) {
                       {order.orderNumber}
                     </button>
                   </td>
-                  <td>{order.student.name}</td>
+                  <td>{order.student?.name ?? order.guestName ?? 'Walk-in'}</td>
                   <td className="num">{formatRupees(order.totalPaise)}</td>
                   <td className="muted">
                     {formatDateTime(
@@ -577,4 +589,11 @@ function OrderHistory({ status }: { status: 'COLLECTED' | 'CANCELLED' }) {
       {selected ? <OrderDetailModal order={selected} onClose={() => setSelected(null)} /> : null}
     </section>
   );
+}
+
+function paymentProviderLabel(provider: string): string {
+  if (provider === 'MOCK') return 'Test payment';
+  if (provider === 'RAZORPAY') return 'Razorpay';
+  if (provider === 'CASH') return 'Cash';
+  return provider;
 }

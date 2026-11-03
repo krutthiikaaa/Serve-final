@@ -172,7 +172,7 @@ export function DashboardPage() {
                       <strong className="order-number">{order.orderNumber}</strong>
                     </td>
                     <td>{order.canteen.name}</td>
-                    <td>{order.student.name}</td>
+                    <td>{order.student?.name ?? order.guestName ?? 'Walk-in'}</td>
                     <td className="num">{formatRupees(order.totalPaise)}</td>
                     <td className="muted">{formatTime(order.createdAt)}</td>
                     <td>

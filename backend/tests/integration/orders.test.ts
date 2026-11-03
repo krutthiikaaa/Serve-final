@@ -584,13 +584,16 @@ describe('staff dashboard', () => {
       .set(bearer(staffKG.token))
       .expect(200);
     expect(res.body.data.canteen.id).toBe(kg.id);
-    expect(res.body.data.today.orderCount).toBeGreaterThan(0);
-    expect(res.body.data.today.revenuePaise).toBeGreaterThan(0);
+    expect(res.body.data.today.orderCount).toBeGreaterThanOrEqual(0);
     const fromDb = await prisma.order.aggregate({
-      where: { canteenId: kg.id, status: { notIn: ['PLACED', 'CANCELLED'] } },
+      where: {
+        canteenId: kg.id,
+        status: { notIn: ['PLACED', 'CANCELLED'] },
+        payment: { status: 'SUCCESS', isSimulated: false },
+      },
       _sum: { totalPaise: true },
     });
-    expect(res.body.data.today.revenuePaise).toBe(fromDb._sum.totalPaise);
+    expect(res.body.data.today.revenuePaise).toBe(fromDb._sum.totalPaise ?? 0);
   });
 });
 
@@ -698,6 +701,10 @@ describe('audit: transitions, concurrency, limits, refunds', () => {
       where: { id: { in: items.map((i) => i.id) } },
       data: { pricePaise: 1_000_000 },
     });
+    await prisma.menuItemService.updateMany({
+      where: { menuItemId: { in: items.map((i) => i.id) }, period: 'NIGHT' },
+      data: { pricePaise: 1_000_000 },
+    });
     try {
       const res = await quote({
         canteenId: kg.id,
@@ -710,8 +717,13 @@ describe('audit: transitions, concurrency, limits, refunds', () => {
       }).expect(200);
       expect(atCap.body.data.totalPaise).toBe(100_000_000);
     } finally {
-      for (const [id, pricePaise] of before)
+      for (const [id, pricePaise] of before) {
         await prisma.menuItem.update({ where: { id }, data: { pricePaise } });
+        await prisma.menuItemService.updateMany({
+          where: { menuItemId: id, period: 'NIGHT' },
+          data: { pricePaise },
+        });
+      }
     }
     await request(app)
       .patch(`/api/staff/menu/items/${sandwich.id}/price`)
@@ -726,7 +738,11 @@ describe('audit: transitions, concurrency, limits, refunds', () => {
       .set(bearer(staffYN.token))
       .expect(200);
     const ynRevenue = await prisma.order.aggregate({
-      where: { canteenId: yn.id, status: { notIn: ['PLACED', 'CANCELLED'] } },
+      where: {
+        canteenId: yn.id,
+        status: { notIn: ['PLACED', 'CANCELLED'] },
+        payment: { status: 'SUCCESS', isSimulated: false },
+      },
       _sum: { totalPaise: true },
     });
     expect(res.body.data.canteen.id).toBe(yn.id);

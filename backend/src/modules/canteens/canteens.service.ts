@@ -1,8 +1,21 @@
+import type { Logger } from 'pino';
 import type { PrismaClient } from '../../lib/prisma.js';
 import { NotFoundError } from '../../lib/errors.js';
+import type { Clock } from '../../lib/time.js';
+import { systemClock } from '../../lib/time.js';
 import type { Principal } from '../auth/principal.js';
-import { canteenSelect, canteenTakesOrders, toCanteenDto, type CanteenRow } from './canteen.dto.js';
 import { categorySelect, menuItemSelect, toCategoryDto, toMenuItemDto } from '../menu/menu.dto.js';
+import {
+  DEFAULT_SERVICE_PERIOD,
+  type ServicePeriod,
+} from './availability.js';
+import {
+  canteenSelect,
+  serviceAvailability,
+  toPublicCanteenDto,
+  type CanteenRow,
+} from './canteen.dto.js';
+import { ensureDemoPaymentConfig, toStudentPaymentConfigDto } from './payment-config.js';
 
 /**
  * Who may see a canteen:
@@ -24,7 +37,23 @@ export function canSeeCanteen(
   );
 }
 
-export function createCanteensService(prisma: PrismaClient) {
+export function createCanteensService(
+  prisma: PrismaClient,
+  deps: { clock?: Clock; logger?: Logger } = {},
+) {
+  const clock = deps.clock ?? systemClock;
+
+  function dto(canteen: CanteenRow, now = clock()) {
+    const mapped = toPublicCanteenDto(canteen, now);
+    if (mapped.configurationWarnings.length > 0) {
+      deps.logger?.warn(
+        { canteenId: canteen.id, warnings: mapped.configurationWarnings },
+        'Canteen service schedule needs configuration',
+      );
+    }
+    return mapped;
+  }
+
   async function visibleCanteen(principal: Principal | null, canteenId: string) {
     const canteen = await prisma.canteen.findUnique({
       where: { id: canteenId },
@@ -40,40 +69,69 @@ export function createCanteensService(prisma: PrismaClient) {
     visibleCanteen,
 
     async list(principal: Principal | null) {
+      const now = clock();
       const canteens = await prisma.canteen.findMany({
         where: principal?.role === 'ADMIN' ? {} : { isActive: true },
         select: canteenSelect,
         orderBy: { name: 'asc' },
       });
-      return canteens.map(toCanteenDto);
+      return canteens.map((canteen) => dto(canteen, now));
     },
 
     async get(principal: Principal | null, canteenId: string) {
-      return toCanteenDto(await visibleCanteen(principal, canteenId));
+      return dto(await visibleCanteen(principal, canteenId));
     },
 
-    /** Student-facing menu: active categories with their active items (one query). */
-    async menu(principal: Principal | null, canteenId: string) {
+    /** Student-facing menu: active categories with period-priced items (one query). */
+    async menu(
+      principal: Principal | null,
+      canteenId: string,
+      servicePeriod: ServicePeriod = DEFAULT_SERVICE_PERIOD,
+    ) {
+      const now = clock();
       const canteen = await visibleCanteen(principal, canteenId);
-      const takesOrders = canteenTakesOrders(canteen);
+      const service = canteen.services.find((row) => row.period === servicePeriod);
+      const availability = serviceAvailability(canteen, service, now);
       const categories = await prisma.menuCategory.findMany({
         where: { canteenId, isActive: true },
         select: {
           ...categorySelect,
-          items: { where: { isActive: true }, select: menuItemSelect, orderBy: { name: 'asc' } },
+          items: {
+            where: { isActive: true, services: { some: { period: servicePeriod } } },
+            select: {
+              ...menuItemSelect,
+              services: {
+                where: { period: servicePeriod },
+                select: { pricePaise: true, isAvailable: true },
+              },
+            },
+            orderBy: { name: 'asc' },
+          },
         },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       });
       return {
-        canteen: toCanteenDto(canteen),
+        canteen: dto(canteen, now),
+        servicePeriod,
         categories: categories
-          .filter((category) => category.items.length > 0)
           .map(({ items, ...category }) => ({
             ...toCategoryDto(category),
-            items: items.map((item) =>
-              toMenuItemDto(item, { categoryActive: true, canteenTakesOrders: takesOrders }),
-            ),
-          })),
+            items: items
+              .map((item) => {
+                const period = item.services[0];
+                if (!period) return null;
+                return toMenuItemDto(
+                  {
+                    ...item,
+                    pricePaise: period.pricePaise,
+                    isAvailable: item.isAvailable && period.isAvailable,
+                  },
+                  { categoryActive: true, canteenTakesOrders: availability.open },
+                );
+              })
+              .filter((item): item is NonNullable<typeof item> => item !== null),
+          }))
+          .filter((category) => category.items.length > 0),
       };
     },
 
@@ -90,17 +148,28 @@ export function createCanteensService(prisma: PrismaClient) {
       }));
     },
 
-    async item(principal: Principal | null, itemId: string) {
+    async item(
+      principal: Principal | null,
+      itemId: string,
+      servicePeriod: ServicePeriod = DEFAULT_SERVICE_PERIOD,
+    ) {
+      const now = clock();
       const item = await prisma.menuItem.findUnique({
         where: { id: itemId },
         select: {
           ...menuItemSelect,
+          services: {
+            where: { period: servicePeriod },
+            select: { pricePaise: true, isAvailable: true },
+          },
           category: { select: { id: true, name: true, isActive: true } },
           canteen: { select: canteenSelect },
         },
       });
+      const period = item?.services[0];
       if (
         !item ||
+        !period ||
         !item.isActive ||
         !item.category.isActive ||
         !canSeeCanteen(principal, item.canteen)
@@ -108,14 +177,29 @@ export function createCanteensService(prisma: PrismaClient) {
         throw new NotFoundError('Menu item not found.', 'MENU_ITEM_NOT_FOUND');
       }
       const { category, canteen, ...row } = item;
+      const availability = serviceAvailability(
+        canteen,
+        canteen.services.find((service) => service.period === servicePeriod),
+        now,
+      );
       return {
-        ...toMenuItemDto(row, {
-          categoryActive: true,
-          canteenTakesOrders: canteenTakesOrders(canteen),
-        }),
+        ...toMenuItemDto(
+          {
+            ...row,
+            pricePaise: period.pricePaise,
+            isAvailable: row.isAvailable && period.isAvailable,
+          },
+          { categoryActive: true, canteenTakesOrders: availability.open },
+        ),
         category: { id: category.id, name: category.name },
-        canteen: toCanteenDto(canteen),
+        canteen: dto(canteen, now),
+        servicePeriod,
       };
+    },
+
+    async paymentConfig(principal: Principal | null, canteenId: string) {
+      const canteen = await visibleCanteen(principal, canteenId);
+      return toStudentPaymentConfigDto(await ensureDemoPaymentConfig(prisma, canteen.id));
     },
   };
 }

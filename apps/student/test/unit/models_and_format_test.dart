@@ -20,6 +20,52 @@ void main() {
     expect(m.visibleCategories.single.items[1].isOrderable, isFalse);
   });
 
+  test('parses DAY/NIGHT canteen availability from the backend, not the phone clock', () {
+    final open = Canteen.fromJson(canteenJson());
+    expect(open.availabilityFor(ServicePeriod.night), ServiceAvailability.open);
+    expect(open.availabilityLabel(ServicePeriod.day), 'Open now');
+    final closedJson = canteenJson();
+    closedJson['supportedPeriods'] = ['NIGHT'];
+    closedJson['services'] = [
+      {'period': 'NIGHT', 'isEnabled': true, 'override': 'AUTO', 'isOpenNow': false},
+    ];
+    closedJson['configurationWarnings'] = [
+      {'period': 'DAY', 'code': 'AUTO_WITHOUT_SCHEDULE'},
+    ];
+    final closed = Canteen.fromJson(closedJson);
+    expect(closed.availabilityFor(ServicePeriod.night), ServiceAvailability.closed);
+    expect(closed.availabilityFor(ServicePeriod.day), ServiceAvailability.notConfigured);
+    expect(closed.orderingBlockReason(ServicePeriod.night), contains('closed'));
+  });
+
+  test('demo QR payload is unique and never a UPI payment URI', () {
+    final demo = DemoQr.fromJson({
+      'payload': 'SERVE-DEMO:$kgId',
+      'svg': '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      'warning': 'DEMO ONLY — NOT PAYABLE',
+    });
+    expect(demo.payload.contains('upi://'), isFalse);
+    expect(demo.svg.contains('upi://'), isFalse);
+    expect(demo.warning, 'DEMO ONLY — NOT PAYABLE');
+    expect(demo.isPayable, isFalse);
+  });
+
+  test('historical orders without a service period still parse', () {
+    final json = orderJson();
+    json.remove('servicePeriod');
+    json.remove('receiptNumber');
+    final o = StudentOrder.fromJson(json);
+    expect(o.servicePeriod, isNull);
+    expect(formatServicePeriod(o.servicePeriod), 'Service period not recorded');
+    expect(o.hasReceipt, isFalse);
+  });
+
+  test('demo receipts are marked and pending payments are not receipts', () {
+    expect(order(status: 'PAYMENT_CONFIRMED', simulated: true).hasReceipt, isTrue);
+    expect(order(status: 'PAYMENT_CONFIRMED', simulated: true).payment!.isSimulated, isTrue);
+    expect(order(status: 'PLACED').hasReceipt, isFalse);
+  });
+
   test('parses the student order contract', () {
     final o = order(status: 'READY');
     expect(o.status, OrderStatus.ready);

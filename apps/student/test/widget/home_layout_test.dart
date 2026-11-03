@@ -86,6 +86,7 @@ void main() {
     expect(h.services.favourites.contains('a1000000-0000-4000-8000-000000000001'), isTrue);
     expect(h.services.cart.isEmpty, isTrue);
 
+    await tester.ensureVisible(find.byTooltip('Add Veg Grilled Sandwich'));
     await tester.tap(find.byTooltip('Add Veg Grilled Sandwich'));
     await tester.pumpAndSettle();
     expect(h.services.cart.quantityOf('a1000000-0000-4000-8000-000000000001'), 1);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/ui/navigation.dart';
 
 import '../support/fakes.dart';
@@ -55,7 +56,7 @@ void main() {
     final h = TestHarness();
     await h.pumpSignedIn(tester);
     expect(h.realtime.subscriptions, contains(fx.kgId));
-    final before = h.api.calls.where((c) => c == 'menu:${fx.kgId}').length;
+    final before = h.api.calls.where((c) => c.startsWith('menu:${fx.kgId}')).length;
     h.realtime.emit('menu.item_availability_changed', {
       'itemId': 'x',
       'canteenId': fx.kgId,
@@ -65,7 +66,7 @@ void main() {
       'isOrderable': false,
     });
     await tester.pumpAndSettle();
-    expect(h.api.calls.where((c) => c == 'menu:${fx.kgId}').length, greaterThan(before));
+    expect(h.api.calls.where((c) => c.startsWith('menu:${fx.kgId}')).length, greaterThan(before));
   });
 
   testWidgets('notification badge counts live notifications', (tester) async {
@@ -93,7 +94,11 @@ void main() {
     usePhoneSize(tester);
     final h = TestHarness();
     await h.pumpSignedIn(tester);
-    h.services.cart.add(fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'), canteenName: 'K&G');
+    h.services.cart.add(
+      fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'),
+      canteenName: 'K&G',
+      period: ServicePeriod.night,
+    );
     await tester.pump();
     await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Profile')));
     await tester.pumpAndSettle();

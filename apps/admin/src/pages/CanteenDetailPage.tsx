@@ -15,7 +15,11 @@ import {
   useToast,
 } from '@serve/web-shared';
 import { useAdminApi } from '../useAdminApi';
+import { ConfigurationWarnings } from '../components/ConfigurationWarnings';
 import { CanteenFormModal, CanteenStatus } from './CanteensPage';
+import { MenuPricingSection } from './canteen/MenuPricingSection';
+import { PaymentSection } from './canteen/PaymentSection';
+import { ServicesHoursSection } from './canteen/ServicesHoursSection';
 import { StaffStatusTag } from './StaffPage';
 
 export function CanteenDetailPage() {
@@ -24,6 +28,7 @@ export function CanteenDetailPage() {
   const toast = useToast();
   const { connectionEpoch } = useRealtime();
   const canteen = useResource(() => api.canteen(id), [api, id, connectionEpoch]);
+  const live = useResource(() => api.liveCanteen(id), [api, id, connectionEpoch]);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -106,6 +111,8 @@ export function CanteenDetailPage() {
         </div>
       </div>
 
+      <ConfigurationWarnings warnings={c.configurationWarnings} />
+
       <KpiStrip
         label="Menu and coverage"
         items={[
@@ -114,6 +121,15 @@ export function CanteenDetailPage() {
           { label: 'Available now', value: c.menuSummary.availableItems },
           { label: 'Hostels served', value: c.hostels.length },
         ]}
+      />
+
+      <ServicesHoursSection
+        canteenId={id}
+        detail={c}
+        live={live.data}
+        onUpdated={async () => {
+          await Promise.all([canteen.reload(), live.reload()]);
+        }}
       />
 
       <div className="dashboard-columns">
@@ -159,6 +175,10 @@ export function CanteenDetailPage() {
           )}
         </section>
       </div>
+
+      <MenuPricingSection canteenId={id} />
+
+      <PaymentSection canteenId={id} />
 
       <section className="section">
         <div className="section-header">

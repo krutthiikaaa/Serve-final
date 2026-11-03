@@ -18,6 +18,12 @@ Map<String, dynamic> canteenJson({
   'isActive': status != 'INACTIVE',
   'isAcceptingOrders': status == 'ACCEPTING_ORDERS',
   'status': status,
+  'supportedPeriods': ['DAY', 'NIGHT'],
+  'services': [
+    {'period': 'DAY', 'isEnabled': true, 'override': 'AUTO', 'isOpenNow': status == 'ACCEPTING_ORDERS'},
+    {'period': 'NIGHT', 'isEnabled': true, 'override': 'AUTO', 'isOpenNow': status == 'ACCEPTING_ORDERS'},
+  ],
+  'configurationWarnings': <Object>[],
 };
 
 Map<String, dynamic> itemJson(
@@ -58,6 +64,7 @@ Menu menu({
   List<Map<String, dynamic>>? sandwiches,
 }) => Menu.fromJson({
   'canteen': canteenJson(id: canteenId, name: name, status: status),
+  'servicePeriod': 'NIGHT',
   'categories': [
     {
       'id': sandwichesId,
@@ -107,7 +114,9 @@ Map<String, dynamic> orderJson({
   return {
     'id': id,
     'orderNumber': number,
+    'receiptNumber': status == 'PLACED' || status == 'CANCELLED' ? null : 'RC1001',
     'status': status,
+    'servicePeriod': 'NIGHT',
     'totalPaise': total,
     'currency': 'INR',
     'canteen': {'id': kgId, 'name': 'Krishna & Godavari Night Canteen'},
@@ -122,13 +131,16 @@ Map<String, dynamic> orderJson({
       },
     ],
     'payment': {
-      'provider': 'MOCK',
+      'provider': 'UPI',
       'status': status == 'PLACED' ? 'PENDING' : (status == 'CANCELLED' ? 'REFUNDED' : 'SUCCESS'),
       'amountPaise': total,
       'currency': 'INR',
+      'utr': null,
+      'verifiedAt': null,
       'paidAt': null,
       'refundedAt': null,
       'failureReason': null,
+      'isSimulated': false,
     },
     'createdAt': '2026-10-06T19:42:58.710Z',
     'updatedAt': updatedAt,
@@ -150,4 +162,37 @@ StudentOrder order({
   String number = 'SV1002',
   int total = 22500,
   String updatedAt = '2026-10-06T19:43:00.000Z',
-}) => StudentOrder.fromJson(orderJson(status: status, number: number, total: total, updatedAt: updatedAt));
+  bool simulated = false,
+  String? servicePeriod = 'NIGHT',
+}) {
+  final json = orderJson(status: status, number: number, total: total, updatedAt: updatedAt);
+  json['servicePeriod'] = servicePeriod;
+  final payment = json['payment'] as Map<String, dynamic>?;
+  if (payment != null) payment['isSimulated'] = simulated;
+  return StudentOrder.fromJson(json);
+}
+
+Map<String, dynamic> paymentConfigJson({
+  String canteenId = kgId,
+  String mode = 'DEMO',
+  String? upiVpa,
+  String? merchantName,
+  String? qrImageUrl,
+}) => {
+  'canteenId': canteenId,
+  'mode': mode,
+  'upiVpa': upiVpa,
+  'merchantName': merchantName,
+  'qrImageUrl': qrImageUrl,
+  'instructions': null,
+  'isActive': mode == 'LIVE',
+  'demoQr': mode == 'DEMO'
+      ? {
+          'payload': 'SERVE-DEMO:$canteenId',
+          'svg': '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+          'warning': 'DEMO ONLY — NOT PAYABLE',
+        }
+      : null,
+  'warnings': [if (mode == 'DEMO') 'DEMO_MODE_ACTIVE'],
+  'updatedAt': '2026-10-06T18:00:00.000Z',
+};
