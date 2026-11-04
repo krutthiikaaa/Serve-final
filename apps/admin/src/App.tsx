@@ -26,6 +26,11 @@ import { CanteenDetailPage } from './pages/CanteenDetailPage';
 import { ChangeRequestsPage } from './pages/ChangeRequestsPage';
 import { StaffPage } from './pages/StaffPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { MenuPage } from './pages/MenuPage';
+import { PaymentsPage, PaymentCanteenPage } from './pages/PaymentsPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { ActivityPage } from './pages/ActivityPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 /** `/` in development, `/admin` when served under /admin/ (Vite `base`). */
 const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -144,9 +149,15 @@ function AccountGate() {
               <Route index element={<DashboardPage />} />
               <Route path="canteens" element={<CanteensPage />} />
               <Route path="canteens/:id" element={<CanteenDetailPage />} />
+              <Route path="menu" element={<MenuPage />} />
               <Route path="change-requests" element={<ChangeRequestsPage />} />
               <Route path="staff" element={<StaffPage />} />
+              <Route path="payments" element={<PaymentsPage />} />
+              <Route path="payments/:canteenId" element={<PaymentCanteenPage />} />
+              <Route path="reports" element={<ReportsPage />} />
               <Route path="notifications" element={<NotificationsPage />} />
+              <Route path="activity" element={<ActivityPage />} />
+              <Route path="settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

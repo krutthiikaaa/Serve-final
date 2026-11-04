@@ -2,6 +2,9 @@
  * Builds the Flutter student app for the web against the isolated E2E stack
  * and serves it on E2E.studentUrl. Requires the Flutter SDK on PATH (or
  * FLUTTER_BIN). Used only when E2E_STUDENT_WEB=1.
+ *
+ * On Windows, resolves `flutter.bat` via `where.exe` because spawnSync('flutter')
+ * fails with ENOENT even when Flutter is on the user PATH.
  */
 import { execFileSync } from 'node:child_process';
 import { createReadStream, existsSync, statSync } from 'node:fs';
@@ -19,19 +22,48 @@ const defines = {
   STAFF_DASHBOARD_URL: E2E.staffUrl,
   ADMIN_PORTAL_URL: E2E.adminUrl,
 };
-execFileSync(
-  process.env.FLUTTER_BIN ?? 'flutter',
-  [
-    'build',
-    'web',
-    '--profile',
-    '--no-web-resources-cdn',
-    '--output',
-    out,
-    ...Object.entries(defines).map(([k, v]) => `--dart-define=${k}=${v}`),
-  ],
-  { cwd: app, stdio: 'inherit' },
-);
+
+function resolveFlutterBin() {
+  if (process.env.FLUTTER_BIN) return process.env.FLUTTER_BIN;
+  if (process.platform === 'win32') {
+    try {
+      const found = execFileSync('where.exe', ['flutter.bat'], { encoding: 'utf8' })
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0);
+      if (found) return found;
+    } catch {
+      // Fall through to bare `flutter`.
+    }
+  }
+  return 'flutter';
+}
+
+const skipBuild = process.env.E2E_SKIP_FLUTTER_BUILD === '1' && existsSync(path.join(out, 'index.html'));
+if (skipBuild) {
+  console.log(`Reusing existing Flutter web build at ${out}`);
+} else {
+  execFileSync(
+    resolveFlutterBin(),
+    [
+      'build',
+      'web',
+      '--profile',
+      '--no-web-resources-cdn',
+      '--no-wasm-dry-run',
+      '--output',
+      out,
+      ...Object.entries(defines).map(([k, v]) => `--dart-define=${k}=${v}`),
+    ],
+    {
+      cwd: app,
+      stdio: 'inherit',
+      // .bat launchers on Windows require a shell.
+      shell: process.platform === 'win32',
+    },
+  );
+}
 
 const types = {
   '.html': 'text/html',

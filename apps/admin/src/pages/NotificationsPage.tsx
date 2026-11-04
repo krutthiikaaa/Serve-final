@@ -7,7 +7,11 @@ export function NotificationsPage() {
       <div className="page-header">
         <div>
           <h1>Notifications</h1>
-          <p>New staff requests and other platform updates.</p>
+          <p>
+            Staff access requests and reassignment requests. Paused canteens, missing schedules, and
+            payment warnings are shown on the dashboard from live data. They are not stored as
+            notifications.
+          </p>
         </div>
       </div>
       <NotificationCenter api={api} />

@@ -7,6 +7,20 @@ import { adminCanteen, fakeAdminApi, renderAdmin } from './fixtures';
 const row = (name: string) => screen.getByRole('link', { name }).closest('tr')!;
 
 describe('canteens', () => {
+  it('filters the list by name', async () => {
+    const api = fakeAdminApi();
+    api.browseCanteens.mockResolvedValue([]);
+    api.canteens.mockResolvedValue([
+      adminCanteen('Vedavathi Night Canteen'),
+      adminCanteen('Old Canteen', { isActive: false, isAcceptingOrders: false, status: 'INACTIVE' }),
+    ]);
+    renderAdmin(<CanteensPage />, { api });
+    await screen.findByText('Vedavathi Night Canteen');
+    await userEvent.type(screen.getByLabelText('Search canteens'), 'Old');
+    expect(screen.queryByText('Vedavathi Night Canteen')).not.toBeInTheDocument();
+    expect(screen.getByText('Old Canteen')).toBeInTheDocument();
+  });
+
   it('lists canteens with their status and counts', async () => {
     const api = fakeAdminApi();
     api.browseCanteens.mockResolvedValue([]);

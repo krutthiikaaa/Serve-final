@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ORDER_EVENT_NAMES } from '@serve/contracts';
+import { ORDER_EVENT_NAMES, type AdminDashboard, type StaffOrder } from '@serve/contracts';
 import {
   EmptyState,
   ErrorState,
-  IconBag,
-  IconCheck,
-  IconFlame,
   IconInbox,
   IconReceipt,
   KpiStrip,
@@ -20,6 +17,28 @@ import {
   useServerEvents,
 } from '@serve/web-shared';
 import { useAdminApi } from '../useAdminApi';
+
+function serviceTag(configured: boolean, enabled: boolean, open: boolean) {
+  if (!configured) return <Tag>Not set</Tag>;
+  if (!enabled) return <Tag>Off</Tag>;
+  return open ? <Tag tone="success">Open</Tag> : <Tag tone="warning">Closed</Tag>;
+}
+
+function acceptanceTag(row: AdminDashboard['canteenOverview'][number]) {
+  if (!row.isActive) return <Tag tone="danger">Inactive</Tag>;
+  return row.isAcceptingOrders ? (
+    <Tag tone="success">Accepting</Tag>
+  ) : (
+    <Tag tone="warning">Paused</Tag>
+  );
+}
+
+function party(order: StaffOrder) {
+  if (order.channel === 'WALK_IN') {
+    return order.guestName ? `Walk-in · ${order.guestName}` : 'Walk-in';
+  }
+  return order.student?.name ?? 'Student';
+}
 
 /** Platform overview. Every figure is computed by the backend (`/api/admin/dashboard`). */
 export function DashboardPage() {
@@ -53,7 +72,7 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1>Dashboard</h1>
-          <p>All night canteens, live.</p>
+          <p>University canteens, live.</p>
         </div>
       </div>
 
@@ -73,35 +92,26 @@ export function DashboardPage() {
           ) : null}
 
           <KpiStrip
-            label="Orders tonight"
+            label="University today"
             items={[
+              { label: 'Total canteens', value: d.canteens.total, to: '/canteens' },
+              { label: 'Open services', value: d.services.openNow },
               {
                 label: 'Active orders',
                 value: d.orders.active,
                 icon: <IconReceipt width={16} height={16} />,
               },
-              {
-                label: 'Awaiting preparation',
-                value: d.orders.awaitingPreparation,
-                icon: <IconBag width={16} height={16} />,
-                attention: d.orders.awaitingPreparation > 0,
-              },
-              {
-                label: 'Preparing',
-                value: d.orders.preparing,
-                icon: <IconFlame width={16} height={16} />,
-              },
-              {
-                label: 'Ready for pickup',
-                value: d.orders.ready,
-                icon: <IconCheck width={16} height={16} />,
-              },
-              { label: "Today's orders", value: d.today.orderCount },
+              { label: "Today's app orders", value: d.today.appOrderCount },
+              { label: "Today's walk-in orders", value: d.today.walkInOrderCount },
               { label: "Today's revenue", value: formatRupees(d.today.revenuePaise) },
             ]}
           />
+          <p className="muted small revenue-note">
+            Today’s revenue counts successful LIVE payments only. DEMO, pending, rejected, cancelled,
+            and refunded payments are excluded.
+          </p>
 
-          <div className="dashboard-columns">
+          <div className="dashboard-columns three">
             <SummaryPanel
               title="Canteens"
               link={{ to: '/canteens', label: 'Manage canteens' }}
@@ -117,7 +127,8 @@ export function DashboardPage() {
                   tag: d.canteens.paused ? <Tag tone="warning">Paused</Tag> : null,
                 },
                 { label: 'Inactive', value: d.canteens.inactive },
-                { label: 'Total', value: d.canteens.total },
+                { label: 'Day services on', value: d.services.dayEnabled },
+                { label: 'Night services on', value: d.services.nightEnabled },
               ]}
             />
             <SummaryPanel
@@ -136,9 +147,79 @@ export function DashboardPage() {
                   tag: d.pendingChangeRequests ? <Tag tone="warning">To review</Tag> : null,
                 },
                 { label: 'Deactivated', value: d.staff.deactivated },
+                { label: 'Assignments', value: d.staff.assignments },
+                { label: 'Cashiers', value: d.staff.cashiers },
+              ]}
+            />
+            <SummaryPanel
+              title="Orders"
+              link={{ to: '/reports', label: 'View reports' }}
+              rows={[
+                {
+                  label: 'Awaiting preparation',
+                  value: d.orders.awaitingPreparation,
+                  tag: d.orders.awaitingPreparation ? <Tag tone="warning">Queue</Tag> : null,
+                },
+                { label: 'Preparing', value: d.orders.preparing },
+                { label: 'Ready for pickup', value: d.orders.ready },
+                { label: 'Paid LIVE orders', value: d.today.orderCount },
               ]}
             />
           </div>
+
+          {d.payments.demo > 0 ? (
+            <p className="notice notice-info" role="status">
+              {d.payments.demo} {d.payments.demo === 1 ? 'canteen is' : 'canteens are'} in DEMO mode.
+              That is expected while a canteen is used for testing, and those payments are not real
+              revenue.
+            </p>
+          ) : null}
+          {d.payments.incompleteLive > 0 ? (
+            <p className="notice" role="alert">
+              {d.payments.incompleteLive} LIVE{' '}
+              {d.payments.incompleteLive === 1 ? 'canteen is' : 'canteens are'} missing official UPI
+              or QR details.
+              <Link to="/payments"> Review payments</Link>
+            </p>
+          ) : null}
+
+          <section className="section">
+            <div className="section-header">
+              <h2>Canteen overview</h2>
+            </div>
+            {d.canteenOverview.length === 0 ? (
+              <EmptyState title="No canteens yet" body="Create a canteen to see its services here." />
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Canteen</th>
+                      <th>Day</th>
+                      <th>Night</th>
+                      <th>Orders</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.canteenOverview.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <Link to={`/canteens/${row.id}`} className="item-name">
+                            {row.name}
+                          </Link>
+                        </td>
+                        <td>{serviceTag(row.dayConfigured, row.dayEnabled, row.dayOpen)}</td>
+                        <td>{serviceTag(row.nightConfigured, row.nightEnabled, row.nightOpen)}</td>
+                        <td>{acceptanceTag(row)}</td>
+                        <td>{row.isActive ? <Tag tone="success">Active</Tag> : <Tag>Inactive</Tag>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </>
       ) : (
         <SkeletonRows rows={3} />
@@ -159,10 +240,12 @@ export function DashboardPage() {
                 <tr>
                   <th>Order</th>
                   <th>Canteen</th>
-                  <th>Student</th>
+                  <th>Customer</th>
+                  <th>Service</th>
                   <th>Total</th>
                   <th>Placed</th>
                   <th>Status</th>
+                  <th>Payment</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,11 +255,21 @@ export function DashboardPage() {
                       <strong className="order-number">{order.orderNumber}</strong>
                     </td>
                     <td>{order.canteen.name}</td>
-                    <td>{order.student?.name ?? order.guestName ?? 'Walk-in'}</td>
+                    <td>{party(order)}</td>
+                    <td>{order.servicePeriod ?? '—'}</td>
                     <td className="num">{formatRupees(order.totalPaise)}</td>
                     <td className="muted">{formatTime(order.createdAt)}</td>
                     <td>
                       <StatusPill status={order.status} />
+                    </td>
+                    <td>
+                      {!order.payment ? (
+                        '—'
+                      ) : order.payment.isSimulated ? (
+                        <Tag>DEMO</Tag>
+                      ) : (
+                        <Tag tone="success">LIVE</Tag>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -7,12 +7,17 @@
  * With E2E_WEB_ROOT set it also serves the built web apps from that folder
  * (the single-domain deployment, see start-single-domain.mjs).
  * The development database (`serve_dev`) is never touched.
+ *
+ * Uses `process.execPath` + local CLI entrypoints so Windows does not need
+ * `npx` on PATH (spawnSync('npx') → ENOENT on many Windows setups).
  */
 import { execFileSync, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { E2E } from '../tests/support/constants.mjs';
 
+const root = path.resolve(import.meta.dirname, '../..');
 const backend = path.resolve(import.meta.dirname, '../../backend');
 loadDotenv({ path: path.join(backend, '.env.test'), quiet: true });
 
@@ -21,6 +26,24 @@ if (!dbName.endsWith('_test')) {
   console.error(
     `Refusing to reset database "${dbName}": the E2E suite only uses *_test databases.`,
   );
+  process.exit(1);
+}
+
+const prismaJs = [
+  path.join(backend, 'node_modules/prisma/build/index.js'),
+  path.join(root, 'node_modules/prisma/build/index.js'),
+].find((candidate) => existsSync(candidate));
+if (!prismaJs) {
+  console.error('Prisma CLI was not found in node_modules.');
+  process.exit(1);
+}
+
+const tsxCli = [
+  path.join(backend, 'node_modules/tsx/dist/cli.mjs'),
+  path.join(root, 'node_modules/tsx/dist/cli.mjs'),
+].find((candidate) => existsSync(candidate));
+if (!tsxCli) {
+  console.error('tsx CLI was not found in node_modules.');
   process.exit(1);
 }
 
@@ -39,8 +62,8 @@ const env = {
   SSO_CODE_TTL_SECONDS: '15',
   ...(singleDomain ? { WEB_ROOT: process.env.E2E_WEB_ROOT } : {}),
 };
-const run = (cmd, args, input) =>
-  execFileSync(cmd, args, {
+const run = (args, input) =>
+  execFileSync(process.execPath, args, {
     cwd: backend,
     env,
     stdio: input ? ['pipe', 'inherit', 'inherit'] : 'inherit',
@@ -48,14 +71,17 @@ const run = (cmd, args, input) =>
   });
 
 run(
-  'npx',
-  ['prisma', 'db', 'execute', '--stdin'],
+  [prismaJs, 'db', 'execute', '--stdin'],
   'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;',
 );
-run('npx', ['prisma', 'migrate', 'deploy']);
-run('npx', ['tsx', 'prisma/seed.ts']);
-run('npx', ['tsx', 'scripts/create-admin.ts', '--email', E2E.adminEmail, '--name', 'E2E Admin']);
+run([prismaJs, 'migrate', 'deploy']);
+run([tsxCli, 'prisma/seed.ts']);
+run([tsxCli, 'scripts/create-admin.ts', '--email', E2E.adminEmail, '--name', 'E2E Admin']);
 
-const server = spawn('npx', ['tsx', 'src/server.ts'], { cwd: backend, env, stdio: 'inherit' });
+const server = spawn(process.execPath, [tsxCli, 'src/server.ts'], {
+  cwd: backend,
+  env,
+  stdio: 'inherit',
+});
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill(signal));
 server.on('exit', (code) => process.exit(code ?? 0));

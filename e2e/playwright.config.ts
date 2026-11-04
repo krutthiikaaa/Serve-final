@@ -30,6 +30,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     ...devices['Desktop Chrome'],
+    // Local Windows often lacks the Playwright Chromium download; use installed Chrome.
+    ...(process.platform === 'win32' ? { channel: 'chrome' as const } : {}),
     viewport: { width: 1360, height: 860 },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

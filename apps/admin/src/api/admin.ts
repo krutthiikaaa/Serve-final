@@ -5,10 +5,15 @@ import type {
   AdminDashboard,
   AdminHostel,
   AdminMenuCategory,
+  AdminPaymentOverview,
+  AdminReport,
+  AdminSettings,
   AdminOperatingSchedule,
   Canteen,
   CanteenPaymentConfig,
   ChangeRequest,
+  Category,
+  MenuItem,
   MenuItemServiceConfig,
   MenuItemServices,
   OrderStatus,
@@ -74,6 +79,19 @@ export function adminApi(api: ApiClient) {
 
   return {
     dashboard: () => api.get<AdminDashboard>('/admin/dashboard'),
+    paymentOverview: () => api.get<AdminPaymentOverview>('/admin/payments'),
+    reports: (
+      query: {
+        from?: string;
+        to?: string;
+        canteenId?: string;
+        servicePeriod?: ServicePeriod | '';
+        channel?: 'APP' | 'WALK_IN' | '';
+        paymentMethod?: 'CASH' | 'UPI' | '';
+        paymentMode?: 'DEMO' | 'LIVE' | '';
+      } = {},
+    ) => api.get<AdminReport>('/admin/reports', query),
+    settings: () => api.get<AdminSettings>('/admin/settings'),
 
     canteens: () => api.get<AdminCanteen[]>('/admin/canteens'),
     browseCanteens: () => api.get<PublicCanteen[]>('/canteens'),
@@ -100,6 +118,33 @@ export function adminApi(api: ApiClient) {
 
     menuCatalogue: (canteenId: string) =>
       api.get<AdminMenuCategory[]>(`/admin/canteens/${canteenId}/menu/catalogue`),
+    createMenuCategory: (canteenId: string, body: { name: string; sortOrder?: number }) =>
+      api.data<Category>('POST', `/admin/canteens/${canteenId}/menu/categories`, { body }),
+    updateMenuCategory: (
+      id: string,
+      body: { name?: string; sortOrder?: number; isActive?: boolean },
+    ) => api.data<Category>('PATCH', `/admin/menu/categories/${id}`, { body }),
+    createMenuItem: (
+      canteenId: string,
+      body: {
+        categoryId: string;
+        name: string;
+        description?: string | null;
+        pricePaise: number;
+        isAvailable?: boolean;
+      },
+    ) => api.data<MenuItem>('POST', `/admin/canteens/${canteenId}/menu/items`, { body }),
+    updateMenuItem: (
+      id: string,
+      body: {
+        categoryId?: string;
+        name?: string;
+        description?: string | null;
+        pricePaise?: number;
+        isAvailable?: boolean;
+        isActive?: boolean;
+      },
+    ) => api.data<MenuItem>('PATCH', `/admin/menu/items/${id}`, { body }),
     updateMenuItemServices: (itemId: string, services: MenuItemServiceConfig[]) =>
       api.data<MenuItemServices>('PUT', `/admin/menu/items/${itemId}/services`, {
         body: { services },
@@ -109,6 +154,7 @@ export function adminApi(api: ApiClient) {
       filters: {
         status?: StaffStatus | undefined;
         canteenId?: string | undefined;
+        capability?: StaffCapability | undefined;
         cursor?: string | null | undefined;
       } = {},
     ) =>
@@ -116,6 +162,7 @@ export function adminApi(api: ApiClient) {
         limit: 50,
         status: filters.status,
         canteenId: filters.canteenId,
+        capability: filters.capability,
         cursor: filters.cursor,
       }),
     staffMember: (id: string) => api.get<StaffDetail>(`/admin/staff/${id}`),

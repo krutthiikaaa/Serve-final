@@ -9,7 +9,16 @@ import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
 import { pageArgs, toPage, type Pagination } from '../../http/validation.js';
 import type { AdminPrincipal } from '../auth/principal.js';
 import { writeNotifications } from '../notifications/notification.writer.js';
-import { canteenSelect, orderTakingPayload, toCanteenDto } from '../canteens/canteen.dto.js';
+import { UNIVERSITY_NAME } from '../orders/receipt.js';
+import {
+  canteenSelect,
+  canteenServiceSelect,
+  orderTakingPayload,
+  serviceAvailability,
+  toCanteenDto,
+} from '../canteens/canteen.dto.js';
+import { officialDetailsReady } from '../canteens/payment-config.js';
+import { adminPaymentOverview, adminReports, type AdminReportQuery } from './admin-reports.js';
 import { collectAdminWarnings, createAdminConfigService } from './admin-config.js';
 import { ensureOperatingAssignment, listStaffAssignments } from '../staff/assignments.js';
 
@@ -66,9 +75,41 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
     /** Platform overview, computed from live data (one round of parallel aggregate queries). */
     async dashboard() {
       const since = startOfIstDay();
-      const [canteenRows, pendingRequests, staffByStatus, activeOrders, today, todayByStatus] =
-        await Promise.all([
-          prisma.canteen.findMany({ select: { isActive: true, isAcceptingOrders: true } }),
+      const realPayment = {
+        status: 'SUCCESS' as const,
+        isSimulated: false,
+        refundedAt: null,
+      };
+      const [
+        canteenRows,
+        pendingRequests,
+        staffByStatus,
+        activeOrders,
+        today,
+        todayByStatus,
+        todayByChannel,
+        cashiers,
+        assignmentCount,
+      ] = await Promise.all([
+          prisma.canteen.findMany({
+            select: {
+              id: true,
+              name: true,
+              isActive: true,
+              isAcceptingOrders: true,
+              services: { select: canteenServiceSelect },
+              paymentConfig: {
+                select: {
+                  mode: true,
+                  upiVpa: true,
+                  merchantName: true,
+                  qrImageUrl: true,
+                  qrStorageKey: true,
+                },
+              },
+            },
+            orderBy: { name: 'asc' },
+          }),
           prisma.canteenChangeRequest.count({ where: { status: 'PENDING' } }),
           prisma.staff.groupBy({ by: ['status'], _count: { _all: true } }),
           prisma.order.groupBy({
@@ -80,7 +121,7 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
             where: {
               paidAt: { gte: since },
               status: { notIn: ['PLACED', 'CANCELLED'] },
-              payment: { status: 'SUCCESS', isSimulated: false },
+              payment: realPayment,
             },
             _count: { _all: true },
             _sum: { totalPaise: true },
@@ -90,6 +131,18 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
             where: { createdAt: { gte: since } },
             _count: { _all: true },
           }),
+          prisma.order.groupBy({
+            by: ['channel'],
+            where: { createdAt: { gte: since } },
+            _count: { _all: true },
+          }),
+          prisma.staff.count({
+            where: {
+              status: 'APPROVED',
+              assignments: { some: { capabilities: { some: { capability: 'CASHIER' } } } },
+            },
+          }),
+          prisma.staffCanteenAssignment.count(),
         ]);
       const staffCount = (status: StaffStatus) =>
         staffByStatus.find((row) => row.status === status)?._count._all ?? 0;
@@ -103,6 +156,24 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
           todayByStatus.find((row) => row.status === status)?._count._all ?? 0,
         ]),
       );
+      const channelCount = (channel: 'APP' | 'WALK_IN') =>
+        todayByChannel.find((row) => row.channel === channel)?._count._all ?? 0;
+      const periodService = (
+        canteen: (typeof canteenRows)[number],
+        period: 'DAY' | 'NIGHT',
+      ) => canteen.services.find((service) => service.period === period);
+      let demo = 0;
+      let live = 0;
+      let incompleteLive = 0;
+      for (const canteen of canteenRows) {
+        const config = canteen.paymentConfig;
+        if (!config) continue;
+        if (config.mode === 'DEMO') demo += 1;
+        if (config.mode === 'LIVE') {
+          live += 1;
+          if (!officialDetailsReady(config)) incompleteLive += 1;
+        }
+      }
       return {
         canteens: {
           total: canteenRows.length,
@@ -111,12 +182,44 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
           paused: canteenRows.filter((c) => c.isActive && !c.isAcceptingOrders).length,
           inactive: canteenRows.filter((c) => !c.isActive).length,
         },
+        services: {
+          dayEnabled: canteenRows.filter((canteen) => periodService(canteen, 'DAY')?.isEnabled)
+            .length,
+          nightEnabled: canteenRows.filter((canteen) => periodService(canteen, 'NIGHT')?.isEnabled)
+            .length,
+          openNow: canteenRows.reduce(
+            (total, canteen) =>
+              total +
+              canteen.services.filter((service) => serviceAvailability(canteen, service).open)
+                .length,
+            0,
+          ),
+        },
         staff: {
           active: staffCount('APPROVED'),
           pending: staffCount('PENDING'),
           rejected: staffCount('REJECTED'),
           deactivated: staffCount('DEACTIVATED'),
+          cashiers,
+          assignments: assignmentCount,
         },
+        payments: { demo, live, incompleteLive },
+        canteenOverview: canteenRows.map((canteen) => {
+          const day = periodService(canteen, 'DAY');
+          const night = periodService(canteen, 'NIGHT');
+          return {
+            id: canteen.id,
+            name: canteen.name,
+            isActive: canteen.isActive,
+            isAcceptingOrders: canteen.isAcceptingOrders,
+            dayConfigured: Boolean(day),
+            nightConfigured: Boolean(night),
+            dayEnabled: Boolean(day?.isEnabled),
+            nightEnabled: Boolean(night?.isEnabled),
+            dayOpen: day ? serviceAvailability(canteen, day).open : false,
+            nightOpen: night ? serviceAvailability(canteen, night).open : false,
+          };
+        }),
         pendingChangeRequests: pendingRequests,
         orders: {
           active:
@@ -127,14 +230,26 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
         },
         today: {
           since,
-          /** Paid, non-cancelled orders (by payment time). */
+          /** Successful LIVE payments today, excluding simulated and refunded payments. */
           orderCount: today._count._all,
           revenuePaise: today._sum.totalPaise ?? 0,
+          appOrderCount: channelCount('APP'),
+          walkInOrderCount: channelCount('WALK_IN'),
           /** Orders created today, by current status. */
           createdByStatus: placedToday,
         },
       };
     },
+
+    paymentOverview: () => adminPaymentOverview(prisma),
+
+    reports: (query: AdminReportQuery) => adminReports(prisma, query),
+
+    settings: () => ({
+      universityName: UNIVERSITY_NAME,
+      timezone: 'Asia/Kolkata' as const,
+      contact: null,
+    }),
 
     async listCanteens() {
       const canteens = await prisma.canteen.findMany({
@@ -323,13 +438,27 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
     },
 
     async listStaff(
-      filter: { status?: StaffStatus | undefined; canteenId?: string | undefined },
+      filter: {
+        status?: StaffStatus | undefined;
+        canteenId?: string | undefined;
+        capability?: 'KITCHEN' | 'MENU' | 'PAUSE' | 'CASHIER' | undefined;
+      },
       page: Pagination,
     ) {
       const rows = await prisma.staff.findMany({
         where: {
           ...(filter.status ? { status: filter.status } : {}),
-          ...(filter.canteenId ? { canteenId: filter.canteenId } : {}),
+          ...(filter.canteenId && !filter.capability ? { canteenId: filter.canteenId } : {}),
+          ...(filter.capability
+            ? {
+                assignments: {
+                  some: {
+                    ...(filter.canteenId ? { canteenId: filter.canteenId } : {}),
+                    capabilities: { some: { capability: filter.capability } },
+                  },
+                },
+              }
+            : {}),
         },
         select: staffSelect,
         ...pageArgs(page),

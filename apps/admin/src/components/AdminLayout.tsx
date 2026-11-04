@@ -2,11 +2,16 @@ import { Link, Outlet } from 'react-router-dom';
 import type { MeAdmin } from '@serve/contracts';
 import {
   ConnectionBanner,
+  IconBag,
   IconBell,
+  IconClock,
   IconGrid,
   IconInbox,
+  IconReceipt,
   IconStore,
+  IconUser,
   IconUsers,
+  IconUtensils,
   Shell,
   useAuth,
   useNotifications,
@@ -48,9 +53,14 @@ export function AdminLayout({ me }: { me: MeAdmin }) {
       nav={[
         { to: '/', label: 'Dashboard', icon: <IconGrid /> },
         { to: '/canteens', label: 'Canteens', icon: <IconStore /> },
-        { to: '/change-requests', label: 'Change requests', icon: <IconInbox />, count: pending },
+        { to: '/menu', label: 'Menu', icon: <IconUtensils /> },
         { to: '/staff', label: 'Staff', icon: <IconUsers /> },
+        { to: '/change-requests', label: 'Change requests', icon: <IconInbox />, count: pending },
+        { to: '/payments', label: 'Payments', icon: <IconReceipt /> },
+        { to: '/reports', label: 'Reports', icon: <IconBag /> },
         { to: '/notifications', label: 'Notifications', icon: <IconBell />, count: unreadCount },
+        { to: '/activity', label: 'Activity', icon: <IconClock /> },
+        { to: '/settings', label: 'Settings', icon: <IconUser /> },
       ]}
       onSignOut={() => void signOut()}
       banner={<ConnectionBanner state={state} />}
