@@ -55,6 +55,17 @@ const hostelPatch = z
 const staffQuery = paginationQuery.extend({
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'DEACTIVATED']).optional(),
   canteenId: id.optional(),
+  capability: staffCapability.optional(),
+});
+const reportDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: 'Use a YYYY-MM-DD date' });
+const reportQuery = z.strictObject({
+  from: reportDay.optional(),
+  to: reportDay.optional(),
+  canteenId: id.optional(),
+  servicePeriod: servicePeriod.optional(),
+  channel: z.enum(['APP', 'WALK_IN']).optional(),
+  paymentMethod: z.enum(['CASH', 'UPI']).optional(),
+  paymentMode: z.enum(['DEMO', 'LIVE']).optional(),
 });
 const requestQuery = paginationQuery.extend({
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
@@ -137,6 +148,15 @@ export function createAdminRouter(ctx: AppContext, services: Services): Router {
 
   router.get('/dashboard', async (_req, res) => {
     res.json({ data: await admin.dashboard() });
+  });
+  router.get('/payments', async (_req, res) => {
+    res.json({ data: await admin.paymentOverview() });
+  });
+  router.get('/reports', async (req, res) => {
+    res.json({ data: await admin.reports(parse(reportQuery, req.query)) });
+  });
+  router.get('/settings', async (_req, res) => {
+    res.json({ data: admin.settings() });
   });
 
   // Canteens

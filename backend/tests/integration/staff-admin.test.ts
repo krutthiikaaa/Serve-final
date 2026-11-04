@@ -345,7 +345,7 @@ describe('admin canteen and hostel management', () => {
         where: {
           paidAt: { not: null },
           status: { notIn: ['PLACED', 'CANCELLED'] },
-          payment: { status: 'SUCCESS', isSimulated: false },
+          payment: { status: 'SUCCESS', isSimulated: false, refundedAt: null },
         },
       }),
     );
@@ -355,7 +355,7 @@ describe('admin canteen and hostel management', () => {
           where: {
             paidAt: { not: null },
             status: { notIn: ['PLACED', 'CANCELLED'] },
-            payment: { status: 'SUCCESS', isSimulated: false },
+            payment: { status: 'SUCCESS', isSimulated: false, refundedAt: null },
           },
           _sum: { totalPaise: true },
         })
@@ -383,6 +383,9 @@ describe('admin canteen and hostel management', () => {
         ['get', '/api/admin/staff'],
         ['get', '/api/admin/change-requests'],
         ['get', '/api/admin/orders'],
+        ['get', '/api/admin/payments'],
+        ['get', '/api/admin/reports'],
+        ['get', '/api/admin/settings'],
       ] as const) {
         const res = await request(app)[method](path).set(bearer(actor.token)).send({ name: 'X' });
         expect(res.status).toBe(403);

@@ -82,7 +82,7 @@ test('admin portal screens', async ({ page }) => {
   await signIn(page, E2E.adminUrl, E2E.adminEmail, E2E.password);
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
   await expectLive(page);
-  await expect(page.getByRole('group', { name: 'Orders tonight' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Orders', exact: true })).toBeVisible();
   await shot(page, 'admin-01-dashboard');
 
   await page.getByRole('complementary').getByRole('link', { name: 'Canteens' }).click();
@@ -91,7 +91,10 @@ test('admin portal screens', async ({ page }) => {
   await page.getByRole('link', { name: 'Krishna & Godavari Night Canteen' }).click();
   await expect(page.getByRole('heading', { name: 'Menu by category' })).toBeVisible();
   await shot(page, 'admin-03-canteen-detail');
-  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(
+    page.getByRole('dialog', { name: 'Edit Krishna & Godavari Night Canteen' }),
+  ).toBeVisible();
   await shot(page, 'admin-04-canteen-edit');
   await page.keyboard.press('Escape');
 

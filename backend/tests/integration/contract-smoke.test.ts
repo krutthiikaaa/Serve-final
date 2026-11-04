@@ -8,6 +8,9 @@ import { bearer, idempotencyKey, newAdmin, type Actor } from '../helpers/actors.
 import { nextEvent, startTestServer, subscribeMenu, type TestServer } from '../helpers/realtime.js';
 import {
   adminDashboardSchema,
+  adminPaymentOverviewSchema,
+  adminReportSchema,
+  adminSettingsSchema,
   canteenSchema,
   changeRequestSchema,
   errorSchema,
@@ -216,6 +219,18 @@ describe('staff and admin clients', () => {
     expectShape(
       adminDashboardSchema,
       (await api().get('/api/admin/dashboard').set(bearer(admin.token)).expect(200)).body.data,
+    );
+    expectShape(
+      adminPaymentOverviewSchema,
+      (await api().get('/api/admin/payments').set(bearer(admin.token)).expect(200)).body.data,
+    );
+    expectShape(
+      adminReportSchema,
+      (await api().get('/api/admin/reports').set(bearer(admin.token)).expect(200)).body.data,
+    );
+    expectShape(
+      adminSettingsSchema,
+      (await api().get('/api/admin/settings').set(bearer(admin.token)).expect(200)).body.data,
     );
     expectShape(
       page(staffSummarySchema),

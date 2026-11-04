@@ -63,7 +63,18 @@ describe('admin routing (decided only by /api/auth/me)', () => {
   it('opens the portal for an active admin', () => {
     renderGate(meAdmin());
     const sidebar = within(screen.getByRole('complementary', { name: 'Admin portal navigation' }));
-    for (const name of ['Dashboard', 'Canteens', 'Change requests', 'Staff', 'Notifications']) {
+    for (const name of [
+      'Dashboard',
+      'Canteens',
+      'Menu',
+      'Staff',
+      'Change requests',
+      'Payments',
+      'Reports',
+      'Notifications',
+      'Activity',
+      'Settings',
+    ]) {
       expect(sidebar.getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument();
     }
   });

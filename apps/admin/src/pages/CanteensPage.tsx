@@ -13,6 +13,7 @@ import {
   IconStore,
   Input,
   Modal,
+  Select,
   SkeletonRows,
   Tag,
   errorMessage,
@@ -62,6 +63,8 @@ export function CanteensPage() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<{ canteen?: AdminCanteen } | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState<AdminCanteen | null>(null);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | AdminCanteen['status']>('ALL');
 
   // Staff can pause their own canteen; keep the list in sync.
   useServerEvent('canteen.status_changed', () => void canteens.reload());
@@ -81,6 +84,15 @@ export function CanteensPage() {
     }
   };
 
+  const visible = (canteens.data ?? []).filter((canteen) => {
+    const needle = query.trim().toLowerCase();
+    const matchesQuery =
+      !needle ||
+      canteen.name.toLowerCase().includes(needle) ||
+      (canteen.location ?? '').toLowerCase().includes(needle);
+    return matchesQuery && (statusFilter === 'ALL' || canteen.status === statusFilter);
+  });
+
   return (
     <>
       <div className="page-header">
@@ -94,6 +106,31 @@ export function CanteensPage() {
         <Button icon={<IconPlus width={16} height={16} />} onClick={() => setEditing({})}>
           Add canteen
         </Button>
+      </div>
+
+      <div className="filters">
+        <label className="inline-select">
+          <span>Search</span>
+          <Input
+            aria-label="Search canteens"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Name or location"
+          />
+        </label>
+        <label className="inline-select">
+          <span>Status</span>
+          <Select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+          >
+            <option value="ALL">All</option>
+            <option value="ACCEPTING_ORDERS">Accepting</option>
+            <option value="PAUSED">Paused</option>
+            <option value="INACTIVE">Inactive</option>
+          </Select>
+        </label>
       </div>
 
       <section className="section">
@@ -118,7 +155,14 @@ export function CanteensPage() {
                 </tr>
               </thead>
               <tbody>
-                {canteens.data.map((canteen) => (
+                {visible.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="muted">
+                      No canteens match this search.
+                    </td>
+                  </tr>
+                ) : null}
+                {visible.map((canteen) => (
                   <tr key={canteen.id}>
                     <td>
                       <Link to={`/canteens/${canteen.id}`} className="item-name">

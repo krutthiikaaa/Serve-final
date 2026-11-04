@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadEnv } from '../src/config/env.js';
 import { createPrismaClient } from '../src/lib/prisma.js';
@@ -29,8 +30,13 @@ export default async function setup(): Promise<void> {
     await prisma.$disconnect();
   }
 
-  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
-    cwd: path.resolve(import.meta.dirname, '..'),
+  const backendRoot = path.resolve(import.meta.dirname, '..');
+  const prismaJs = ['node_modules/prisma/build/index.js', '../node_modules/prisma/build/index.js']
+    .map((relative) => path.resolve(backendRoot, relative))
+    .find((candidate) => existsSync(candidate));
+  if (!prismaJs) throw new Error('Prisma CLI was not found in node_modules.');
+  execFileSync(process.execPath, [prismaJs, 'migrate', 'deploy'], {
+    cwd: backendRoot,
     env: { ...process.env, NODE_ENV: 'test' },
     stdio: 'pipe',
   });

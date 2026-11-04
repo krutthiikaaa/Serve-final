@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { StaffDetail, StaffStatus, StaffSummary } from '@serve/contracts';
+import type { StaffCapability, StaffDetail, StaffStatus, StaffSummary } from '@serve/contracts';
 import {
   Button,
   EmptyState,
@@ -20,11 +20,12 @@ import {
 import { useAdminApi } from '../useAdminApi';
 import { RequestStatusTag } from './ChangeRequestsPage';
 import { StaffAssignmentsEditor } from './StaffAssignmentsEditor';
+import { CAPABILITY_LABEL } from '../lib/warnings';
 
 const STATUS_FILTERS: { value: StaffStatus | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'All' },
   { value: 'PENDING', label: 'Pending' },
-  { value: 'APPROVED', label: 'Approved' },
+  { value: 'APPROVED', label: 'Active' },
   { value: 'REJECTED', label: 'Rejected' },
   { value: 'DEACTIVATED', label: 'Deactivated' },
 ];
@@ -57,6 +58,7 @@ export function StaffPage() {
   const { connectionEpoch } = useRealtime();
   const [status, setStatus] = useState<StaffStatus | 'ALL'>('ALL');
   const [canteenId, setCanteenId] = useState('');
+  const [capability, setCapability] = useState<StaffCapability | ''>('');
   const [items, setItems] = useState<StaffSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,8 +67,12 @@ export function StaffPage() {
   const canteens = useResource(() => api.canteens(), [api]);
 
   const filters = useCallback(
-    () => ({ status: status === 'ALL' ? undefined : status, canteenId: canteenId || undefined }),
-    [status, canteenId],
+    () => ({
+      status: status === 'ALL' ? undefined : status,
+      canteenId: canteenId || undefined,
+      capability: capability || undefined,
+    }),
+    [status, canteenId, capability],
   );
 
   const load = useCallback(async () => {
@@ -135,6 +141,21 @@ export function StaffPage() {
             {(canteens.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="inline-select">
+          <span>Capability</span>
+          <Select
+            value={capability}
+            onChange={(event) => setCapability(event.target.value as StaffCapability | '')}
+            aria-label="Filter by capability"
+          >
+            <option value="">All capabilities</option>
+            {(Object.keys(CAPABILITY_LABEL) as StaffCapability[]).map((value) => (
+              <option key={value} value={value}>
+                {value}
               </option>
             ))}
           </Select>

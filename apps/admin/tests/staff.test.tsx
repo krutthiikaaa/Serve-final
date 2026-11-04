@@ -20,7 +20,27 @@ describe('staff management', () => {
     await screen.findByText('Priya Staff');
     await userEvent.click(screen.getByRole('tab', { name: 'Pending' }));
     await waitFor(() =>
-      expect(api.staff).toHaveBeenLastCalledWith({ status: 'PENDING', canteenId: undefined }),
+      expect(api.staff).toHaveBeenLastCalledWith({
+        status: 'PENDING',
+        canteenId: undefined,
+        capability: undefined,
+      }),
+    );
+  });
+
+  it('filters by capability through the backend', async () => {
+    const api = fakeAdminApi();
+    api.canteens.mockResolvedValue([]);
+    api.staff.mockResolvedValue({ data: [], nextCursor: null });
+    renderAdmin(<StaffPage />, { api });
+    await screen.findByText('No staff match these filters');
+    await userEvent.selectOptions(screen.getByLabelText('Filter by capability'), 'CASHIER');
+    await waitFor(() =>
+      expect(api.staff).toHaveBeenLastCalledWith({
+        status: undefined,
+        canteenId: undefined,
+        capability: 'CASHIER',
+      }),
     );
   });
 

@@ -6,6 +6,7 @@ import type {
   AdminCanteen,
   AdminCanteenDetail,
   AdminDashboard,
+  StaffOrder,
   ChangeRequest,
   MeAdmin,
   PublicCanteen,
@@ -119,15 +120,73 @@ export function staffDetail(
 export function adminDashboard(overrides: Partial<AdminDashboard> = {}): AdminDashboard {
   return {
     canteens: { total: 5, active: 5, acceptingOrders: 4, paused: 1, inactive: 0 },
-    staff: { active: 6, pending: 2, rejected: 1, deactivated: 1 },
+    services: { dayEnabled: 4, nightEnabled: 5, openNow: 3 },
+    staff: { active: 6, pending: 2, rejected: 1, deactivated: 1, cashiers: 2, assignments: 8 },
+    payments: { demo: 4, live: 1, incompleteLive: 1 },
+    canteenOverview: [
+      {
+        id: uuid(),
+        name: 'Vedavathi Night Canteen',
+        isActive: true,
+        isAcceptingOrders: false,
+        dayConfigured: true,
+        nightConfigured: true,
+        dayEnabled: true,
+        nightEnabled: true,
+        dayOpen: false,
+        nightOpen: true,
+      },
+    ],
     pendingChangeRequests: 2,
     orders: { active: 7, awaitingPreparation: 3, preparing: 3, ready: 1 },
     today: {
       since: '2026-10-05T18:30:00.000Z',
       orderCount: 42,
       revenuePaise: 512_500,
+      appOrderCount: 30,
+      walkInOrderCount: 12,
       createdByStatus: {} as AdminDashboard['today']['createdByStatus'],
     },
+    ...overrides,
+  };
+}
+
+export function staffOrder(overrides: Partial<StaffOrder> = {}): StaffOrder {
+  const at = '2026-10-06T18:00:00.000Z';
+  return {
+    id: uuid(),
+    orderNumber: 'SV1024',
+    receiptNumber: null,
+    channel: 'WALK_IN',
+    guestName: 'Guest',
+    status: 'PAYMENT_CONFIRMED',
+    servicePeriod: 'NIGHT',
+    totalPaise: 8000,
+    currency: 'INR',
+    canteen: { id: uuid(), name: 'Vedavathi Night Canteen' },
+    items: [],
+    payment: {
+      provider: 'UPI',
+      status: 'SUCCESS',
+      amountPaise: 8000,
+      currency: 'INR',
+      utr: null,
+      verifiedAt: null,
+      paidAt: at,
+      refundedAt: null,
+      failureReason: null,
+      isSimulated: true,
+    },
+    createdAt: at,
+    updatedAt: at,
+    paidAt: at,
+    preparingAt: null,
+    readyAt: null,
+    collectedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    timeline: [],
+    student: null,
     ...overrides,
   };
 }
@@ -148,6 +207,9 @@ type MockedApi = { [K in keyof AdminApi]: Mock<AdminApi[K]> };
 export function fakeAdminApi(): MockedApi {
   const names: (keyof AdminApi)[] = [
     'dashboard',
+    'paymentOverview',
+    'reports',
+    'settings',
     'canteens',
     'browseCanteens',
     'canteen',
@@ -160,6 +222,10 @@ export function fakeAdminApi(): MockedApi {
     'updatePaymentConfig',
     'hostels',
     'menuCatalogue',
+    'createMenuCategory',
+    'updateMenuCategory',
+    'createMenuItem',
+    'updateMenuItem',
     'updateMenuItemServices',
     'staff',
     'staffMember',

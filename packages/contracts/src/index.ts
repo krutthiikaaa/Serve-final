@@ -304,31 +304,61 @@ export const staffDashboardSchema = z.strictObject({
   today: z.strictObject({ since: isoDate, orderCount: z.number(), revenuePaise: paise }),
 });
 
+const count = z.number().int().nonnegative();
+
 export const adminDashboardSchema = z.strictObject({
   canteens: z.strictObject({
-    total: z.number(),
-    active: z.number(),
-    acceptingOrders: z.number(),
-    paused: z.number(),
-    inactive: z.number(),
+    total: count,
+    active: count,
+    acceptingOrders: count,
+    paused: count,
+    inactive: count,
+  }),
+  services: z.strictObject({
+    dayEnabled: count,
+    nightEnabled: count,
+    openNow: count,
   }),
   staff: z.strictObject({
-    active: z.number(),
-    pending: z.number(),
-    rejected: z.number(),
-    deactivated: z.number(),
+    active: count,
+    pending: count,
+    rejected: count,
+    deactivated: count,
+    cashiers: count,
+    assignments: count,
   }),
-  pendingChangeRequests: z.number(),
+  payments: z.strictObject({
+    demo: count,
+    live: count,
+    incompleteLive: count,
+  }),
+  canteenOverview: z.array(
+    z.strictObject({
+      id: uuid,
+      name: z.string(),
+      isActive: z.boolean(),
+      isAcceptingOrders: z.boolean(),
+      dayConfigured: z.boolean(),
+      nightConfigured: z.boolean(),
+      dayEnabled: z.boolean(),
+      nightEnabled: z.boolean(),
+      dayOpen: z.boolean(),
+      nightOpen: z.boolean(),
+    }),
+  ),
+  pendingChangeRequests: count,
   orders: z.strictObject({
-    active: z.number(),
-    awaitingPreparation: z.number(),
-    preparing: z.number(),
-    ready: z.number(),
+    active: count,
+    awaitingPreparation: count,
+    preparing: count,
+    ready: count,
   }),
   today: z.strictObject({
     since: isoDate,
-    orderCount: z.number(),
+    orderCount: count,
     revenuePaise: paise,
+    appOrderCount: count,
+    walkInOrderCount: count,
     createdByStatus: z.record(orderStatusSchema, z.number()),
   }),
 });
@@ -376,6 +406,9 @@ export type StaffStatus = MeStaff['status'];
 export type ChangeRequest = z.infer<typeof changeRequestSchema>;
 export type StaffDashboard = z.infer<typeof staffDashboardSchema>;
 export type AdminDashboard = z.infer<typeof adminDashboardSchema>;
+export type AdminReport = z.infer<typeof adminReportSchema>;
+export type AdminPaymentOverview = z.infer<typeof adminPaymentOverviewSchema>;
+export type AdminSettings = z.infer<typeof adminSettingsSchema>;
 export type StaffSummary = z.infer<typeof staffSummarySchema>;
 
 /** Admin canteen list row (`GET /api/admin/canteens`). */
@@ -456,6 +489,96 @@ export type StaffDetail = StaffSummary & {
 };
 
 export const paymentModeSchema = z.enum(['DEMO', 'LIVE']);
+
+const reportDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** University report. `liveSalesPaise` is the only real-revenue figure. */
+export const adminReportSchema = z.strictObject({
+  range: z.strictObject({ from: reportDay, to: reportDay }),
+  filters: z.strictObject({
+    canteenId: uuid.nullable(),
+    servicePeriod: servicePeriodSchema.nullable(),
+    channel: orderChannelSchema.nullable(),
+    paymentMethod: z.enum(['CASH', 'UPI']).nullable(),
+    paymentMode: paymentModeSchema.nullable(),
+  }),
+  orders: z.strictObject({
+    total: count,
+    app: count,
+    walkIn: count,
+    cancelled: count,
+  }),
+  payments: z.strictObject({
+    liveSalesPaise: paise,
+    cashSalesPaise: paise,
+    upiSalesPaise: paise,
+    otherLiveSalesPaise: paise,
+    demoSalesPaise: paise,
+    rejected: count,
+  }),
+  series: z.array(
+    z.strictObject({ date: reportDay, liveSalesPaise: paise, orderCount: count }),
+  ),
+  byCanteen: z.array(
+    z.strictObject({
+      id: uuid,
+      name: z.string(),
+      liveSalesPaise: paise,
+      orderCount: count,
+    }),
+  ),
+  byPeriod: z.array(
+    z.strictObject({
+      period: z.enum(['DAY', 'NIGHT', 'UNSET']),
+      liveSalesPaise: paise,
+      orderCount: count,
+    }),
+  ),
+  byChannel: z.array(
+    z.strictObject({
+      channel: orderChannelSchema,
+      orderCount: count,
+      liveSalesPaise: paise,
+    }),
+  ),
+  byMethod: z.array(
+    z.strictObject({
+      method: z.enum(['CASH', 'UPI', 'OTHER']),
+      liveSalesPaise: paise,
+    }),
+  ),
+  topItems: z.array(
+    z.strictObject({ name: z.string(), quantity: count, liveSalesPaise: paise }),
+  ),
+});
+
+export const adminPaymentOverviewSchema = z.strictObject({
+  totals: z.strictObject({
+    canteens: count,
+    demo: count,
+    live: count,
+    incompleteLive: count,
+  }),
+  canteens: z.array(
+    z.strictObject({
+      id: uuid,
+      name: z.string(),
+      mode: paymentModeSchema.nullable(),
+      merchantName: z.string().nullable(),
+      upiConfigured: z.boolean(),
+      qrConfigured: z.boolean(),
+      incomplete: z.boolean(),
+      updatedAt: isoDate.nullable(),
+    }),
+  ),
+});
+
+export const adminSettingsSchema = z.strictObject({
+  universityName: z.string(),
+  timezone: z.literal('Asia/Kolkata'),
+  contact: z.string().nullable(),
+});
+
 export const demoQrSchema = z.strictObject({
   payload: z.string(),
   svg: z.string(),
