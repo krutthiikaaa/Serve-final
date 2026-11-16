@@ -54,12 +54,15 @@ const env = {
   PORT: String(E2E.apiPort),
   CORS_ORIGINS: `${E2E.staffUrl},${E2E.adminUrl},${E2E.studentUrl},${E2E.apiUrl}`,
   LOG_LEVEL: 'warn',
-  ADMIN_BOOTSTRAP_PASSWORD: E2E.password,
+  // Test-only sign-in (Google cannot run in automation); refused outside NODE_ENV=test.
+  AUTH_TEST_SIGN_IN: 'true',
+  // A fake, test-only Google client: E2E checks the redirect to Google
+  // (intercepted in the browser); no request ever reaches Google.
+  GOOGLE_CLIENT_ID: 'e2e-test-client.apps.googleusercontent.com',
+  GOOGLE_CLIENT_SECRET: 'e2e-test-client-secret-not-real',
   STUDENT_APP_URL: singleDomain ? E2E.apiUrl : E2E.studentUrl,
   STAFF_DASHBOARD_URL: singleDomain ? `${E2E.apiUrl}/staff` : E2E.staffUrl,
   ADMIN_PORTAL_URL: singleDomain ? `${E2E.apiUrl}/admin` : E2E.adminUrl,
-  // Short enough that the expired-callback e2e can wait it out.
-  SSO_CODE_TTL_SECONDS: '15',
   ...(singleDomain ? { WEB_ROOT: process.env.E2E_WEB_ROOT } : {}),
 };
 const run = (args, input) =>

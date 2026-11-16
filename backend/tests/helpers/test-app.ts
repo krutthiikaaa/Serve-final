@@ -1,7 +1,8 @@
 import { loadEnv, parseEnv, type Env } from '../../src/config/env.js';
 import { createLogger } from '../../src/config/logger.js';
 import { createPrismaClient, type PrismaClient } from '../../src/lib/prisma.js';
-import { createFirebaseAuth, FirebaseIdentityVerifier } from '../../src/lib/firebase.js';
+import { createAuth } from '../../src/lib/auth.js';
+import { createSessionVerifier } from '../../src/lib/session.js';
 import { createPaymentProvider } from '../../src/modules/payments/index.js';
 import { noopPublisher, type EventPublisher } from '../../src/realtime/events.js';
 import type { Logger } from 'pino';
@@ -20,8 +21,9 @@ export function testEnv(overrides: Partial<Record<keyof Env, string>> = {}): Env
 }
 
 /**
- * Real application wired to the real test database and the real Firebase Auth
- * Emulator. No HTTP, database or authentication layer is mocked.
+ * Real application wired to the real test database and the real Better Auth
+ * configuration (test-only sign-in enabled, see helpers/identity.ts). No
+ * HTTP, database or authentication layer is mocked.
  */
 export function buildTestContext(
   options: {
@@ -32,12 +34,16 @@ export function buildTestContext(
     logger?: Logger;
   } = {},
 ): AppContext {
-  const env = testEnv(options.env);
+  const env = testEnv({ AUTH_TEST_SIGN_IN: 'true', ...options.env });
+  const logger = options.logger ?? createLogger(env);
+  const prisma = options.prisma ?? createPrismaClient(env.DATABASE_URL);
+  const auth = createAuth({ env, prisma, logger });
   return {
     env,
-    logger: options.logger ?? createLogger(env),
-    prisma: options.prisma ?? createPrismaClient(env.DATABASE_URL),
-    verifier: new FirebaseIdentityVerifier(createFirebaseAuth(env)),
+    logger,
+    prisma,
+    auth,
+    sessions: createSessionVerifier(auth),
     payments: createPaymentProvider(env),
     events: options.events ?? noopPublisher,
     clock: options.clock,

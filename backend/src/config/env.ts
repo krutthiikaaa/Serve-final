@@ -152,41 +152,50 @@ const envSchema = z
     SENSITIVE_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     SENSITIVE_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 
-    // --- Firebase -------------------------------------------------------------
-    /** Firebase project id. Use a "demo-" id (e.g. demo-serve) with the emulator. */
-    FIREBASE_PROJECT_ID: z.string({ error: 'FIREBASE_PROJECT_ID is required' }).min(1),
-    FIREBASE_CLIENT_EMAIL: optional(z.email()),
-    /** PEM private key; literal "\n" sequences are converted to newlines. */
-    FIREBASE_PRIVATE_KEY: optional(z.string().transform((key) => key.replace(/\\n/g, '\n'))),
-    /** host:port of the Firebase Auth Emulator (development/test only). */
-    FIREBASE_AUTH_EMULATOR_HOST: optional(
-      z.string().regex(/^[\w.-]+:\d+$/, { error: 'Expected host:port, e.g. 127.0.0.1:9099' }),
+    // --- Authentication (Better Auth + Google) ----------------------------------
+    /**
+     * Public base URL of this backend, as browsers reach it. Google redirects
+     * to `${BETTER_AUTH_URL}/api/auth/callback/google`, so it must match the
+     * redirect URI registered on the Google OAuth client exactly.
+     * Development/test default: http://localhost:<PORT>.
+     */
+    BETTER_AUTH_URL: optional(appUrl),
+    /**
+     * Signs session cookies and OAuth state. At least 32 characters:
+     * openssl rand -base64 32. Required except under NODE_ENV=test.
+     */
+    BETTER_AUTH_SECRET: optional(
+      z.string().min(32, { error: 'BETTER_AUTH_SECRET must be at least 32 characters' }),
     ),
+    /** Google OAuth client (server-side only; never sent to an app). */
+    GOOGLE_CLIENT_ID: optional(
+      z.string().regex(/^[\w.-]+\.apps\.googleusercontent\.com$/, {
+        error: 'GOOGLE_CLIENT_ID must look like <id>.apps.googleusercontent.com',
+      }),
+    ),
+    GOOGLE_CLIENT_SECRET: optional(z.string().min(1)),
+    /**
+     * Also require Google's hosted-domain (`hd`) claim to be srmap.edu.in
+     * (SRM Google Workspace accounts). The verified-email domain check is
+     * enforced regardless. "true" (default) or "false".
+     */
+    GOOGLE_REQUIRE_HOSTED_DOMAIN: optional(z.enum(['true', 'false'])).transform(
+      (value) => value !== 'false',
+    ),
+    /**
+     * Test-only sign-in endpoint for automated tests (POST /api/auth/test/sign-in).
+     * Refused unless NODE_ENV=test. Exactly "true" or "false".
+     */
+    AUTH_TEST_SIGN_IN: optional(z.enum(['true', 'false'])).transform((value) => value === 'true'),
 
     /**
      * Public origin (+ optional path) of the student app, staff dashboard and
-     * admin portal. Used to build SSO callback URLs. No trailing slash.
+     * admin portal. Trusted as sign-in redirect targets. No trailing slash.
      * Development defaults to the local Vite / Flutter ports when unset.
      */
     STUDENT_APP_URL: optional(appUrl),
     STAFF_DASHBOARD_URL: optional(appUrl),
     ADMIN_PORTAL_URL: optional(appUrl),
-    /** Lifetime of a one-time SSO authorization code, in seconds. */
-    SSO_CODE_TTL_SECONDS: z.coerce.number().int().min(15).max(300).default(60),
-
-    /**
-     * Optional comma-separated list of email domains allowed to register as
-     * students (e.g. "university.edu"). Empty/unset = no restriction.
-     */
-    STUDENT_EMAIL_DOMAINS: z
-      .string()
-      .optional()
-      .transform((value) =>
-        (value ?? '')
-          .split(',')
-          .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
-          .filter((domain) => domain.length > 0),
-      ),
 
     // --- Payments -------------------------------------------------------------
     /** mock = development provider; razorpay = production provider (adapter pending). */
@@ -211,13 +220,19 @@ const envSchema = z
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: 'custom', path: [path], message });
 
-    // Firebase: either the emulator, or full service-account credentials.
-    if (!env.FIREBASE_AUTH_EMULATOR_HOST) {
-      for (const key of ['FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'] as const) {
-        if (!env[key]) {
-          issue(key, `${key} is required unless FIREBASE_AUTH_EMULATOR_HOST is set`);
-        }
-      }
+    // Authentication
+    if (env.NODE_ENV !== 'test' && !env.BETTER_AUTH_SECRET) {
+      issue('BETTER_AUTH_SECRET', 'BETTER_AUTH_SECRET is required (openssl rand -base64 32)');
+    }
+    if (Boolean(env.GOOGLE_CLIENT_ID) !== Boolean(env.GOOGLE_CLIENT_SECRET)) {
+      issue(
+        'GOOGLE_CLIENT_SECRET',
+        'Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither',
+      );
+    }
+    // The test sign-in endpoint creates sessions without Google: never outside tests.
+    if (env.AUTH_TEST_SIGN_IN && env.NODE_ENV !== 'test') {
+      issue('AUTH_TEST_SIGN_IN', 'AUTH_TEST_SIGN_IN is only allowed with NODE_ENV=test');
     }
 
     // Payments
@@ -267,17 +282,14 @@ const envSchema = z
         `The local ${database} database must not be used in production; create a dedicated production database`,
       );
     }
-    if (env.FIREBASE_AUTH_EMULATOR_HOST) {
-      issue(
-        'FIREBASE_AUTH_EMULATOR_HOST',
-        'The Firebase Auth Emulator must not be used in production',
-      );
+    for (const key of ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'BETTER_AUTH_URL'] as const) {
+      if (!env[key]) issue(key, `${key} is required in production`);
     }
-    if (env.FIREBASE_PROJECT_ID.startsWith('demo-')) {
-      issue(
-        'FIREBASE_PROJECT_ID',
-        'demo- projects are emulator-only and not allowed in production',
-      );
+    if (env.BETTER_AUTH_URL?.startsWith('http://')) {
+      issue('BETTER_AUTH_URL', 'BETTER_AUTH_URL must use https in production');
+    }
+    if (env.BETTER_AUTH_URL && isLocalAppUrl(env.BETTER_AUTH_URL)) {
+      issue('BETTER_AUTH_URL', 'BETTER_AUTH_URL must not be localhost in production');
     }
     // No simulated payment success in production, except in a deployment
     // explicitly declared a demo.

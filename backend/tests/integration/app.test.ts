@@ -42,7 +42,8 @@ describe('security middleware', () => {
     expect(res.headers['access-control-allow-origin']).toBe(ALLOWED);
     expect(res.headers['access-control-allow-headers']).toMatch(/Authorization/);
     expect(res.headers['access-control-allow-headers']).toMatch(/Idempotency-Key/);
-    expect(res.headers['access-control-allow-credentials']).toBeUndefined();
+    // The web apps send Better Auth's HttpOnly session cookie.
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
   });
 
   it('CORS: preflight from unknown origins is not granted', async () => {

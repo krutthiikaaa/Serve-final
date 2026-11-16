@@ -3,12 +3,11 @@ import request from 'supertest';
 import type { Express } from 'express';
 import type { Env } from '../../src/config/env.js';
 import type { PrismaClient } from '../../src/lib/prisma.js';
-import { createFirebaseAuth } from '../../src/lib/firebase.js';
 import { bootstrapAdmin } from '../../src/modules/auth/admin-bootstrap.js';
-import { createFirebaseUser, uniqueEmail } from './firebase.js';
+import { createTestUser, uniqueEmail } from './identity.js';
 
 /**
- * Test actors created through the REAL flows: Firebase Auth Emulator sign-up,
+ * Test actors created through the REAL flows: Better Auth sign-in (SRM gate),
  * the registration API, the admin bootstrap, and the admin approval API.
  */
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -25,38 +24,37 @@ export async function newStudent(
   prisma: PrismaClient,
   hostelName = 'Krishna',
 ): Promise<Actor> {
-  const user = await createFirebaseUser(uniqueEmail('student'));
+  const user = await createTestUser(uniqueEmail('student'));
   const hostel = await prisma.hostel.findUniqueOrThrow({ where: { name: hostelName } });
   const res = await request(app)
     .post('/api/auth/student/register')
-    .set(bearer(user.idToken))
+    .set(bearer(user.token))
     .send({ name: 'Test Student', email: user.email, hostelId: hostel.id });
   if (res.status !== 201)
     throw new Error(`student registration failed: ${JSON.stringify(res.body)}`);
-  return { id: res.body.data.id as string, uid: user.uid, email: user.email, token: user.idToken };
+  return { id: res.body.data.id as string, uid: user.uid, email: user.email, token: user.token };
 }
 
-export async function newAdmin(prisma: PrismaClient, env: Env): Promise<Actor> {
-  const user = await createFirebaseUser(uniqueEmail('admin'));
-  const result = await bootstrapAdmin(
-    { auth: createFirebaseAuth(env), prisma },
-    { email: user.email, name: 'Test Admin', allowCreateFirebaseUser: false },
-  );
-  return { id: result.adminId, uid: user.uid, email: user.email, token: user.idToken };
+/** Admin provisioned by email (the only way), then signed in: the first request links it. */
+export async function newAdmin(prisma: PrismaClient, _env?: Env): Promise<Actor> {
+  const email = uniqueEmail('admin');
+  const result = await bootstrapAdmin({ prisma }, { email, name: 'Test Admin' });
+  const user = await createTestUser(email);
+  return { id: result.adminId, uid: user.uid, email: user.email, token: user.token };
 }
 
 export async function newPendingStaff(app: Express, requestedCanteenId?: string): Promise<Actor> {
-  const user = await createFirebaseUser(uniqueEmail('staff'));
+  const user = await createTestUser(uniqueEmail('staff'));
   const res = await request(app)
     .post('/api/auth/staff/register')
-    .set(bearer(user.idToken))
+    .set(bearer(user.token))
     .send({
       name: 'Test Staff',
       email: user.email,
       ...(requestedCanteenId ? { requestedCanteenId } : {}),
     });
   if (res.status !== 201) throw new Error(`staff registration failed: ${JSON.stringify(res.body)}`);
-  return { id: res.body.data.id as string, uid: user.uid, email: user.email, token: user.idToken };
+  return { id: res.body.data.id as string, uid: user.uid, email: user.email, token: user.token };
 }
 
 /** Staff registers with an access request; an admin approves it through the API. */

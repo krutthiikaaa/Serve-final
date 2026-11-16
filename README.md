@@ -2,13 +2,18 @@
 
 ### Order. Track. Collect.
 
-> **Under active development.** The **backend** (PostgreSQL, Firebase
-> authentication, REST API, mock payments, Socket.IO realtime) and **all three
+> **Under active development.** The **backend** (PostgreSQL, Google sign-in
+> through Better Auth, REST API, mock payments, Socket.IO realtime) and **all three
 > client apps** (Flutter Student App, React Staff Dashboard, React Admin
 > Portal) are implemented and integrated, with unit, widget, integration and
 > end-to-end tests. Not done yet: real Razorpay payments, push notifications
 > and production deployment. See
 > [Current Development Status](#17-current-development-status).
+
+> **Sign-in is Google (Better Auth), verified `@srmap.edu.in` accounts only.**
+> Firebase Authentication, the Auth Emulator and email/password sign-in have
+> been removed. [docs/authentication.md](docs/authentication.md) is
+> authoritative; some older pages under `docs/` still describe Firebase.
 
 ---
 
@@ -94,12 +99,12 @@ All three talk to **one shared backend**.
 ```
  Student App (Flutter)   Staff Dashboard (React)   Admin Portal (React)
           │                        │                        │
-          │  1. Firebase Authentication (email/password) -> ID token
-          │  2. REST over HTTPS   Authorization: Bearer <token>
-          │  3. Socket.IO         token-authenticated, server-assigned rooms
+          │  1. Google sign-in (Better Auth, @srmap.edu.in) -> session
+          │  2. REST over HTTPS   HttpOnly session cookie (web) or Bearer (mobile)
+          │  3. Socket.IO         session-authenticated, server-assigned rooms
           ▼                        ▼                        ▼
  ┌──────────────── Shared backend: Node.js · Express · Socket.IO ───────────────┐
- │  Firebase proves identity -> PostgreSQL decides role, status, canteen access │
+ │  Better Auth proves identity -> PostgreSQL decides role, status, canteen access │
  └───────────────────────────────────┬──────────────────────────────────────────┘
                                      ▼  Prisma
                                PostgreSQL
@@ -109,7 +114,7 @@ All three talk to **one shared backend**.
   menus, prices, availability, staff assignments, change requests, orders,
   payments and notifications.
 - The backend works out who the caller is, and which canteen they may act on,
-  from the verified Firebase token. It never trusts IDs, roles, canteen
+  from the verified Better Auth session. It never trusts IDs, roles, canteen
   assignments, prices or totals sent by a client.
 
 For a deployment, one backend process can also serve the three built apps on
@@ -129,7 +134,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Shared web code | `packages/contracts` (zod contract + types), `packages/web-shared` | **Implemented** |
 | Backend | Node.js + TypeScript + Express + Socket.IO | **Implemented** |
 | Database | PostgreSQL + Prisma | **Implemented** (schema, migration, seed) |
-| Authentication | Firebase Authentication + Firebase Admin | **Implemented** (Auth Emulator in development; a real project is configuration-only) |
+| Authentication | Better Auth + Google OAuth (verified `@srmap.edu.in` only) | **Implemented** (automated tests use a test-only sign-in; real Google sign-in needs your own OAuth client) |
 | Payments | Mock provider, Razorpay-ready | Mock **implemented**; Razorpay API calls pending |
 
 ## 10. Canteen Structure
@@ -170,8 +175,7 @@ serve/
 ├── scripts/              dev-student, build-web (single-domain build), smoke-deploy
 ├── docs/                 Architecture, API, database, development, frontend, deployment
 ├── brand/                Official logo location and palette (logo pending)
-├── firebase.json         Firebase Auth Emulator configuration
-├── .env.example          Documented backend environment variables
+├── .env.example          Documented environment variables (all apps)
 ├── Dockerfile            Optional single-domain image (backend + prebuilt web apps)
 ├── package.json          npm workspaces
 └── README.md
@@ -185,7 +189,7 @@ backend/
 ├── scripts/           db-setup-local.sh, create-admin.ts, seed-dev-users.ts
 ├── src/
 │   ├── config/        env validation, logger
-│   ├── lib/           errors, Prisma, Firebase verifier
+│   ├── lib/           errors, Prisma, Better Auth configuration, session verifier
 │   ├── middleware/    authentication + role guards, rate limits, logging, errors
 │   ├── modules/       auth, canteens, menu, orders, payments, change-requests,
 │   │                  staff, admin, notifications, students, health
@@ -193,7 +197,7 @@ backend/
 │   ├── web/           single-domain hosting of the built web apps (WEB_ROOT)
 │   ├── app.ts         Express composition
 │   └── server.ts      HTTP + Socket.IO entry point
-└── tests/             unit + integration (PostgreSQL + Firebase Auth Emulator)
+└── tests/             unit + integration (PostgreSQL + Better Auth)
 ```
 
 ## 13. Local Development Setup
@@ -202,7 +206,8 @@ backend/
 
 - Node.js 22.12 or newer (see `.nvmrc`) and npm 10+
 - PostgreSQL 16 running locally on port 5432
-- Java 21 and the Firebase CLI (`npm install -g firebase-tools`) for the Auth Emulator
+- A Google OAuth web client of your own (Google Cloud console → Google Auth
+  Platform → Clients). See [docs/authentication.md](docs/authentication.md).
 - Flutter 3.47 (Dart 3.13) for the student app
 
 ### Steps
@@ -217,20 +222,27 @@ SERVE_DB_PASSWORD='choose-a-password' npm run db:setup:local
 #    If your superuser is only reachable as the postgres OS user:
 #    SERVE_DB_PASSWORD='...' PSQL_ADMIN="sudo -u postgres psql -d postgres" npm run db:setup:local
 
-# 3. Create env files from the template (both are gitignored), then edit them
-cp .env.example backend/.env
-cp .env.example backend/.env.test
-#    See docs/development.md for the exact values for each file.
+# 3. Create env files from the templates (both are gitignored), then fill in
+#    your own values. Never copy anyone else's secrets.
+cp backend/.env.example backend/.env
+cp backend/.env.example backend/.env.test   # then apply the TEST notes at its end
+#    BETTER_AUTH_SECRET:  openssl rand -base64 32
+#    PAYMENT_SECRET:      openssl rand -hex 32
+#    GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: your own Google OAuth web client with
+#      redirect URI http://localhost:5001/api/auth/callback/google and JavaScript
+#      origins http://localhost:5173, http://localhost:5174, http://localhost:5555
 
-# 4. Start the Firebase Auth Emulator (separate terminal)
-npm run emulators
-
-# 5. Apply migrations and seed canteens, hostels and menus
+# 4. Apply migrations and seed canteens, hostels and menus
+#    (back up an existing database first: pg_dump serve_dev > backup.sql)
 npm run prisma:migrate:deploy --workspace backend
 npm run db:seed --workspace backend
 
-# 6. Optional: emulator demo accounts (admin, approved staff, pending staff, student)
-DEV_SEED_PASSWORD='choose-a-password' npm run db:seed:dev-users --workspace backend
+# 5. Provision your admin account (activated at its first Google sign-in)
+npm run admin:create --workspace backend -- --email you@srmap.edu.in --name "Your Name"
+
+# 6. Optional: development staff/student accounts for real SRM Google accounts
+#    (set DEV_*_EMAIL variables; see .env.example)
+npm run db:seed:dev-users --workspace backend
 
 # 7. Run the backend with live reload on http://localhost:5001
 npm run dev:backend
@@ -248,24 +260,22 @@ npm run dev:staff
 npm run dev:admin
 
 # Student app (mobile; needs Flutter 3.47+). See apps/student/README.md.
+npm run dev:student                           # browser on http://localhost:5555
 npm run dev:student -- -d emulator-5554       # Android emulator (`flutter devices` lists ids)
-npm run dev:student -- -d <phone-id> --lan    # your own phone (start `npm run emulators:phone` first)
-npm run dev:student                           # quick browser preview on http://localhost:5555
 ```
 
-The student app's development defaults already point at the local backend and
-the Auth Emulator (Android emulators reach your machine as `10.0.2.2`). The
-backend's `CORS_ORIGINS` must include `http://localhost:5555` for the web
-version (it is in `.env.example`). If the student app doesn't start or can't
-sign in, see the troubleshooting table in
+Open the apps at `http://localhost:…` (not `127.0.0.1`), so the session cookie
+is shared. Everyone signs in with **Continue with Google** using a verified
+`@srmap.edu.in` account; new accounts have no role until the student registers
+or the staff member's access request is approved by an admin. There is no
+public admin registration: admins are created with `admin:create` above.
+
+The student app's development defaults point at the local backend (Android
+emulators reach your machine as `10.0.2.2`). Google sign-in on a phone or
+emulator needs the backend on a public https URL (`BETTER_AUTH_URL`, e.g. a
+tunnel): see [docs/authentication.md](docs/authentication.md#native-app-android--ios).
+If the student app doesn't start, see
 [apps/student/README.md](apps/student/README.md#troubleshooting).
-
-Provision an admin explicitly (there is no public admin registration):
-
-```bash
-ADMIN_BOOTSTRAP_PASSWORD='choose-a-password' \
-  npm run admin:create --workspace backend -- --email ops@serve.dev --name "Ops Admin"
-```
 
 Production-style build and start:
 
@@ -279,7 +289,7 @@ Deployment on one domain (student `/`, staff `/staff/`, admin `/admin/`, API
 [docs/deployment.md](docs/deployment.md). In short:
 
 ```bash
-FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… npm run build:web   # → dist/web (WEB_ROOT)
+npm run build:web                                            # → dist/web (WEB_ROOT)
 npm run smoke:deploy -- https://YOUR_DOMAIN                  # read-only checks after deploying
 ```
 
@@ -289,7 +299,8 @@ with macOS AirPlay Receiver. The full guide is in
 
 ## 14. Environment Variables
 
-Every variable is documented in [`.env.example`](.env.example) and validated
+Every backend variable is documented in [`backend/.env.example`](backend/.env.example)
+(all apps: [`.env.example`](.env.example)) and validated
 at startup. The server refuses to start on invalid configuration, and the
 error names the variable without printing its value.
 
@@ -299,10 +310,12 @@ error names the variable without printing its value.
 | `PORT` | no | Default `5001`; `5000` rejected |
 | `DATABASE_URL` | yes | `postgresql://…` |
 | `CORS_ORIGINS` | yes | Comma-separated exact origins; production requires https and no localhost |
-| `FIREBASE_PROJECT_ID` | yes | `demo-serve` with the emulator; a real project id in production (`demo-` is rejected there) |
-| `FIREBASE_AUTH_EMULATOR_HOST` | no | Development/test only; rejected in production |
-| `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | without emulator | Service-account values (never commit the JSON) |
-| `STUDENT_EMAIL_DOMAINS` | no | Optional university email-domain allowlist; empty disables it |
+| `BETTER_AUTH_URL` | production | Public backend URL; Google redirect URI is `<it>/api/auth/callback/google`. Development default `http://localhost:5001` |
+| `BETTER_AUTH_SECRET` | yes (not in tests) | At least 32 characters (`openssl rand -base64 32`); unique per environment and per developer |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for Google sign-in; production | Your own Google OAuth web client; both or neither |
+| `GOOGLE_REQUIRE_HOSTED_DOMAIN` | no | `true` (default) also requires Google's `hd=srmap.edu.in` claim |
+| `AUTH_TEST_SIGN_IN` | tests only | Test-only sign-in endpoint; refused unless `NODE_ENV=test` |
+| `STUDENT_APP_URL`, `STAFF_DASHBOARD_URL`, `ADMIN_PORTAL_URL` | production | App URLs trusted as sign-in return addresses; local ports by default |
 | `PAYMENT_MODE` | no | `mock` (default; in production only with `DEMO_MODE=true`) or `razorpay` |
 | `DEMO_MODE` | no | `true` declares a public demo: mock payments allowed in production, no real money moves; every other production rule still applies |
 | `WEB_ROOT` | no | Folder of built web apps (`npm run build:web`) to serve on the same domain; unset = API only |
@@ -319,8 +332,7 @@ error names the variable without printing its value.
 ## 15. Testing
 
 ```bash
-npm run test:emulator   # starts a temporary Firebase Auth Emulator and runs the backend suite
-npm test                # same suite, if `npm run emulators` is already running
+npm test                # backend suite (needs PostgreSQL and backend/.env.test), then every workspace
 npm run typecheck
 npm run lint
 npm run format:check
@@ -328,10 +340,10 @@ npm run build
 ```
 
 The backend suite runs against the real `serve_test` database, which every run
-recreates from the migrations, and against the real Firebase Auth Emulator. It
-covers:
+recreates from the migrations, and the real Better Auth stack (the Google flow
+runs with only Google's token endpoint replaced in-process). It covers:
 - database constraints and seed idempotency
-- token verification and registration
+- Google sign-in, the `@srmap.edu.in` rule, sessions and registration
 - menu management and cross-canteen isolation
 - cart quotes, orders, idempotency and the state machine
 - payments, including amount mismatch and replayed events
@@ -367,16 +379,17 @@ screen.
 
 Implemented:
 
-- Firebase ID-token verification with revocation checks. Roles, staff status
-  and canteen scope come from PostgreSQL only.
+- Google sign-in through Better Auth, restricted to verified `@srmap.edu.in`
+  accounts; database-backed sessions in HttpOnly cookies (Bearer tokens on
+  mobile). Roles, staff status and canteen scope come from PostgreSQL only.
 - Strict per-canteen isolation for staff, and per-student isolation for orders
   and notifications. Out-of-scope resources return 404.
 - Server-side prices and totals, a backend-enforced order state machine,
   idempotent order creation, and amount-verified, replay-safe payments.
 - Authenticated Socket.IO with rooms assigned by the server.
 - Startup validation of all configuration. Production rejects localhost or
-  plain-http CORS origins, the Firebase emulator, `demo-` projects and the
-  mock payment provider (unless `DEMO_MODE=true` explicitly declares a demo).
+  plain-http CORS origins or auth URLs, missing Google credentials, the
+  test-only sign-in and the mock payment provider (unless `DEMO_MODE=true` explicitly declares a demo).
 - `helmet` headers with a strict CSP (`default-src 'none'` on the API; a
   same-origin script policy on the served web apps), an exact-origin CORS allowlist, global
   and per-user rate limits, request-size limits, and zod validation of all
@@ -391,13 +404,13 @@ Client apps:
   token, the URL or local storage.
 - Clients never send prices, totals, user ids or canteen assignments; totals
   shown come from the backend quote or order.
-- Only public configuration (API URL, Firebase web key) is built into the
-  apps. Production builds refuse emulator settings, demo projects and
-  localhost/plain-http API URLs.
+- Only public configuration (the API URL) is built into the apps; no sign-in
+  secret or client ID is. Production builds refuse localhost/plain-http API
+  URLs.
 - Socket.IO clients never name rooms.
 
 A pre-deployment audit (configuration, secrets, authorization, realtime
-isolation, a live end-to-end check against PostgreSQL and the Auth Emulator)
+isolation, a live end-to-end check against PostgreSQL)
 is complete. Still planned: an independent security review of a deployed
 instance and the real Razorpay integration.
 
@@ -411,7 +424,7 @@ the three client apps.
 |---|---|---|
 | 1 | Monorepo, backend foundation, environment configuration, health endpoints | **Complete** |
 | 2 | Database schema, migration, seed data | **Complete** |
-| 3 | Firebase authentication, roles, authorization | **Complete** |
+| 3 | Authentication, roles, authorization (now Google via Better Auth) | **Complete** |
 | 4 | REST APIs: canteens, menus, cart, orders, mock payments, staff, admin, notifications | **Complete** |
 | 5 | Socket.IO realtime and the critical end-to-end backend flow | **Complete** |
 | — | Backend audit and contract freeze | **Complete** |
@@ -428,7 +441,7 @@ the three client apps.
 ## 18. Future Enhancements
 
 - Razorpay payments in place of the mock provider
-- Firebase Cloud Messaging for background push notifications
+- Background push notifications (FCM / APNs)
 - A live deployment on the owner's domain (prepared: [docs/deployment.md](docs/deployment.md))
 - A Socket.IO Redis adapter for running several backend instances
 - Student hostel/canteen change requests (the data model leaves room for this)

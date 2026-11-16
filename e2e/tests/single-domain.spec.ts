@@ -55,7 +55,7 @@ async function expectApp(page: Page, app: 'student' | 'staff' | 'admin') {
     });
   } else {
     await expect(page).toHaveTitle(app === 'staff' ? 'SERVE Staff' : 'SERVE Admin');
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
   }
 }
 
@@ -201,21 +201,23 @@ test('full flow on one origin: Flutter student pays, staff works the order live,
   const name = `Domain Student ${Date.now()}`;
   let orderNumber = '';
 
-  await test.step('student registers in the Flutter app at /', async () => {
+  await test.step('student signs in (SRM) and registers in the Flutter app at /', async () => {
     await student.goto(at('/'));
     await enableFlutterSemantics(student);
     await student.getByRole('button', { name: /^Student/ }).click();
-    await student.getByRole('button', { name: 'Create an account' }).click();
+    await expect(student.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    // Google cannot run here: the test-only sign-in sets the same-origin session cookie.
+    await signIn(student, at('/'), uniqueEmail('domain.student'));
+    await enableFlutterSemantics(student);
+    await expect(student.getByText('Complete your profile')).toBeVisible({ timeout: 60_000 });
     await typeInto(student, 'Full name', name);
-    await typeInto(student, 'University email', uniqueEmail('domain.student'));
-    await typeInto(student, 'Password', E2E.password);
     await student.getByRole('button', { name: /Select your hostel/ }).click();
     await student
       .getByRole('menuitem', { name: /^Krishna\s+·/ })
       .or(student.getByRole('button', { name: /^Krishna\s+·/ }))
       .first()
       .click();
-    await student.getByRole('button', { name: 'Create account' }).click();
+    await student.getByRole('button', { name: 'Finish registration' }).click();
     await expect(student.getByText(/^Hi, Domain/)).toBeVisible({ timeout: 20_000 });
   });
 
@@ -268,7 +270,7 @@ test('full flow on one origin: Flutter student pays, staff works the order live,
   });
 
   await test.step('the same browser session is not an admin session at /admin/', async () => {
-    // Same origin, same Firebase session: the backend account decides.
+    // Same origin, same Better Auth session: the backend account decides.
     await staff.goto(at('/admin/'));
     await expect(
       staff.getByText('You are signed in with a staff account. Use the staff dashboard instead.'),

@@ -25,12 +25,13 @@ test('staff onboarding → admin approval → paid order → live kitchen → pi
     await expectLive(admin);
   });
 
-  await test.step('staff creates an account and requests a canteen', async () => {
+  await test.step('staff signs in with their SRM account and requests a canteen', async () => {
     await staff.goto(`${E2E.staffUrl}/create-account`);
-    await staff.getByLabel('Work email').fill(staffEmail);
-    await staff.getByLabel('Password').fill(E2E.password);
-    await staff.getByRole('button', { name: 'Continue' }).click();
+    await expect(staff.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    // Google itself cannot run here: a test-only sign-in stands in for it.
+    await signIn(staff, `${E2E.staffUrl}/create-account`, staffEmail);
     await expect(staff.getByRole('heading', { name: 'Your staff details' })).toBeVisible();
+    await expect(staff.getByLabel('Email')).toHaveValue(staffEmail);
     await staff.getByLabel('Full name').fill('E2E Kitchen Staff');
     await staff.getByLabel('Canteen you work at').selectOption({ label: canteenName });
     await staff.getByRole('button', { name: 'Request access' }).click();

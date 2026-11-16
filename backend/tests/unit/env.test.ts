@@ -5,8 +5,7 @@ const SECRET = 'x'.repeat(32);
 
 const validDev = {
   NODE_ENV: 'development',
-  FIREBASE_PROJECT_ID: 'demo-serve',
-  FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
+  BETTER_AUTH_SECRET: SECRET,
   DATABASE_URL: 'postgresql://serve:pw@localhost:5432/serve_dev',
   CORS_ORIGINS: 'http://localhost:5173, http://localhost:5174',
   PAYMENT_SECRET: SECRET,
@@ -20,9 +19,10 @@ const validProd = {
   RAZORPAY_KEY_ID: 'rzp_live_placeholder',
   RAZORPAY_KEY_SECRET: 'placeholder-secret',
   RAZORPAY_WEBHOOK_SECRET: 'placeholder-webhook-secret',
-  FIREBASE_PROJECT_ID: 'serve-prod',
-  FIREBASE_CLIENT_EMAIL: 'firebase-adminsdk@serve-prod.iam.gserviceaccount.com',
-  FIREBASE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n',
+  BETTER_AUTH_URL: 'https://serve.example',
+  BETTER_AUTH_SECRET: SECRET,
+  GOOGLE_CLIENT_ID: '123-abc.apps.googleusercontent.com',
+  GOOGLE_CLIENT_SECRET: 'placeholder-google-secret',
   STUDENT_APP_URL: 'https://serve.example',
   STAFF_DASHBOARD_URL: 'https://staff.serve.example',
   ADMIN_PORTAL_URL: 'https://admin.serve.example',
@@ -44,7 +44,8 @@ describe('parseEnv', () => {
     expect(env.PORT).toBe(5001);
     expect(env.PAYMENT_MODE).toBe('mock');
     expect(env.TRUST_PROXY).toBe(0);
-    expect(env.SSO_CODE_TTL_SECONDS).toBe(60);
+    expect(env.GOOGLE_REQUIRE_HOSTED_DOMAIN).toBe(true);
+    expect(env.AUTH_TEST_SIGN_IN).toBe(false);
     expect(env.CORS_ORIGINS).toEqual(['http://localhost:5173', 'http://localhost:5174']);
   });
 
@@ -53,12 +54,9 @@ describe('parseEnv', () => {
     expect(parseEnv(raw).NODE_ENV).toBe('development');
   });
 
-  it('requires DATABASE_URL, CORS_ORIGINS, FIREBASE_PROJECT_ID and PAYMENT_SECRET (mock)', () => {
-    const issues = issuesOf({
-      NODE_ENV: 'development',
-      FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
-    });
-    for (const key of ['DATABASE_URL', 'CORS_ORIGINS', 'FIREBASE_PROJECT_ID']) {
+  it('requires DATABASE_URL and CORS_ORIGINS (secrets: see the dedicated tests)', () => {
+    const issues = issuesOf({ NODE_ENV: 'development' });
+    for (const key of ['DATABASE_URL', 'CORS_ORIGINS']) {
       expect(issues.some((i) => i.startsWith(key))).toBe(true);
     }
   });
@@ -73,24 +71,38 @@ describe('parseEnv', () => {
     );
   });
 
-  it('requires service-account credentials when the emulator is not configured', () => {
-    const { FIREBASE_AUTH_EMULATOR_HOST: _omit, ...raw } = validDev;
-    const issues = issuesOf(raw);
-    expect(issues).toEqual([
-      expect.stringContaining('FIREBASE_CLIENT_EMAIL'),
-      expect.stringContaining('FIREBASE_PRIVATE_KEY'),
+  it('requires a long BETTER_AUTH_SECRET outside tests, and Google credentials in pairs', () => {
+    const { BETTER_AUTH_SECRET: _omit, ...raw } = validDev;
+    expect(issuesOf(raw)).toEqual([expect.stringContaining('BETTER_AUTH_SECRET')]);
+    expect(parseEnv({ ...raw, NODE_ENV: 'test' }).BETTER_AUTH_SECRET).toBeUndefined();
+    expect(issuesOf({ ...validDev, BETTER_AUTH_SECRET: 'short' })).toEqual([
+      expect.stringContaining('BETTER_AUTH_SECRET'),
     ]);
+    expect(issuesOf({ ...validDev, GOOGLE_CLIENT_ID: '1-a.apps.googleusercontent.com' })).toEqual([
+      expect.stringContaining('GOOGLE_CLIENT_SECRET'),
+    ]);
+    expect(
+      issuesOf({ ...validDev, GOOGLE_CLIENT_ID: 'not-a-client-id', GOOGLE_CLIENT_SECRET: 'x' }),
+    ).toEqual([expect.stringContaining('GOOGLE_CLIENT_ID')]);
   });
 
-  it('treats empty values as unset and parses student email domains', () => {
-    const env = parseEnv({
-      ...validDev,
-      FIREBASE_CLIENT_EMAIL: '',
-      STUDENT_EMAIL_DOMAINS: ' @Uni.edu, college.ac.in ,',
-    });
-    expect(env.FIREBASE_CLIENT_EMAIL).toBeUndefined();
-    expect(env.STUDENT_EMAIL_DOMAINS).toEqual(['uni.edu', 'college.ac.in']);
-    expect(parseEnv(validDev).STUDENT_EMAIL_DOMAINS).toEqual([]);
+  it('allows the test-only sign-in endpoint under NODE_ENV=test only', () => {
+    expect(
+      parseEnv({ ...validDev, NODE_ENV: 'test', AUTH_TEST_SIGN_IN: 'true' }).AUTH_TEST_SIGN_IN,
+    ).toBe(true);
+    expect(issuesOf({ ...validDev, AUTH_TEST_SIGN_IN: 'true' })).toEqual([
+      expect.stringContaining('AUTH_TEST_SIGN_IN is only allowed with NODE_ENV=test'),
+    ]);
+    expect(issuesOf({ ...validProd, AUTH_TEST_SIGN_IN: 'true' })).toEqual([
+      expect.stringContaining('AUTH_TEST_SIGN_IN is only allowed with NODE_ENV=test'),
+    ]);
+    expect(issuesOf({ ...validDev, AUTH_TEST_SIGN_IN: 'yes' }).length).toBeGreaterThan(0);
+  });
+
+  it('treats empty values as unset', () => {
+    const env = parseEnv({ ...validDev, GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '' });
+    expect(env.GOOGLE_CLIENT_ID).toBeUndefined();
+    expect(env.GOOGLE_CLIENT_SECRET).toBeUndefined();
   });
 
   it('rejects non-PostgreSQL database URLs', () => {
@@ -114,21 +126,10 @@ describe('parseEnv', () => {
     }
   });
 
-  it('rejects an SSO code TTL outside 15–300 seconds', () => {
-    expect(issuesOf({ ...validDev, SSO_CODE_TTL_SECONDS: '5' }).length).toBeGreaterThan(0);
-    expect(issuesOf({ ...validDev, SSO_CODE_TTL_SECONDS: '301' }).length).toBeGreaterThan(0);
-  });
-
   it('rejects short payment secrets', () => {
     expect(issuesOf({ ...validDev, PAYMENT_SECRET: 'short' })).toEqual([
       expect.stringContaining('PAYMENT_SECRET'),
     ]);
-  });
-
-  it('normalises escaped newlines in FIREBASE_PRIVATE_KEY', () => {
-    const env = parseEnv(validProd);
-    expect(env.FIREBASE_PRIVATE_KEY).toContain('\n');
-    expect(env.FIREBASE_PRIVATE_KEY).not.toContain('\\n');
   });
 
   it('never echoes secret values in validation errors', () => {
@@ -165,19 +166,16 @@ describe('parseEnv', () => {
       ).toEqual([]);
     });
 
-    it('rejects the Firebase Auth Emulator in production', () => {
-      const issues = issuesOf({ ...validProd, FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' });
-      expect(issues).toEqual([expect.stringContaining('FIREBASE_AUTH_EMULATOR_HOST')]);
-    });
-
-    it('requires Firebase Admin credentials in production', () => {
-      const { FIREBASE_PRIVATE_KEY: _omit, ...raw } = validProd;
-      expect(issuesOf(raw)).toEqual([expect.stringContaining('FIREBASE_PRIVATE_KEY')]);
-    });
-
-    it('rejects demo- Firebase projects in production', () => {
-      expect(issuesOf({ ...validProd, FIREBASE_PROJECT_ID: 'demo-serve' })).toEqual([
-        expect.stringContaining('demo-'),
+    it('requires Google credentials and an https, public BETTER_AUTH_URL in production', () => {
+      for (const key of ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'BETTER_AUTH_URL'] as const) {
+        const { [key]: _omit, ...raw } = validProd;
+        expect(issuesOf(raw).some((issue) => issue.startsWith(key))).toBe(true);
+      }
+      expect(issuesOf({ ...validProd, BETTER_AUTH_URL: 'http://serve.example' })).toEqual([
+        expect.stringContaining('BETTER_AUTH_URL must use https'),
+      ]);
+      expect(issuesOf({ ...validProd, BETTER_AUTH_URL: 'https://localhost:5001' })).toEqual([
+        expect.stringContaining('BETTER_AUTH_URL must not be localhost'),
       ]);
     });
 
@@ -203,10 +201,10 @@ describe('parseEnv', () => {
       RAZORPAY_KEY_ID: _k,
       RAZORPAY_KEY_SECRET: _s,
       RAZORPAY_WEBHOOK_SECRET: _w,
-      ...firebaseProd
+      ...baseProd
     } = validProd;
     const demoProd = {
-      ...firebaseProd,
+      ...baseProd,
       CORS_ORIGINS: 'https://serve.example',
       PAYMENT_MODE: 'mock',
       PAYMENT_SECRET: SECRET,
@@ -227,11 +225,8 @@ describe('parseEnv', () => {
     });
 
     it('keeps every other production rule', () => {
-      expect(issuesOf({ ...demoProd, FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' })).toEqual([
-        expect.stringContaining('FIREBASE_AUTH_EMULATOR_HOST'),
-      ]);
-      expect(issuesOf({ ...demoProd, FIREBASE_PROJECT_ID: 'demo-serve' })).toEqual([
-        expect.stringContaining('demo-'),
+      expect(issuesOf({ ...demoProd, AUTH_TEST_SIGN_IN: 'true' })).toEqual([
+        expect.stringContaining('AUTH_TEST_SIGN_IN'),
       ]);
       expect(issuesOf({ ...demoProd, CORS_ORIGINS: 'http://serve.example' })).toEqual([
         expect.stringContaining('https'),
@@ -239,8 +234,8 @@ describe('parseEnv', () => {
       expect(issuesOf({ ...demoProd, CORS_ORIGINS: 'https://localhost' })).toEqual([
         expect.stringContaining('Local origins'),
       ]);
-      const { FIREBASE_CLIENT_EMAIL: _omit, ...noCreds } = demoProd;
-      expect(issuesOf(noCreds)).toEqual([expect.stringContaining('FIREBASE_CLIENT_EMAIL')]);
+      const { GOOGLE_CLIENT_SECRET: _g, GOOGLE_CLIENT_ID: _c, ...noGoogle } = demoProd;
+      expect(issuesOf(noGoogle).join(' ')).toMatch(/GOOGLE_CLIENT_ID.*GOOGLE_CLIENT_SECRET/);
       const { PAYMENT_SECRET: _secret, ...noSecret } = demoProd;
       expect(issuesOf(noSecret)).toEqual([expect.stringContaining('PAYMENT_SECRET')]);
     });

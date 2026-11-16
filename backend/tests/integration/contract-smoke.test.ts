@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { truncateAll } from '../helpers/db.js';
-import { createFirebaseUser, uniqueEmail } from '../helpers/firebase.js';
+import { createTestUser, uniqueEmail } from '../helpers/identity.js';
 import { bearer, idempotencyKey, newAdmin, type Actor } from '../helpers/actors.js';
 import { nextEvent, startTestServer, subscribeMenu, type TestServer } from '../helpers/realtime.js';
 import {
@@ -70,13 +70,13 @@ afterAll(() => server.close());
 const api = () => request(server.app);
 
 describe('student client', () => {
-  it('signs up with Firebase, sees itself as unregistered, and registers', async () => {
-    const user = await createFirebaseUser(uniqueEmail('flutter'));
-    student.token = user.idToken;
+  it('signs in with Google (SRM), sees itself as unregistered, and registers', async () => {
+    const user = await createTestUser(uniqueEmail('flutter'));
+    student.token = user.token;
     student.email = user.email;
     expectShape(
       meUnregisteredSchema,
-      (await api().get('/api/auth/me').set(bearer(user.idToken)).expect(200)).body.data,
+      (await api().get('/api/auth/me').set(bearer(user.token)).expect(200)).body.data,
     );
 
     const hostels = (await api().get('/api/hostels').expect(200)).body;
@@ -85,7 +85,7 @@ describe('student client', () => {
 
     const registered = await api()
       .post('/api/auth/student/register')
-      .set(bearer(user.idToken))
+      .set(bearer(user.token))
       .send({ name: 'Flutter Student', email: user.email, hostelId: krishna.id })
       .expect(201);
     const me = expectShape(meStudentSchema, registered.body.data);
@@ -192,13 +192,13 @@ describe('student client', () => {
 
 describe('staff and admin clients', () => {
   it('staff registers and stays pending; admin reviews and approves', async () => {
-    const user = await createFirebaseUser(uniqueEmail('react-staff'));
-    staff.token = user.idToken;
+    const user = await createTestUser(uniqueEmail('react-staff'));
+    staff.token = user.token;
     const adminSocket = await server.connect(admin.token);
     const requestEvent = nextEvent(adminSocket, 'change_request.created');
     const registered = await api()
       .post('/api/auth/staff/register')
-      .set(bearer(user.idToken))
+      .set(bearer(user.token))
       .send({ name: 'React Staff', email: user.email, requestedCanteenId: canteenId })
       .expect(201);
     const me = expectShape(meStaffSchema, registered.body.data);

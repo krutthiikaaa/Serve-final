@@ -13,26 +13,35 @@ import 'package:serve_student/services/api/api_client.dart';
 import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/services/api/serve_api.dart';
 import 'package:serve_student/services/auth/auth_controller.dart';
-import 'package:serve_student/services/auth/firebase_auth_client.dart';
+import 'package:serve_student/services/auth/serve_auth_client.dart';
 import 'package:serve_student/services/auth/session_store.dart';
 import 'package:serve_student/services/realtime/realtime_service.dart';
 
-/// The student app's real service layer (Firebase REST auth, API client,
-/// Socket.IO) against a running backend and the Firebase Auth Emulator.
+/// The student app's real service layer (session restore, Bearer API client,
+/// Socket.IO) against a running backend in test mode (NODE_ENV=test,
+/// AUTH_TEST_SIGN_IN=true). Google cannot run here, so identities come from
+/// the backend's test-only sign-in, which applies the same SRM rules.
 ///
-///   SERVE_INTEGRATION=1 DEV_SEED_PASSWORD=… flutter test --tags integration
+///   SERVE_INTEGRATION=1 API_URL=http://localhost:5101 flutter test --tags integration
 ///
-/// Uses the development demo staff account (staff.kg@serve.dev) to move the
-/// order through the kitchen, and collects it at the end.
+/// Uses a pre-provisioned approved K&G Night staff account (SERVE_STAFF_EMAIL,
+/// default staff.kg@srmap.edu.in) to move the order through the kitchen.
 void main() {
   final env = Platform.environment;
   final enabled = env['SERVE_INTEGRATION'] == '1';
-  final config = AppConfig(
-    apiUrl: env['API_URL'] ?? 'http://localhost:5001',
-    firebaseApiKey: 'demo-api-key',
-    firebaseProjectId: 'demo-serve',
-    authEmulatorHost: env['FIREBASE_AUTH_EMULATOR_HOST'] ?? '127.0.0.1:9099',
-  );
+  final config = AppConfig(apiUrl: env['API_URL'] ?? 'http://localhost:5001');
+  final store = MemorySessionStore();
+
+  /// A real Better Auth session token from the backend's test-only sign-in.
+  Future<String> testSignIn(String email) async {
+    final res = await http.post(
+      Uri.parse('${config.apiUrl}/api/auth/test/sign-in'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    expect(res.statusCode, 200, reason: res.body);
+    return (jsonDecode(res.body) as Map)['token'] as String;
+  }
 
   late AuthController auth;
   late ServeApi api;
@@ -51,11 +60,9 @@ void main() {
   }
 
   Future<http.Response> staffRequest(String method, String path, {Object? body, String? canteenId}) async {
-    final email = env['SERVE_STAFF_EMAIL'] ?? 'staff.kg@serve.dev';
-    final staff = await FirebaseAuthClient(config).signIn(email, env['DEV_SEED_PASSWORD'] ?? '');
+    final staffToken = await testSignIn(env['SERVE_STAFF_EMAIL'] ?? 'staff.kg@srmap.edu.in');
     final uri = Uri.parse('${config.apiUrl}$path').replace(queryParameters: canteenId == null ? null : {'canteenId': canteenId});
-    final request = http.Request(method, uri)
-      ..headers.addAll({'Authorization': 'Bearer ${staff.idToken}', 'Content-Type': 'application/json'});
+    final request = http.Request(method, uri)..headers.addAll({'Authorization': 'Bearer $staffToken', 'Content-Type': 'application/json'});
     if (body != null) request.body = jsonEncode(body);
     return http.Response.fromStream(await http.Client().send(request));
   }
@@ -77,10 +84,10 @@ void main() {
 
   setUpAll(() {
     if (!enabled) return;
-    auth = AuthController(firebase: FirebaseAuthClient(config), store: MemorySessionStore());
-    api = ServeApi(ApiClient(baseUrl: config.apiUrl, token: auth.idToken));
+    auth = AuthController(client: ServeAuthClient(config), store: store, isWeb: false);
+    api = ServeApi(ApiClient(baseUrl: config.apiUrl, token: auth.sessionToken));
     auth.attach(api.me);
-    realtime = SocketRealtimeService(url: config.apiUrl, token: auth.idToken);
+    realtime = SocketRealtimeService(url: config.apiUrl, token: auth.sessionToken);
     sub = realtime.events.listen(events.add);
   });
 
@@ -91,13 +98,17 @@ void main() {
   });
 
   test('register → browse → quote → idempotent order → demo claim → cashier confirm → live kitchen updates → pickup', () async {
-    // 1. Firebase account + SERVE registration (hostel decides the default canteen).
-    final email = 'flutter.${DateTime.now().millisecondsSinceEpoch}@serve.test';
-    await auth.createAccount(email, 'flutter-pass-1');
-    expect(await api.me(), isA<UnregisteredMe>());
+    // 1. A signed-in SRM identity restored like an app restart, then SERVE
+    //    registration (hostel decides the default canteen; email from the session).
+    final email = 'flutter.${DateTime.now().millisecondsSinceEpoch}@srmap.edu.in';
+    store.value = StoredSession(token: await testSignIn(email));
+    await auth.restore();
+    expect(auth.status, AuthStatus.ready);
+    expect(auth.me, isA<UnregisteredMe>());
+    expect(auth.email, email);
     final hostels = await api.hostels();
     final krishna = hostels.firstWhere((h) => h.name == 'Krishna');
-    final me = await api.registerStudent(name: 'Flutter Integration', email: email, hostelId: krishna.id);
+    final me = await api.registerStudent(name: 'Flutter Integration', hostelId: krishna.id);
     auth.setMe(me);
     final canteen = me.defaultCanteen!;
     expect(canteen.id, krishna.canteen!.id);
@@ -175,5 +186,9 @@ void main() {
     ]);
     final past = await api.orders(status: 'past');
     expect(past.items.map((o) => o.id), contains(placed.id));
-  }, skip: enabled ? false : 'Set SERVE_INTEGRATION=1 (needs backend + Firebase Auth Emulator)');
+    // 8. Sign-out ends the session on the server; the token no longer works.
+    await auth.signOut();
+    expect(auth.status, AuthStatus.signedOut);
+    expect(store.value, isNull);
+  }, skip: enabled ? false : 'Set SERVE_INTEGRATION=1 (needs a backend with NODE_ENV=test and AUTH_TEST_SIGN_IN=true)');
 }

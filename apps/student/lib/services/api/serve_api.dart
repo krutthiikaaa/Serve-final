@@ -5,14 +5,6 @@ import 'models.dart';
 Map<String, dynamic> _m(Object? v) => (v! as Map).cast<String, dynamic>();
 List<Map<String, dynamic>> _l(Object? v) => (v! as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
 
-class SsoHandoff {
-  const SsoHandoff({required this.redirectUrl, required this.expiresAt});
-  factory SsoHandoff.fromJson(Map<String, dynamic> j) =>
-      SsoHandoff(redirectUrl: j['redirectUrl'] as String, expiresAt: DateTime.parse(j['expiresAt'] as String));
-  final String redirectUrl;
-  final DateTime expiresAt;
-}
-
 class CartLineInput {
   const CartLineInput(this.menuItemId, this.quantity);
   final String menuItemId;
@@ -37,23 +29,9 @@ class ServeApi {
 
   Future<List<Hostel>> hostels() async => _l(await client.data<Object>('GET', '/hostels', anonymous: true)).map(Hostel.fromJson).toList();
 
-  Future<StudentMe> registerStudent({required String name, required String email, required String hostelId}) async => StudentMe.fromJson(
-    _m(await client.data<Object>('POST', '/auth/student/register', body: {'name': name, 'email': email, 'hostelId': hostelId})),
-  );
-
-  Future<SsoHandoff> initiateSso(String audience) async =>
-      SsoHandoff.fromJson(_m(await client.data<Object>('POST', '/auth/sso/initiate', body: {'audience': audience})));
-
-  /// Creates a PENDING staff row. An admin must approve before dashboard access.
-  Future<Me> registerStaff({required String name, required String email, String? requestedCanteenId}) async => Me.fromJson(
-    _m(
-      await client.data<Object>(
-        'POST',
-        '/auth/staff/register',
-        body: {'name': name, 'email': email, 'requestedCanteenId': ?requestedCanteenId},
-      ),
-    ),
-  );
+  /// The email is taken from the signed-in Google account on the server.
+  Future<StudentMe> registerStudent({required String name, required String hostelId}) async =>
+      StudentMe.fromJson(_m(await client.data<Object>('POST', '/auth/student/register', body: {'name': name, 'hostelId': hostelId})));
 
   /// Public directory (no sign-in): every active Day and Night canteen, by area.
   Future<List<Ref>> canteenDirectory() async => [

@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { EnvValidationError, loadEnv } from './config/env.js';
 import { createLogger } from './config/logger.js';
 import { createPrismaClient } from './lib/prisma.js';
-import { createFirebaseAuth, FirebaseIdentityVerifier } from './lib/firebase.js';
+import { createAuth } from './lib/auth.js';
+import { createSessionVerifier } from './lib/session.js';
 import { createPaymentProvider } from './modules/payments/index.js';
 import { createRealtimeServer, RealtimeBridge } from './realtime/socket-server.js';
 import { createApp } from './app.js';
@@ -26,12 +27,13 @@ function main(): void {
 
   const logger = createLogger(env);
   const prisma = createPrismaClient(env.DATABASE_URL);
-  const verifier = new FirebaseIdentityVerifier(createFirebaseAuth(env));
+  const auth = createAuth({ env, prisma, logger });
+  const sessions = createSessionVerifier(auth);
   const payments = createPaymentProvider(env);
   const events = new RealtimeBridge();
-  const app = createApp({ env, logger, prisma, verifier, payments, events });
+  const app = createApp({ env, logger, prisma, auth, sessions, payments, events });
   const server = createServer(app);
-  const realtime = createRealtimeServer(server, { env, logger, prisma, verifier });
+  const realtime = createRealtimeServer(server, { env, logger, prisma, sessions });
   events.attach(realtime.publisher);
   // Day/Night switching runs here, on the server clock: on start-up (which
   // restores the right state after a restart) and every 30 seconds.

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { Me } from '@serve/contracts';
-import { ToastProvider } from '@serve/web-shared';
+import { ToastProvider, type AuthContextValue } from '@serve/web-shared';
 import { FakeAuthProvider } from '@serve/web-shared/testing';
 import { Gate } from '../src/App';
 import { meStaff } from './fixtures';
@@ -12,10 +12,10 @@ vi.mock('socket.io-client', () => ({
   io: () => ({ on() {}, off() {}, removeAllListeners() {}, disconnect() {}, connect() {} }),
 }));
 
-function renderGate(me: Me | null, path = '/') {
+function renderGate(me: Me | null, path = '/', overrides: Partial<AuthContextValue> = {}) {
   return render(
     <ToastProvider>
-      <FakeAuthProvider me={me}>
+      <FakeAuthProvider me={me} overrides={overrides}>
         <MemoryRouter initialEntries={[path]}>
           <Gate />
         </MemoryRouter>
@@ -25,13 +25,34 @@ function renderGate(me: Me | null, path = '/') {
 }
 
 describe('staff routing (decided only by /api/auth/me)', () => {
-  it('shows sign-in when signed out', () => {
+  it('shows Google sign-in (SRM accounts) when signed out', () => {
     renderGate(null);
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+    expect(screen.getByText('@srmap.edu.in')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
   });
 
-  it('asks a new Firebase user to complete staff registration', () => {
-    renderGate({ registered: false, role: null, firebaseUid: 'u', email: 'new@serve.dev' });
+  it('shows why a Google sign-in was refused', () => {
+    renderGate(null, '/', { signInError: 'Use your SRM University-AP Google account.' });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Use your SRM University-AP Google account.',
+    );
+  });
+
+  it('request-access starts with Google sign-in too', () => {
+    renderGate(null, '/create-account');
+    expect(screen.getByRole('heading', { name: 'Request staff access' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+  });
+
+  it('old SSO handoff links open the dashboard with the shared session', () => {
+    renderGate(meStaff(), '/sso/callback?code=old-one-time-code');
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue with Google' })).not.toBeInTheDocument();
+  });
+
+  it('asks a newly signed-in Google user to complete staff registration', () => {
+    renderGate({ registered: false, role: null, authUserId: 'u', email: 'new@srmap.edu.in' });
     expect(screen.getByRole('heading', { name: 'Your staff details' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Request access' })).toBeDisabled();
   });
@@ -77,7 +98,7 @@ describe('staff routing (decided only by /api/auth/me)', () => {
     const base = {
       registered: true as const,
       id: '33333333-3333-4333-8333-333333333333',
-      firebaseUid: 'u',
+      authUserId: 'u',
       name: 'X',
       email: 'x@serve.dev',
       isActive: true,

@@ -111,9 +111,9 @@ void main() {
   });
 
   test('parses /me variants', () {
-    expect(Me.fromJson({'registered': false, 'role': null, 'firebaseUid': 'u', 'email': 'x@y.z'}), isA<UnregisteredMe>());
+    expect(Me.fromJson({'registered': false, 'role': null, 'authUserId': 'u', 'email': 'x@srmap.edu.in'}), isA<UnregisteredMe>());
     expect(
-      Me.fromJson({'registered': true, 'role': 'STAFF', 'name': 'S', 'id': 'i', 'email': 'e', 'firebaseUid': 'u', 'isActive': true}),
+      Me.fromJson({'registered': true, 'role': 'STAFF', 'name': 'S', 'id': 'i', 'email': 'e', 'authUserId': 'u', 'isActive': true}),
       isA<OtherRoleMe>(),
     );
     expect(studentMe().firstName, 'Asha');
@@ -126,47 +126,27 @@ void main() {
   });
 
   group('development defaults (a plain `flutter run` works against the local stack)', () {
-    test('web / iOS / desktop use localhost and the Auth Emulator', () {
+    test('web / iOS / desktop use localhost', () {
       final c = AppConfig.resolve(isRelease: false, isAndroidDevice: false);
       expect(c.apiUrl, 'http://localhost:5001');
-      expect(c.authEmulatorHost, '127.0.0.1:9099');
-      expect(c.firebaseProjectId, 'demo-serve');
       expect(c.staffDashboardUrl, 'http://localhost:5173');
+      expect(c.adminPortalUrl, 'http://localhost:5174');
     });
 
     test('the Android emulator reaches the host as 10.0.2.2', () {
       final c = AppConfig.resolve(isRelease: false, isAndroidDevice: true);
       expect(c.apiUrl, 'http://10.0.2.2:5001');
-      expect(c.authEmulatorHost, '10.0.2.2:9099');
     });
 
     test('explicit --dart-define values always win', () {
-      final c = AppConfig.resolve(
-        apiUrl: 'http://192.168.1.20:5001/',
-        authEmulatorHost: '192.168.1.20:9099',
-        isRelease: false,
-        isAndroidDevice: true,
-      );
+      final c = AppConfig.resolve(apiUrl: 'http://192.168.1.20:5001/', isRelease: false, isAndroidDevice: true);
       expect(c.apiUrl, 'http://192.168.1.20:5001');
-      expect(c.authEmulatorHost, '192.168.1.20:9099');
     });
 
-    test('a real Firebase project never defaults to the emulator', () {
-      final c = AppConfig.resolve(firebaseProjectId: 'serve-prod', isRelease: false, isAndroidDevice: false);
-      expect(c.authEmulatorHost, isNull);
-    });
-
-    test('release builds get no emulator default and still need real settings', () {
+    test('release builds get no local defaults and still need real settings', () {
       final c = AppConfig.resolve(isRelease: true, isAndroidDevice: false);
-      expect(c.authEmulatorHost, isNull);
       expect(() => c.validate(isRelease: true), throwsStateError);
-      final prod = AppConfig.resolve(
-        apiUrl: 'https://api.serve.app',
-        firebaseProjectId: 'serve-prod',
-        firebaseApiKey: 'k',
-        isRelease: true,
-        isAndroidDevice: false,
-      );
+      final prod = AppConfig.resolve(apiUrl: 'https://api.serve.app', isRelease: true, isAndroidDevice: false);
       expect(() => prod.validate(isRelease: true), returnsNormally);
       expect(prod.staffDashboardUrl, isNull);
     });
@@ -174,27 +154,15 @@ void main() {
 
   group('single-domain web deployment (a built web app is served by the SERVE domain)', () {
     test('API, staff dashboard and admin portal default to the serving origin', () {
-      final c = AppConfig.resolve(
-        firebaseProjectId: 'serve-prod',
-        firebaseApiKey: 'k',
-        isRelease: true,
-        isAndroidDevice: false,
-        servedFrom: 'https://serve.example',
-      );
+      final c = AppConfig.resolve(isRelease: true, isAndroidDevice: false, servedFrom: 'https://serve.example');
       expect(c.apiUrl, 'https://serve.example');
       expect(c.staffDashboardUrl, 'https://serve.example/staff/');
       expect(c.adminPortalUrl, 'https://serve.example/admin/');
-      expect(c.authEmulatorHost, isNull);
       expect(() => c.validate(isRelease: true), returnsNormally);
     });
 
     test('a release build served over plain http is still rejected', () {
-      final c = AppConfig.resolve(
-        firebaseProjectId: 'serve-prod',
-        isRelease: true,
-        isAndroidDevice: false,
-        servedFrom: 'http://serve.example',
-      );
+      final c = AppConfig.resolve(isRelease: true, isAndroidDevice: false, servedFrom: 'http://serve.example');
       expect(() => c.validate(isRelease: true), throwsStateError);
     });
 
@@ -211,24 +179,18 @@ void main() {
       expect(c.adminPortalUrl, 'https://serve.example/admin/');
     });
 
-    test('a profile build for local testing keeps the emulator for demo projects', () {
+    test('a profile build for local testing uses the serving origin', () {
       final c = AppConfig.resolve(isRelease: false, isAndroidDevice: false, servedFrom: 'http://localhost:5199');
       expect(c.apiUrl, 'http://localhost:5199');
-      expect(c.authEmulatorHost, '127.0.0.1:9099');
       expect(c.staffDashboardUrl, 'http://localhost:5199/staff/');
     });
   });
 
-  test('release builds refuse emulator, demo project and plain-http APIs', () {
-    const dev = AppConfig(
-      apiUrl: 'http://localhost:5001',
-      firebaseApiKey: 'k',
-      firebaseProjectId: 'demo-serve',
-      authEmulatorHost: '127.0.0.1:9099',
-    );
+  test('release builds refuse plain-http and localhost APIs', () {
+    const dev = AppConfig(apiUrl: 'http://localhost:5001');
     expect(() => dev.validate(isRelease: false), returnsNormally);
     expect(() => dev.validate(isRelease: true), throwsStateError);
-    const prod = AppConfig(apiUrl: 'https://api.serve.app', firebaseApiKey: 'k', firebaseProjectId: 'serve-prod');
+    const prod = AppConfig(apiUrl: 'https://api.serve.app');
     expect(() => prod.validate(isRelease: true), returnsNormally);
   });
 }

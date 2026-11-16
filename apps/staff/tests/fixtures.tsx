@@ -171,7 +171,7 @@ export function meStaff(overrides: Partial<MeStaff> = {}): MeStaff {
   return {
     registered: true,
     id: uuid(),
-    firebaseUid: 'uid-staff',
+    authUserId: 'uid-staff',
     name: 'Kiran Staff',
     email: 'staff.kg@serve.dev',
     isActive: true,

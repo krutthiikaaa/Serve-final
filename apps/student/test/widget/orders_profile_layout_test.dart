@@ -102,7 +102,7 @@ void main() {
     await openProfile(tester);
 
     expect(find.text('Asha Rao'), findsOneWidget);
-    expect(find.text('asha@example.edu'), findsOneWidget);
+    expect(find.text('asha@srmap.edu.in'), findsOneWidget);
     expect(find.text('Student · Krishna'), findsOneWidget);
     expect(find.text('Pickup'), findsOneWidget);
     expect(find.text('Hostel'), findsOneWidget);

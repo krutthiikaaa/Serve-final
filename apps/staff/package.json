@@ -30,10 +30,9 @@
     "vitest": "5.0.3"
   },
   "dependencies": {
-    "@firebase/app": "0.16.2",
-    "@firebase/auth": "1.13.6",
     "@serve/contracts": "0.1.0",
     "@serve/web-shared": "0.1.0",
+    "better-auth": "1.7.25",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-router-dom": "7.18.4",

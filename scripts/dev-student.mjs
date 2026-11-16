@@ -5,10 +5,12 @@
  *   npm run dev:student -- -d emulator-5554      Android emulator (flutter devices)
  *   npm run dev:student -- -d <phone-id> --lan   a real phone on the same Wi-Fi
  *
- * The app's development defaults point at the backend (:5001) and the Firebase
- * Auth Emulator (:9099). `--lan` points a real phone at this computer's network
- * address instead (start the emulator with `npm run emulators:phone`). Other
- * arguments are passed to `flutter run`.
+ * The app's development defaults point at the backend (:5001). `--lan` points a
+ * real phone at this computer's network address instead. Sign-in is Google via
+ * the backend (Better Auth); Google only redirects to the URL registered on the
+ * OAuth client (BETTER_AUTH_URL), so a phone needs a backend URL it can reach
+ * that is registered there (e.g. an https tunnel). Other arguments are passed
+ * to `flutter run`.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { networkInterfaces } from 'node:os';
@@ -40,14 +42,8 @@ if (extra.includes('--lan')) {
     console.error("Could not find this computer's network address. Is it connected to Wi-Fi?");
     process.exit(1);
   }
-  console.log(
-    `Using ${ip} for the backend and the Auth Emulator (phone and computer must share a network).`,
-  );
-  extra = [
-    ...extra.filter((arg) => arg !== '--lan'),
-    `--dart-define=API_URL=http://${ip}:5001`,
-    `--dart-define=FIREBASE_AUTH_EMULATOR_HOST=${ip}:9099`,
-  ];
+  console.log(`Using ${ip} for the backend (phone and computer must share a network).`);
+  extra = [...extra.filter((arg) => arg !== '--lan'), `--dart-define=API_URL=http://${ip}:5001`];
 }
 const picksDevice = extra.some((arg) => arg === '-d' || arg.startsWith('--device-id'));
 const args = ['run', ...(picksDevice ? [] : ['-d', 'chrome', '--web-port', '5555']), ...extra];

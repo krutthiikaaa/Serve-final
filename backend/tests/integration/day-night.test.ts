@@ -27,7 +27,7 @@ import { nextEvent, startTestServer, subscribeMenu, type TestServer } from '../h
 /**
  * Day & Night canteens: availability exclusivity per service area, admin
  * switching, dedicated staff isolation, and per-canteen payment QR codes.
- * Real PostgreSQL, real Firebase Auth Emulator, real Socket.IO.
+ * Real PostgreSQL, real Better Auth sessions, real Socket.IO.
  */
 let server: TestServer;
 let admin: Actor;

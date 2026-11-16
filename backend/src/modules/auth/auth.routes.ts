@@ -7,24 +7,25 @@ import { email, id, name, parse } from '../../http/validation.js';
 import type { Services } from '../../services.js';
 import { resolvePrincipal } from './principal.js';
 
-const studentRegistrationBody = z.strictObject({ name, email, hostelId: id });
-const staffRegistrationBody = z.strictObject({ name, email, requestedCanteenId: id.optional() });
-const ssoAudience = z.enum(['STAFF', 'ADMIN']);
-const ssoInitiateBody = z.strictObject({ audience: ssoAudience });
-const ssoExchangeBody = z.strictObject({
-  code: z.string().trim().min(16).max(128),
-  audience: ssoAudience,
+// The email always comes from the signed-in Google identity; a body may only
+// repeat it (older clients send it), never choose it.
+const studentRegistrationBody = z.strictObject({ name, email: email.optional(), hostelId: id });
+const staffRegistrationBody = z.strictObject({
+  name,
+  email: email.optional(),
+  requestedCanteenId: id.optional(),
 });
 
 /**
- * /api/auth — registration, identity and dashboard SSO handoff.
- * Registration and SSO initiate accept a verified Firebase token.
- * SSO exchange is public: it consumes a one-time authorization code.
+ * /api/auth — SERVE account endpoints next to Better Auth's own routes
+ * (sign-in/social, callback/google, get-session, sign-out …, see app.ts).
+ * All of them need a signed-in @srmap.edu.in identity.
  */
+export const SERVE_AUTH_PATHS = new Set(['/me', '/student/register', '/staff/register']);
+
 export function createAuthRouter(ctx: AppContext, services: Services): Router {
   const router = Router();
   const service = services.auth;
-  const sso = services.sso;
   const authenticate = createAuthenticate(ctx);
   const limiter = sensitiveLimiter(ctx.env);
 
@@ -38,7 +39,7 @@ export function createAuthRouter(ctx: AppContext, services: Services): Router {
     await service.registerStudent(auth, parse(studentRegistrationBody, req.body));
     res
       .status(201)
-      .json({ data: await service.me(auth, await resolvePrincipal(ctx.prisma, auth.uid)) });
+      .json({ data: await service.me(auth, await resolvePrincipal(ctx.prisma, auth)) });
   });
 
   router.post('/staff/register', authenticate, limiter, async (req, res) => {
@@ -46,18 +47,7 @@ export function createAuthRouter(ctx: AppContext, services: Services): Router {
     await service.registerStaff(auth, parse(staffRegistrationBody, req.body));
     res
       .status(201)
-      .json({ data: await service.me(auth, await resolvePrincipal(ctx.prisma, auth.uid)) });
-  });
-
-  router.post('/sso/initiate', authenticate, limiter, async (req, res) => {
-    const auth = req.auth!;
-    const { audience } = parse(ssoInitiateBody, req.body);
-    res.json({ data: await sso.initiate(auth.uid, auth.principal, audience) });
-  });
-
-  router.post('/sso/exchange', limiter, async (req, res) => {
-    const { code, audience } = parse(ssoExchangeBody, req.body);
-    res.json({ data: await sso.exchange(code, audience) });
+      .json({ data: await service.me(auth, await resolvePrincipal(ctx.prisma, auth)) });
   });
 
   return router;

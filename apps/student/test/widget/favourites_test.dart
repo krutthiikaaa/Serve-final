@@ -81,7 +81,7 @@ void main() {
 
     final second = TestHarness(favouritesStore: store);
     await tester.pumpWidget(second.app);
-    await second.auth.signIn('asha@example.edu', 'password');
+    await second.auth.signInWithGoogle();
     await tester.pumpAndSettle();
     await second.services.favourites.load();
     expect(second.services.favourites.contains('a1000000-0000-4000-8000-000000000001'), isTrue);

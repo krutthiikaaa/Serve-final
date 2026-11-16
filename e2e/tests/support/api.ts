@@ -11,24 +11,23 @@ import type {
 import { E2E } from './constants.mjs';
 
 /**
- * Drives the backend exactly like the Flutter student app does: Firebase
- * (emulator) for identity, then the SERVE REST API with the ID token.
+ * Drives the backend exactly like the native student app does: a Better Auth
+ * session (here from the test-only sign-in, same SRM rule as Google), then
+ * the SERVE REST API with `Authorization: Bearer <session token>`.
  * Nothing here talks to PostgreSQL directly.
  */
-const identity = (path: string) =>
-  `${E2E.emulatorUrl}/identitytoolkit.googleapis.com/v1/${path}?key=${E2E.firebaseApiKey}`;
-
 export const uniqueEmail = (prefix: string) =>
-  `${prefix}.${Date.now()}.${randomUUID().slice(0, 6)}@serve.test`;
+  `${prefix}.${Date.now()}.${randomUUID().slice(0, 6)}@srmap.edu.in`;
 
-export async function firebaseSignUp(email: string, password = E2E.password): Promise<string> {
-  const res = await fetch(identity('accounts:signUp'), {
+/** A real Better Auth session for a verified @srmap.edu.in identity. */
+export async function testSignIn(email: string): Promise<string> {
+  const res = await fetch(`${E2E.apiUrl}/api/auth/test/sign-in`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, returnSecureToken: true }),
+    body: JSON.stringify({ email }),
   });
-  if (!res.ok) throw new Error(`Emulator sign-up failed: ${res.status} ${await res.text()}`);
-  return ((await res.json()) as { idToken: string }).idToken;
+  if (!res.ok) throw new Error(`Test sign-in failed: ${res.status} ${await res.text()}`);
+  return ((await res.json()) as { token: string }).token;
 }
 
 export class ApiActor {
@@ -83,12 +82,6 @@ export class ApiActor {
     });
     return new LiveSocket(socket);
   }
-
-  initiateSso(audience: 'STAFF' | 'ADMIN') {
-    return this.data<{ redirectUrl: string; expiresAt: string }>('POST', '/auth/sso/initiate', {
-      audience,
-    });
-  }
 }
 
 export class StudentActor extends ApiActor {
@@ -96,14 +89,13 @@ export class StudentActor extends ApiActor {
 
   static async register(name: string, hostelName = 'Krishna') {
     const email = uniqueEmail('student');
-    const token = await firebaseSignUp(email);
+    const token = await testSignIn(email);
     const hostels = (await (await fetch(`${E2E.apiUrl}/api/hostels`)).json()) as { data: Hostel[] };
     const hostel = hostels.data.find((h) => h.name === hostelName);
     if (!hostel) throw new Error(`Hostel ${hostelName} not seeded`);
     const actor = new StudentActor(token);
     actor.me = await actor.data<MeStudent>('POST', '/auth/student/register', {
       name,
-      email,
       hostelId: hostel.id,
     });
     return actor;
@@ -186,29 +178,20 @@ export class LiveSocket {
   }
 }
 
+/** The E2E admin (provisioned by email; linked at its first sign-in). */
 export async function adminActor(): Promise<ApiActor> {
-  const res = await fetch(identity('accounts:signInWithPassword'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: E2E.adminEmail,
-      password: E2E.password,
-      returnSecureToken: true,
-    }),
-  });
-  if (!res.ok) throw new Error(`Admin sign-in failed: ${res.status}`);
-  return new ApiActor(((await res.json()) as { idToken: string }).idToken);
+  return new ApiActor(await testSignIn(E2E.adminEmail));
 }
 
 /** A staff member onboarded through the API and approved by the E2E admin. */
 export async function approvedStaff(name: string, canteenName: string) {
   const admin = await adminActor();
   const email = uniqueEmail('staff');
-  const staff = new ApiActor(await firebaseSignUp(email));
+  const staff = new ApiActor(await testSignIn(email));
   const canteens = await staff.data<{ id: string; name: string }[]>('GET', '/canteens');
   const canteen = canteens.find((c) => c.name === canteenName);
   if (!canteen) throw new Error(`Canteen ${canteenName} not seeded`);
-  await staff.data('POST', '/auth/staff/register', { name, email, requestedCanteenId: canteen.id });
+  await staff.data('POST', '/auth/staff/register', { name, requestedCanteenId: canteen.id });
   const pending = await admin.call<{ data: { id: string; staff: { email: string } }[] }>(
     'GET',
     '/admin/change-requests?status=PENDING&limit=100',

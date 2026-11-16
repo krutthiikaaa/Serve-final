@@ -6,17 +6,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_config.dart';
 import '../../core/api_exception.dart';
-import '../../services/api/models.dart';
-import '../../services/api/serve_api.dart';
 import '../../services/auth/auth_controller.dart';
-import '../../services/auth/sso_tab.dart';
 import '../../theme/serve_theme.dart';
 import '../widgets/auth_info_pane.dart';
 import '../widgets/auth_layout.dart';
-import '../widgets/forgot_password_form.dart';
-import '../widgets/login_form.dart';
+import '../widgets/google_sign_in_pane.dart';
 import '../widgets/serve_splash.dart';
-import '../widgets/staff_register_form.dart';
 import '../widgets/states.dart';
 import '../widgets/student_register_form.dart';
 import '../widgets/surface.dart';
@@ -39,21 +34,11 @@ abstract final class _Intro {
 
 double _span(double t, (double, double) phase) => ((t - phase.$1) / (phase.$2 - phase.$1)).clamp(0.0, 1.0);
 
-enum _Pane {
-  roles,
-  studentLogin,
-  studentRegister,
-  studentForgot,
-  staffLogin,
-  staffRegister,
-  staffForgot,
-  staffPending,
-  adminLogin,
-  adminForgot,
-  adminProvision,
-}
+enum _Pane { roles, studentLogin, studentRegister, staffLogin, adminLogin }
 
-/// Students continue in the app; staff and admins are sent to their web portals.
+/// Students continue in the app (Google sign-in, @srmap.edu.in); staff and
+/// admins are sent to their web portals, where they sign in with the same
+/// Google account (one SERVE session on the shared domain).
 ///
 /// Opening experience: a short logo splash on the warm olive field, then the
 /// existing centred role card. Choosing a role transforms the popup's contents
@@ -61,8 +46,8 @@ enum _Pane {
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key, this.completeEmail});
 
-  /// When a Firebase user has no SERVE profile yet, open student registration
-  /// on this email inside the popup (no splash replay).
+  /// When a signed-in Google account has no SERVE profile yet, open student
+  /// registration on this email inside the popup (no splash replay).
   final String? completeEmail;
 
   static const introDuration = Duration(milliseconds: 3200);
@@ -81,20 +66,6 @@ class RoleSelectionScreen extends StatefulWidget {
   State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
-class _LoginSlot {
-  final form = GlobalKey<FormState>();
-  final email = TextEditingController();
-  final password = TextEditingController();
-  bool busy = false;
-  bool obscure = true;
-  String? error;
-
-  void dispose() {
-    email.dispose();
-    password.dispose();
-  }
-}
-
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerProviderStateMixin {
   late final bool _withIntro;
   late bool _playing;
@@ -106,9 +77,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
   late final AnimationController _imageWait;
   final _stageKey = GlobalKey();
   final _popupKey = GlobalKey();
-  final _student = _LoginSlot();
-  final _staff = _LoginSlot();
-  final _admin = _LoginSlot();
+  bool _signingIn = false;
 
   @override
   void initState() {
@@ -162,9 +131,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     _disposed = true;
     _imageWait.dispose();
     _intro.dispose();
-    _student.dispose();
-    _staff.dispose();
-    _admin.dispose();
     super.dispose();
   }
 
@@ -196,120 +162,36 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
           await context.read<AuthController>().signOut();
         }
         if (mounted) _show(_Pane.studentLogin);
-      case _Pane.studentForgot:
-        _show(_Pane.studentLogin);
-      case _Pane.staffRegister:
-      case _Pane.staffForgot:
-      case _Pane.staffPending:
-        _show(_Pane.staffLogin);
-      case _Pane.adminForgot:
-      case _Pane.adminProvision:
-        _show(_Pane.adminLogin);
     }
   }
 
-  Future<void> _openHandoff(String redirect, String? trustedBase, String name, SsoTab? tab) async {
-    if (!_trustedHandoff(redirect, trustedBase)) {
-      tab?.close();
-      if (mounted) showSnack(context, 'The $name link is not configured for this build.');
-      return;
-    }
-    if (tab != null) {
-      tab.open(redirect);
-      return;
-    }
-    final ok = await launchUrl(Uri.parse(redirect), mode: LaunchMode.externalApplication);
-    if (!ok && mounted) showSnack(context, 'Could not open the $name.');
-  }
-
-  static bool _trustedHandoff(String redirect, String? base) {
-    if (base == null || base.isEmpty) return false;
-    final dest = Uri.tryParse(redirect);
-    final trusted = Uri.tryParse(base);
-    if (dest == null || trusted == null || dest.hasEmptyPath) return false;
-    if (dest.scheme != trusted.scheme || dest.host != trusted.host || dest.port != trusted.port) {
-      return false;
-    }
-    final params = dest.queryParameters;
-    if (params.containsKey('idToken') || params.containsKey('token') || params.containsKey('customToken')) {
-      return false;
-    }
-    return dest.path.contains('/sso/callback') && (params['code'] ?? '').length >= 16;
-  }
-
-  _LoginSlot _slotFor(_Pane pane) => switch (pane) {
-    _Pane.staffLogin || _Pane.staffRegister || _Pane.staffForgot || _Pane.staffPending => _staff,
-    _Pane.adminLogin || _Pane.adminForgot || _Pane.adminProvision => _admin,
-    _ => _student,
-  };
-
-  Future<void> _submit(_Pane pane) async {
-    final slot = _slotFor(pane);
-    if (slot.busy || !(slot.form.currentState?.validate() ?? false)) return;
-    setState(() {
-      slot.busy = true;
-      slot.error = null;
-    });
+  Future<void> _signIn() async {
+    if (_signingIn) return;
+    setState(() => _signingIn = true);
     final auth = context.read<AuthController>();
-    final config = context.read<AppConfig>();
-    final api = context.read<ServeApi>();
-    SsoTab? tab;
     try {
-      if (pane == _Pane.studentLogin) {
-        await auth.signIn(slot.email.text, slot.password.text);
-        return;
-      }
-      tab = openBlankSsoTab();
-      final me = await auth.identify(slot.email.text, slot.password.text);
-      final allowed =
-          (pane == _Pane.staffLogin && me is OtherRoleMe && me.role == 'STAFF') ||
-          (pane == _Pane.adminLogin && me is OtherRoleMe && me.role == 'ADMIN');
-      if (!allowed) {
-        tab?.close();
-        await auth.signOut();
-        if (mounted) setState(() => slot.error = _mismatch(pane == _Pane.staffLogin ? 'staff' : 'admin', me));
-        return;
-      }
-      final audience = pane == _Pane.staffLogin ? 'STAFF' : 'ADMIN';
-      final handoff = await api.initiateSso(audience);
-      await auth.signOut();
-      if (!mounted) {
-        tab?.close();
-        return;
-      }
-      await _openHandoff(
-        handoff.redirectUrl,
-        pane == _Pane.staffLogin ? config.staffDashboardUrl : config.adminPortalUrl,
-        pane == _Pane.staffLogin ? 'staff dashboard' : 'admin portal',
-        tab,
-      );
-      if (mounted) setState(() => _pane = _Pane.roles);
+      // Web leaves for Google here; native returns signed in (or with an error).
+      await auth.signInWithGoogle();
     } catch (e) {
-      tab?.close();
-      if (auth.isSignedIn) await auth.signOut();
-      if (mounted) setState(() => slot.error = errorMessage(e));
+      if (mounted) showSnack(context, errorMessage(e));
     } finally {
-      if (mounted) setState(() => slot.busy = false);
+      if (mounted) setState(() => _signingIn = false);
     }
   }
 
-  static String _mismatch(String wanted, Me me) {
-    final actual = switch (me) {
-      StudentMe() => 'a student account',
-      UnregisteredMe() => 'an unregistered account',
-      OtherRoleMe(:final role) when role == 'ADMIN' => 'an admin account',
-      OtherRoleMe() => 'a staff account',
-    };
-    final label = switch (wanted) {
-      'staff' => 'Canteen Staff',
-      'admin' => 'Administrator',
-      _ => 'Student',
-    };
-    return 'This is $actual. Choose $label to continue.';
+  Future<void> _openPortal(String? url, String name) async {
+    final uri = url == null ? null : Uri.tryParse(url);
+    if (uri == null || !(uri.scheme == 'https' || uri.scheme == 'http')) {
+      showSnack(context, 'The $name link is not configured for this build.');
+      return;
+    }
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) showSnack(context, 'Could not open the $name.');
   }
 
   @override
   Widget build(BuildContext context) {
+    final signInError = context.select<AuthController, String?>((a) => a.signInError);
     final roles = _Roles(
       onStudent: () => _show(_Pane.studentLogin),
       onStaff: () => _show(_Pane.staffLogin),
@@ -352,7 +234,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
                                 roles: roles,
                                 intro: intro,
                                 pane: _pane,
-                                body: _pane == _Pane.roles ? null : _authBody(_pane),
+                                body: _pane == _Pane.roles ? null : _authBody(_pane, signInError: signInError),
                                 onBack: _back,
                                 maxBodyHeight: math.max(160, constraints.maxHeight - padding.vertical - 120),
                               ),
@@ -372,35 +254,18 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     );
   }
 
-  Widget _authBody(_Pane pane) {
+  Widget _authBody(_Pane pane, {String? signInError}) {
+    final config = context.read<AppConfig>();
     return switch (pane) {
-      _Pane.studentLogin => _loginForm(
-        pane,
-        heading: 'Welcome back',
-        body: 'Sign in to continue to your SERVE account.',
-        onCreate: () {
-          _lockedEmail = null;
-          _show(_Pane.studentRegister);
-        },
-        onForgot: () => _show(_Pane.studentForgot),
-      ),
-      _Pane.staffLogin => _loginForm(
-        pane,
-        heading: 'Staff sign in',
-        body: 'Sign in to manage orders and your canteen.',
-        onCreate: () => _show(_Pane.staffRegister),
-        onForgot: () => _show(_Pane.staffForgot),
-      ),
-      _Pane.adminLogin => _loginForm(
-        pane,
-        heading: 'Admin sign in',
-        body: 'Sign in to manage SERVE and oversee operations.',
-        onCreate: () => _show(_Pane.adminProvision),
-        onForgot: () => _show(_Pane.adminForgot),
+      _Pane.studentLogin => GoogleSignInPane(
+        heading: 'Sign in to SERVE',
+        body: 'Sign in with Google to order from your canteen. New here? Signing in creates your account.',
+        busy: _signingIn,
+        error: signInError,
+        onSignIn: _signIn,
       ),
       _Pane.studentRegister => StudentRegisterForm(
-        lockedEmail: _lockedEmail,
-        onBackToLogin: () => _show(_Pane.studentLogin),
+        lockedEmail: _lockedEmail ?? '',
         onUseDifferentAccount: () async {
           await context.read<AuthController>().signOut();
           if (mounted) {
@@ -411,55 +276,25 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
           }
         },
       ),
-      _Pane.staffRegister => StaffRegisterForm(onBackToLogin: () => _show(_Pane.staffLogin), onSubmitted: () => _show(_Pane.staffPending)),
-      _Pane.studentForgot => ForgotPasswordForm(initialEmail: _student.email.text, onBackToLogin: () => _show(_Pane.studentLogin)),
-      _Pane.staffForgot => ForgotPasswordForm(initialEmail: _staff.email.text, onBackToLogin: () => _show(_Pane.staffLogin)),
-      _Pane.adminForgot => ForgotPasswordForm(initialEmail: _admin.email.text, onBackToLogin: () => _show(_Pane.adminLogin)),
-      _Pane.staffPending => AuthInfoPane(
-        icon: Icons.schedule_rounded,
-        heading: 'Request sent',
-        body: 'Your staff account is pending admin approval. You will be able to open the staff dashboard after an administrator reviews your request.',
-        actionLabel: 'Back to login',
-        onAction: () => _show(_Pane.staffLogin),
+      _Pane.staffLogin => AuthInfoPane(
+        icon: Icons.storefront_rounded,
+        heading: 'Staff sign in',
+        body: 'Canteen staff sign in on the staff dashboard with their SRM Google account (@srmap.edu.in). New staff request access there; an admin approves it.',
+        actionLabel: 'Open staff dashboard',
+        onAction: () => _openPortal(config.staffDashboardUrl, 'staff dashboard'),
       ),
-      _Pane.adminProvision => AuthInfoPane(
+      _Pane.adminLogin => AuthInfoPane(
         icon: Icons.admin_panel_settings_rounded,
-        heading: 'Admin accounts are provisioned',
-        body: 'SERVE does not offer public admin sign-up. Admin access is created through a controlled invitation or setup process. If you were provisioned, sign in with that email.',
-        actionLabel: 'Back to login',
-        onAction: () => _show(_Pane.adminLogin),
+        heading: 'Admin sign in',
+        body: 'Administrators sign in on the admin portal with their SRM Google account (@srmap.edu.in). Admin access is granted by the SERVE operations team; there is no public admin sign-up.',
+        actionLabel: 'Open admin portal',
+        onAction: () => _openPortal(config.adminPortalUrl, 'admin portal'),
       ),
       _Pane.roles => const SizedBox.shrink(),
     };
   }
-
-  Widget _loginForm(
-    _Pane pane, {
-    required String heading,
-    required String body,
-    required VoidCallback onCreate,
-    required VoidCallback onForgot,
-  }) {
-    final slot = _slotFor(pane);
-    return ServeLoginForm(
-      formKey: slot.form,
-      email: slot.email,
-      password: slot.password,
-      busy: slot.busy,
-      obscure: slot.obscure,
-      error: slot.error,
-      heading: heading,
-      body: body,
-      onToggleObscure: () => setState(() => slot.obscure = !slot.obscure),
-      onSubmit: () => _submit(pane),
-      onCreateAccount: onCreate,
-      onForgotPassword: onForgot,
-    );
-  }
 }
 
-/// The centred role-selection card. During the intro its paper surface and
-/// contents ease in after the logo splash.
 class _RolePopup extends StatelessWidget {
   const _RolePopup({
     required this.roles,

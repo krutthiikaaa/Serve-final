@@ -1,7 +1,6 @@
 import type { Request } from 'express';
 import { describe, expect, it } from 'vitest';
 import {
-  bearerToken,
   currentAdmin,
   currentApprovedStaff,
   currentStaff,
@@ -9,14 +8,14 @@ import {
 } from '../../src/middleware/auth.js';
 import type { Principal } from '../../src/modules/auth/principal.js';
 
-const identity = { uid: 'u1', email: 'u1@example.edu', emailVerified: false };
+const identity = { uid: 'u1', email: 'u1@srmap.edu.in', emailVerified: true };
 const req = (principal: Principal | null): Request =>
   ({ auth: { ...identity, principal } }) as Request;
 
 const student: Principal = {
   role: 'STUDENT',
   id: 's1',
-  firebaseUid: 'u1',
+  authUserId: 'u1',
   email: 'u1@example.edu',
   name: 'S',
   isActive: true,
@@ -30,7 +29,7 @@ const staff = (
 ): Principal => ({
   role: 'STAFF',
   id: 'st1',
-  firebaseUid: 'u1',
+  authUserId: 'u1',
   email: 'u1@example.edu',
   name: 'T',
   status,
@@ -40,7 +39,7 @@ const staff = (
 const admin: Principal = {
   role: 'ADMIN',
   id: 'a1',
-  firebaseUid: 'u1',
+  authUserId: 'u1',
   email: 'u1@example.edu',
   name: 'A',
   isActive: true,
@@ -54,16 +53,6 @@ const codeOf = (fn: () => unknown): string | undefined => {
   }
   return undefined;
 };
-
-describe('bearerToken', () => {
-  it('extracts only well-formed bearer tokens', () => {
-    expect(bearerToken('Bearer abc.def.ghi')).toBe('abc.def.ghi');
-    expect(bearerToken('bearer abc')).toBeNull();
-    expect(bearerToken('Basic abc')).toBeNull();
-    expect(bearerToken('Bearer a b')).toBeNull();
-    expect(bearerToken(undefined)).toBeNull();
-  });
-});
 
 describe('role guards (database-backed principal)', () => {
   it('requires a registered account', () => {

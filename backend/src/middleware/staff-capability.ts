@@ -43,7 +43,7 @@ export function staffOperatingCanteenId(req: Request): string {
  * Capability check for approved staff on the resolved operating canteen.
  *
  * Order of gates (enforced by route mounting):
- *   1. Firebase authentication
+ *   1. Better Auth session (Google, @srmap.edu.in)
  *   2. `requireApprovedStaff`
  *   3. `resolveStaffCanteen` (assignment row)
  *   4. the named capability on that assignment

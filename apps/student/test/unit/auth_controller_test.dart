@@ -8,16 +8,16 @@ import '../support/fakes.dart';
 import '../support/fixtures.dart';
 
 void main() {
-  late FakeFirebase firebase;
+  late FakeAuthClient google;
   late MemorySessionStore store;
   late AuthController auth;
   Me Function() me = studentMe;
 
   setUp(() {
-    firebase = FakeFirebase();
+    google = FakeAuthClient();
     store = MemorySessionStore();
     me = studentMe;
-    auth = AuthController(firebase: firebase, store: store)..attach(() async => me());
+    auth = AuthController(client: google, store: store, isWeb: false)..attach(() async => me());
   });
 
   test('starts signed out without a saved session', () async {
@@ -25,59 +25,58 @@ void main() {
     expect(auth.status, AuthStatus.signedOut);
   });
 
-  test('restores a saved session by refreshing the token, then loads /me', () async {
-    await store.write(const StoredSession(uid: 'u', email: 'asha@example.edu', refreshToken: 'saved'));
+  test('restores a saved session token, then loads /me', () async {
+    store.value = const StoredSession(token: 'saved-token');
     await auth.restore();
-    expect(firebase.calls, ['refresh']);
     expect(auth.status, AuthStatus.ready);
-    expect(auth.student?.name, 'Asha Rao');
+    expect(await auth.sessionToken(), 'saved-token');
+    expect(google.calls, isEmpty, reason: 'no browser sign-in on restore');
   });
 
-  test('sign-in persists only the refresh token and routes on /me', () async {
-    await auth.signIn('asha@example.edu', 'secret');
-    expect(store.value?.refreshToken, 'refresh');
-    expect(store.value?.toJson().values, isNot(contains('secret')));
+  test('Google sign-in stores only the session token and routes on /me', () async {
+    await auth.signInWithGoogle();
+    expect(store.value?.token, 'session-token');
     expect(auth.status, AuthStatus.ready);
+    expect(auth.student?.firstName, 'Asha');
+    expect(auth.signInError, isNull);
   });
 
-  test('a 401 from /me signs the user out', () async {
-    me = () => throw const ApiException(401, 'AUTH_TOKEN_REVOKED', 'revoked');
-    await auth.signIn('asha@example.edu', 'secret');
+  test('a refused Google account is explained and nothing is stored', () async {
+    google.signInError = const AuthException('EMAIL_DOMAIN_NOT_ALLOWED', 'Use your SRM University-AP Google account (@srmap.edu.in).');
+    await auth.signInWithGoogle();
+    expect(auth.signInError, contains('@srmap.edu.in'));
+    expect(store.value, isNull);
+    expect(auth.isSignedIn, isFalse);
+  });
+
+  test('a 401 from /me (session ended) signs the user out and forgets the token', () async {
+    store.value = const StoredSession(token: 'ended');
+    me = () => throw const ApiException(401, 'AUTH_REQUIRED', 'x');
+    await auth.restore();
     expect(auth.status, AuthStatus.signedOut);
     expect(store.value, isNull);
   });
 
   test('backend outages keep the session and show an error state', () async {
-    me = () => throw const ApiException(0, 'NETWORK_ERROR', ApiException.networkMessage);
-    await auth.signIn('asha@example.edu', 'secret');
+    store.value = const StoredSession(token: 'kept');
+    me = () => throw const ApiException(0, 'NETWORK_ERROR', 'down');
+    await auth.restore();
     expect(auth.status, AuthStatus.error);
-    expect(auth.isSignedIn, isTrue);
+    expect(store.value?.token, 'kept');
   });
 
-  test('createAccount does not leave the registration screen', () async {
-    await auth.createAccount('new@example.edu', 'secret1');
-    expect(auth.status, AuthStatus.initializing);
-    expect(await auth.idToken(), 'id-token');
+  test('a stored pre-Better-Auth (Firebase) session is ignored', () async {
+    expect(StoredSession.fromJson({'uid': 'u', 'email': 'e', 'refreshToken': 'r'}), isNull);
+    expect(StoredSession.fromJson({'v': 2, 'token': 't'})?.token, 't');
   });
 
-  test('sendPasswordReset does not change auth status', () async {
-    await auth.sendPasswordReset('asha@example.edu');
-    expect(firebase.calls, ['reset:asha@example.edu']);
-    expect(auth.status, AuthStatus.initializing);
-  });
-
-  test('concurrent token refreshes share one request', () async {
-    await auth.signIn('asha@example.edu', 'secret');
-    firebase.calls.clear();
-    await Future.wait([auth.idToken(forceRefresh: true), auth.idToken(forceRefresh: true)]);
-    expect(firebase.calls, ['refresh']);
-  });
-
-  test('sign-out clears everything', () async {
-    await auth.signIn('asha@example.edu', 'secret');
+  test('sign-out ends the server session and clears everything', () async {
+    await auth.signInWithGoogle();
     await auth.signOut();
+    expect(auth.status, AuthStatus.signedOut);
     expect(auth.me, isNull);
     expect(store.value, isNull);
-    expect(await auth.idToken(), isNull);
+    expect(await auth.sessionToken(), isNull);
+    expect(google.calls.last, 'signOut:session-token');
   });
 }

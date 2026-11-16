@@ -96,7 +96,7 @@ describe('staff approval lifecycle', () => {
     expect(request_.reviewedByAdminId).toBe(admin.id);
     expect(request_.reviewedAt).toBeTruthy();
 
-    // Same Firebase token, new database-backed permissions.
+    // Same session, new database-backed permissions.
     const dash = await request(app)
       .get('/api/staff/dashboard')
       .set(bearer(staff.token))

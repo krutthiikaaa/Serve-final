@@ -64,8 +64,11 @@ export function fieldErrors(err: unknown): Record<string, string> {
 export interface ApiClientOptions {
   /** Backend origin, e.g. http://localhost:5001 (no trailing slash). */
   baseUrl: string;
-  /** Current Firebase ID token; `forceRefresh` after an expired-token response. */
-  getToken: (forceRefresh?: boolean) => Promise<string | null>;
+  /**
+   * Optional bearer token. The web apps leave it unset: they authenticate
+   * with Better Auth's HttpOnly session cookie (sent with credentials).
+   */
+  getToken?: (forceRefresh?: boolean) => Promise<string | null>;
   /** Called when the backend rejects the session for good. */
   onUnauthorized?: () => void;
   fetchImpl?: typeof fetch;
@@ -90,8 +93,8 @@ export interface ApiResponse<T> {
 }
 
 /**
- * Typed HTTP client for the SERVE backend. One place for auth headers,
- * error mapping and the single retry after an expired Firebase token.
+ * Typed HTTP client for the SERVE backend. One place for credentials (the
+ * session cookie), error mapping and the sign-out on an ended session.
  */
 export class ApiClient {
   private readonly fetchImpl: typeof fetch;
@@ -109,7 +112,7 @@ export class ApiClient {
       const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
       if (options.file) headers['Content-Type'] = options.file.contentType;
       else if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-      if (!options.anonymous) {
+      if (!options.anonymous && this.options.getToken) {
         const token = await this.options.getToken(forceRefresh);
         if (token) headers.Authorization = `Bearer ${token}`;
       }
@@ -117,6 +120,8 @@ export class ApiClient {
         return await this.fetchImpl(this.url(path, options.query), {
           method,
           headers,
+          // The session cookie lives on the SERVE backend (same site).
+          credentials: 'include',
           body: options.file
             ? options.file.data
             : options.body === undefined

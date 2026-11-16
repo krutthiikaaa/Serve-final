@@ -3,10 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-import 'package:serve_student/core/api_exception.dart';
+import 'package:serve_student/config/app_config.dart';
 import 'package:serve_student/services/auth/session_store.dart';
-import 'package:serve_student/services/api/models.dart';
-import 'package:serve_student/services/api/serve_api.dart';
 import 'package:serve_student/services/auth/auth_controller.dart';
 import 'package:serve_student/ui/screens/role_selection_screen.dart';
 import 'package:serve_student/ui/widgets/auth_layout.dart';
@@ -97,7 +95,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1500));
       await tester.tap(find.text('Student'), warnIfMissed: false);
       await tester.pump();
-      expect(find.text('Welcome back'), findsNothing);
+      expect(find.text('Sign in to SERVE'), findsNothing);
 
       await tester.pump(RoleSelectionScreen.introDuration);
       expect(_skip, findsNothing);
@@ -106,7 +104,7 @@ void main() {
       expect(tester.binding.transientCallbackCount, 0, reason: 'nothing left animating');
 
       await _tapRole(tester, 'Student');
-      expect(find.text('Welcome back'), findsOneWidget);
+      expect(find.text('Sign in to SERVE'), findsOneWidget);
     });
 
     testWidgets('lasts about 3.2 seconds', (tester) async {
@@ -185,7 +183,7 @@ void main() {
       await tester.pump(RoleSelectionScreen.introDuration - const Duration(milliseconds: 1100));
       expect(_skip, findsNothing);
       await _tapRole(tester, 'Student');
-      expect(find.text('Welcome back'), findsOneWidget);
+      expect(find.text('Sign in to SERVE'), findsOneWidget);
     });
 
     testWidgets('waits (at most 1.5 s) for the official logo, showing only the page colour', (tester) async {
@@ -219,7 +217,7 @@ void main() {
     testWidgets('a saved student session still goes straight home', (tester) async {
       usePhoneSize(tester);
       final h = TestHarness();
-      h.store.value = const StoredSession(uid: 'u1', email: 'asha@example.edu', refreshToken: 'refresh');
+      h.store.value = const StoredSession(token: 'saved-session-token');
       await tester.pumpWidget(h.app);
       await h.auth.restore();
       await tester.pumpAndSettle();
@@ -280,7 +278,7 @@ void main() {
       await _start(tester);
       expect(_skip, findsNothing);
       await _tapRole(tester, 'Student');
-      expect(find.text('Welcome back'), findsOneWidget);
+      expect(find.text('Sign in to SERVE'), findsOneWidget);
     });
   });
 
@@ -299,7 +297,8 @@ void main() {
     usePhoneSize(tester);
     await _open(tester);
     await _tapRole(tester, 'Student');
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Sign in to SERVE'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Continue with Google'), findsOneWidget);
     expect(launcher.launched, isEmpty);
   });
 
@@ -326,7 +325,7 @@ void main() {
     usePhoneSize(tester);
     await _open(tester);
     await _tapRole(tester, 'Student');
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Sign in to SERVE'), findsOneWidget);
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     expect(find.text('Welcome to SERVE'), findsOneWidget);
@@ -336,101 +335,46 @@ void main() {
     expect(find.text('Staff sign in'), findsOneWidget);
   });
 
-  testWidgets('staff sign-in opens the dashboard for a staff account', (tester) async {
+  testWidgets('staff are sent to the staff dashboard (Google sign-in happens there)', (tester) async {
     usePhoneSize(tester);
-    final h = TestHarness()..api.meValue = const OtherRoleMe(role: 'STAFF', name: 'Kiran');
-    await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
+    final h = await _open(tester);
     await _tapRole(tester, 'Canteen Staff');
-    await tester.enterText(find.byKey(const Key('login-email')), 'staff.kg@serve.dev');
-    await tester.enterText(find.byKey(const Key('login-password')), 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Open staff dashboard'));
     await tester.pumpAndSettle();
-    expect(h.api.calls, contains('sso:STAFF'));
-    expect(launcher.launched, ['http://localhost:5173/sso/callback?code=test-staff-code-xx']);
-    expect(find.text('Welcome to SERVE'), findsOneWidget);
+    expect(launcher.launched, ['http://localhost:5173']);
+    expect(h.google.calls, isEmpty, reason: 'no sign-in inside the student app for staff');
     expect(h.auth.status, AuthStatus.signedOut);
   });
 
-  testWidgets('admin sign-in opens the portal for an admin account', (tester) async {
+  testWidgets('admins are sent to the admin portal', (tester) async {
     usePhoneSize(tester);
-    final h = TestHarness()..api.meValue = const OtherRoleMe(role: 'ADMIN', name: 'Ada');
-    await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
+    await _open(tester);
     await _tapRole(tester, 'Administrator');
-    await tester.enterText(find.byKey(const Key('login-email')), 'admin@serve.dev');
-    await tester.enterText(find.byKey(const Key('login-password')), 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Open admin portal'));
     await tester.pumpAndSettle();
-    expect(h.api.calls, contains('sso:ADMIN'));
-    expect(launcher.launched, ['http://localhost:5174/sso/callback?code=test-admin-code-xx']);
+    expect(launcher.launched, ['http://localhost:5174']);
   });
 
   testWidgets('a portal that cannot be opened says so', (tester) async {
     usePhoneSize(tester);
     launcher.result = false;
-    final h = TestHarness()..api.meValue = const OtherRoleMe(role: 'ADMIN', name: 'Ada');
-    await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
+    await _open(tester);
     await _tapRole(tester, 'Administrator');
-    await tester.enterText(find.byKey(const Key('login-email')), 'admin@serve.dev');
-    await tester.enterText(find.byKey(const Key('login-password')), 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Open admin portal'));
     await tester.pumpAndSettle();
     expect(find.text('Could not open the admin portal.'), findsOneWidget);
   });
 
-  testWidgets('refuses a dashboard URL that carries a token', (tester) async {
+  testWidgets('a portal URL that is not configured (release build) is never guessed', (tester) async {
     usePhoneSize(tester);
-    final h = TestHarness()..api.meValue = const OtherRoleMe(role: 'STAFF', name: 'Kiran');
-    h.api.onInitiateSso = (_) => SsoHandoff(
-      redirectUrl: 'http://localhost:5173/sso/callback?code=test-staff-code-xx&token=secret',
-      expiresAt: DateTime.now().add(const Duration(seconds: 60)),
-    );
+    final h = TestHarness(config: const AppConfig(apiUrl: 'https://api.serve.example'));
     await tester.pumpWidget(h.app);
     await h.auth.restore();
     await tester.pumpAndSettle();
     await _tapRole(tester, 'Canteen Staff');
-    await tester.enterText(find.byKey(const Key('login-email')), 'staff.kg@serve.dev');
-    await tester.enterText(find.byKey(const Key('login-password')), 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Open staff dashboard'));
     await tester.pumpAndSettle();
     expect(find.text('The staff dashboard link is not configured for this build.'), findsOneWidget);
-    expect(launcher.launched, isEmpty);
-    expect(h.auth.status, AuthStatus.signedOut);
-  });
-
-  testWidgets('failed staff SSO stays on login and does not open a dashboard', (tester) async {
-    usePhoneSize(tester);
-    final h = TestHarness()..api.meValue = const OtherRoleMe(role: 'STAFF', name: 'Kiran');
-    h.api.onInitiateSso = (_) => throw const ApiException(403, 'STAFF_NOT_APPROVED', 'Your staff account is awaiting admin approval.');
-    await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
-    await _tapRole(tester, 'Canteen Staff');
-    await tester.enterText(find.byKey(const Key('login-email')), 'staff.kg@serve.dev');
-    await tester.enterText(find.byKey(const Key('login-password')), 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
-    expect(find.text('Your staff account is awaiting admin approval.'), findsOneWidget);
-    expect(find.text('Staff sign in'), findsOneWidget);
-    expect(launcher.launched, isEmpty);
-    expect(h.auth.status, AuthStatus.signedOut);
-  });
-
-  testWidgets('staff form rejects a student account', (tester) async {
-    usePhoneSize(tester);
-    await _open(tester);
-    await _tapRole(tester, 'Canteen Staff');
-    await tester.enterText(find.byKey(const Key('login-email')), 'asha@example.edu');
-    await tester.enterText(find.byKey(const Key('login-password')), 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('This is a student account'), findsOneWidget);
-    expect(find.text('Staff sign in'), findsOneWidget);
     expect(launcher.launched, isEmpty);
   });
 

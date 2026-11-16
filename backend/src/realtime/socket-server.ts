@@ -3,7 +3,7 @@ import { Server, type Socket } from 'socket.io';
 import type { Logger } from 'pino';
 import { z } from 'zod';
 import type { Env } from '../config/env.js';
-import type { IdentityVerifier } from '../lib/firebase.js';
+import type { SessionVerifier } from '../lib/session.js';
 import type { PrismaClient } from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { resolvePrincipal, type Principal } from '../modules/auth/principal.js';
@@ -18,12 +18,16 @@ import {
 
 interface SocketData {
   uid: string;
+  email: string;
   principal: Principal;
+  sessionId: string;
   tokenExpiresAt: number;
 }
 
-/** Longest timer Node supports (~24.8 days); Firebase tokens last 1 hour. */
+/** Longest timer Node supports (~24.8 days); sessions last 7 days. */
 const MAX_TIMER_MS = 2_147_483_647;
+/** How often an open socket re-checks that its session still exists (sign-out, revocation). */
+export const SESSION_RECHECK_MS = 60_000;
 
 const dataOf = (socket: Socket) => socket.data as SocketData;
 
@@ -57,19 +61,28 @@ function connectError(code: string, message: string): Error {
 /**
  * Authenticated Socket.IO server.
  *
- * Handshake: `io(url, { auth: { token: <Firebase ID token> } })`. The token is
- * verified with Firebase (revocation checked) and the principal is loaded from
- * PostgreSQL — exactly like REST. Rooms are assigned by the server; the only
+ * Handshake: the web apps send Better Auth's session cookie (withCredentials);
+ * the native app sends `io(url, { auth: { token: <session token> } })`. The
+ * session is verified by Better Auth and the principal is loaded from
+ * PostgreSQL, exactly like REST. Rooms are assigned by the server; the only
  * client-initiated membership is the read-only public menu room of a canteen
  * the caller is allowed to see.
  */
 export function createRealtimeServer(
   httpServer: HttpServer,
-  deps: { env: Env; logger: Logger; prisma: PrismaClient; verifier: IdentityVerifier },
+  deps: {
+    env: Env;
+    logger: Logger;
+    prisma: PrismaClient;
+    sessions: SessionVerifier;
+    /** How often open sockets re-check their session (tests use a short interval). */
+    sessionRecheckMs?: number;
+  },
 ) {
-  const { env, logger, prisma, verifier } = deps;
+  const { env, logger, prisma, sessions } = deps;
+  const recheckMs = deps.sessionRecheckMs ?? SESSION_RECHECK_MS;
   const io = new Server(httpServer, {
-    cors: { origin: env.CORS_ORIGINS, credentials: false },
+    cors: { origin: env.CORS_ORIGINS, credentials: true },
     serveClient: false,
     maxHttpBufferSize: 10_000,
     connectionStateRecovery: undefined,
@@ -79,18 +92,25 @@ export function createRealtimeServer(
   async function authenticateSocket(socket: Socket): Promise<Error | null> {
     try {
       const token: unknown = (socket.handshake.auth as Record<string, unknown> | undefined)?.token;
-      if (typeof token !== 'string' || token.length === 0) {
-        return connectError('AUTH_REQUIRED', 'Authentication required');
+      const headers = new Headers();
+      const cookie = socket.request.headers.cookie;
+      if (typeof token === 'string' && token.length > 0) {
+        headers.set('authorization', `Bearer ${token}`);
+      } else if (cookie) {
+        headers.set('cookie', cookie);
       }
-      const identity = await verifier.verifyIdToken(token);
-      const principal = await resolvePrincipal(prisma, identity.uid);
+      const identity = await sessions.verify(headers);
+      if (!identity) return connectError('AUTH_REQUIRED', 'Authentication required');
+      const principal = await resolvePrincipal(prisma, identity);
       if (!principal) {
         return connectError('ACCOUNT_NOT_REGISTERED', 'Complete your SERVE registration first.');
       }
       if (!principal.isActive) return connectError('ACCOUNT_DISABLED', 'This account is disabled.');
       socket.data = {
         uid: identity.uid,
+        email: identity.email,
         principal,
+        sessionId: identity.sessionId,
         tokenExpiresAt: identity.expiresAt.getTime(),
       } satisfies SocketData;
       return null;
@@ -106,24 +126,37 @@ export function createRealtimeServer(
   });
 
   io.on('connection', (socket) => {
-    const { principal, uid, tokenExpiresAt } = dataOf(socket);
+    const { principal, uid, email, sessionId, tokenExpiresAt } = dataOf(socket);
     void socket.join(roomsFor(principal));
 
-    // A socket never outlives the ID token it was opened with. At expiry the
-    // client is told why and disconnected; it reconnects with a fresh token
-    // (socket.io-client `auth` callback) and is re-verified from scratch.
+    // A socket never outlives the session it was opened with: at expiry, or
+    // within SESSION_RECHECK_MS of sign-out/revocation, the client is told
+    // why and disconnected; it reconnects and is re-verified from scratch.
+    const end = () => {
+      socket.emit('auth.expired', {
+        type: 'auth.expired',
+        occurredAt: new Date().toISOString(),
+        data: { reason: 'TOKEN_EXPIRED' },
+      });
+      socket.disconnect(true);
+    };
     const expiryTimer = setTimeout(
-      () => {
-        socket.emit('auth.expired', {
-          type: 'auth.expired',
-          occurredAt: new Date().toISOString(),
-          data: { reason: 'TOKEN_EXPIRED' },
-        });
-        socket.disconnect(true);
-      },
+      end,
       Math.min(Math.max(tokenExpiresAt - Date.now(), 0), MAX_TIMER_MS),
     );
-    socket.on('disconnect', () => clearTimeout(expiryTimer));
+    const recheck = setInterval(() => {
+      void prisma.authSession
+        .findUnique({ where: { id: sessionId }, select: { expiresAt: true } })
+        .then((row) => {
+          if (!row || row.expiresAt.getTime() <= Date.now()) end();
+        })
+        .catch((err: unknown) => logger.warn({ err }, 'Socket session re-check failed'));
+    }, recheckMs);
+    recheck.unref();
+    socket.on('disconnect', () => {
+      clearTimeout(expiryTimer);
+      clearInterval(recheck);
+    });
 
     // Public menu/status updates for one canteen at a time (server-validated).
     socket.on('menu:subscribe', async (payload: unknown, ack?: Ack) => {
@@ -138,7 +171,7 @@ export function createRealtimeServer(
       }
       try {
         // Re-read the principal so permissions reflect the latest database state.
-        const current = (await resolvePrincipal(prisma, uid)) ?? principal;
+        const current = (await resolvePrincipal(prisma, { uid, email })) ?? principal;
         const canteen = await prisma.canteen.findUnique({
           where: { id: parsed.data.canteenId },
           select: { id: true, isActive: true },

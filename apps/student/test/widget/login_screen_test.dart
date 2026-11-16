@@ -2,12 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:serve_student/core/api_exception.dart';
 import 'package:serve_student/ui/screens/role_selection_screen.dart';
 
 import '../support/fakes.dart';
 
-final _email = find.byKey(const Key('login-email'));
-final _password = find.byKey(const Key('login-password'));
+const _google = 'Continue with Google';
+const _srmNote = 'Use your SRM University-AP Google account (@srmap.edu.in). Other accounts cannot sign in.';
 
 void _useSize(WidgetTester tester, Size logical) {
   tester.view.physicalSize = logical * 2;
@@ -36,66 +37,53 @@ void main() {
     RoleSelectionScreen.maxImageWait = const Duration(milliseconds: 1500);
   });
 
-  testWidgets('empty form shows inline errors and does not call Firebase', (tester) async {
+  testWidgets('offers Google sign-in for SRM accounts only, with no password field', (tester) async {
     usePhoneSize(tester);
     final h = await _openLogin(tester);
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
-    expect(find.text('Enter your email address'), findsOneWidget);
-    expect(find.text('Enter your password'), findsOneWidget);
-    expect(h.firebase.calls, isEmpty);
+    expect(find.widgetWithText(FilledButton, _google), findsOneWidget);
+    expect(find.text(_srmNote), findsOneWidget);
+    expect(find.byType(TextFormField), findsNothing);
+    expect(h.google.calls, isEmpty);
   });
 
-  testWidgets('password visibility toggles', (tester) async {
-    usePhoneSize(tester);
-    await _openLogin(tester);
-    EditableText field() => tester.widget<EditableText>(find.descendant(of: _password, matching: find.byType(EditableText)));
-    expect(field().obscureText, isTrue);
-    await tester.tap(find.byTooltip('Show password'));
-    await tester.pump();
-    expect(field().obscureText, isFalse);
-    await tester.tap(find.byTooltip('Hide password'));
-    await tester.pump();
-    expect(field().obscureText, isTrue);
-  });
-
-  testWidgets('fields are labelled for screen readers and the toggle stays a button', (tester) async {
+  testWidgets('the sign-in button is a labelled button for screen readers', (tester) async {
     usePhoneSize(tester);
     final semantics = tester.ensureSemantics();
     await _openLogin(tester);
-    final email = tester.getSemantics(_email);
-    final password = tester.getSemantics(_password);
-    expect(email, isSemantics(isTextField: true));
-    expect(email.label, startsWith('Email'));
-    expect(password, isSemantics(isTextField: true, isObscured: true));
-    expect(password.label, startsWith('Password'));
-    expect(tester.getSemantics(find.byTooltip('Show password')), isSemantics(tooltip: 'Show password', isButton: true, hasTapAction: true));
+    expect(
+      tester.getSemantics(find.widgetWithText(FilledButton, _google)),
+      isSemantics(label: _google, isButton: true, hasTapAction: true, isEnabled: true, hasEnabledState: true, isFocusable: true),
+    );
     semantics.dispose();
   });
 
-  testWidgets('shows a loading state while signing in', (tester) async {
+  testWidgets('shows a loading state while signing in, then opens home', (tester) async {
     usePhoneSize(tester);
     final h = await _openLogin(tester);
-    final gate = h.firebase.signInGate = Completer<void>();
-    await tester.enterText(_email, 'asha@example.edu');
-    await tester.enterText(_password, 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    final gate = h.google.signInGate = Completer<void>();
+    await tester.tap(find.widgetWithText(FilledButton, _google));
     await tester.pump();
-    expect(find.text('Signing in…'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
     gate.complete();
     await tester.pumpAndSettle();
     expect(find.text('Hi, Asha'), findsOneWidget);
+    expect(h.google.calls, ['google']);
   });
 
-  testWidgets('Create an account opens registration', (tester) async {
+  testWidgets('a refused Google account is explained and stays on the sign-in pane', (tester) async {
     usePhoneSize(tester);
-    await _openLogin(tester);
-    await tester.tap(find.text('Create an account'));
+    final h = await _openLogin(tester);
+    h.google.signInError = const AuthException(
+      'EMAIL_DOMAIN_NOT_ALLOWED',
+      'Use your SRM University-AP Google account (@srmap.edu.in). Other accounts cannot sign in.',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, _google));
     await tester.pumpAndSettle();
-    expect(find.text('Create your account'), findsOneWidget);
-    expect(find.text('Order. Track. Collect.'), findsOneWidget);
-    expect(find.byType(AppBar), findsNothing);
+    // Shown as an error banner above the button (the note below repeats the rule).
+    expect(find.text(_srmNote), findsNWidgets(2));
+    expect(find.text('Hi, Asha'), findsNothing);
+    expect(h.store.value, isNull);
   });
 
   for (final (name, size) in [
@@ -111,33 +99,14 @@ void main() {
       _useSize(tester, size);
       await _openLogin(tester);
       expect(tester.takeException(), isNull);
-      expect(find.text('Welcome back'), findsOneWidget);
+      expect(find.text('Sign in to SERVE'), findsOneWidget);
       expect(find.text('Order. Track. Collect.'), findsOneWidget);
-      expect(find.text('Good food is just a few taps away.'), findsNothing);
-      final popup = tester.getRect(find.ancestor(of: find.text('Welcome back'), matching: find.byType(Material)).first);
+      final popup = tester.getRect(find.ancestor(of: find.text(_srmNote), matching: find.byType(Material)).first);
       expect(popup.width, lessThanOrEqualTo(440));
       expect((popup.center.dx - size.width / 2).abs(), lessThan(24));
-      final button = tester.getRect(find.widgetWithText(FilledButton, 'Sign in'));
+      final button = tester.getRect(find.widgetWithText(FilledButton, _google));
       expect(button.left, greaterThanOrEqualTo(popup.left));
       expect(button.right, lessThanOrEqualTo(popup.right));
-      expect(button.width, lessThanOrEqualTo(440));
-      expect(button.height, greaterThanOrEqualTo(48));
-    });
-
-    testWidgets('registration lays out in the same popup at $name', (tester) async {
-      _useSize(tester, size);
-      await _openLogin(tester);
-      await tester.tap(find.text('Create an account'));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(find.text('Create your account'), findsOneWidget);
-      expect(find.text('Order. Track. Collect.'), findsOneWidget);
-      expect(find.byType(AppBar), findsNothing);
-      final popup = tester.getRect(find.ancestor(of: find.text('Create your account'), matching: find.byType(Material)).first);
-      expect(popup.width, lessThanOrEqualTo(440));
-      expect((popup.center.dx - size.width / 2).abs(), lessThan(24));
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Create account'));
-      final button = tester.getRect(find.widgetWithText(FilledButton, 'Create account'));
       expect(button.width, lessThanOrEqualTo(440));
       expect(button.height, greaterThanOrEqualTo(48));
     });

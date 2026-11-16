@@ -1,0 +1,286 @@
+import { betterAuth, type BetterAuthOptions } from 'better-auth';
+import { prismaAdapter } from 'better-auth/adapters/prisma';
+import { APIError, createAuthEndpoint } from 'better-auth/api';
+import { setSessionCookie } from 'better-auth/cookies';
+import { bearer } from 'better-auth/plugins';
+import { z } from 'zod';
+import type { Logger } from 'pino';
+import type { Env } from '../config/env.js';
+import type { PrismaClient } from './prisma.js';
+import {
+  SRM_EMAIL_DOMAIN,
+  SRM_REJECTION_MESSAGE,
+  normalizeEmail,
+  srmIdentityRejection,
+} from '../modules/auth/srm-email.js';
+
+/**
+ * Better Auth: the single sign-in system for the student app, staff
+ * dashboard and admin portal. Mounted on this Express server at /api/auth
+ * (see app.ts). It proves identity only; Student / Staff / Admin rows in
+ * PostgreSQL decide roles (modules/auth/principal.ts).
+ *
+ * Sign-in: Google OAuth (authorization-code flow with PKCE), restricted to
+ * verified @srmap.edu.in accounts. Email/password and every other method are
+ * disabled. Sessions are database-backed: an HttpOnly cookie for the web
+ * apps, or the same session token as a Bearer token for the native app.
+ */
+
+/** Session token prefix for cookies: `serve.session_token` (`__Secure-` in production). */
+const COOKIE_PREFIX = 'serve';
+/** Fixed secret for NODE_ENV=test only (env validation requires a real one elsewhere). */
+const TEST_ONLY_SECRET = 'serve-test-only-secret-not-for-any-real-deployment';
+/** `source.method` of the test-only sign-in endpoint (see testSignIn below). */
+const TEST_SIGN_IN_METHOD = 'serve-test';
+
+export const AUTH_BASE_PATH = '/api/auth';
+
+/** Origins whose pages may start a sign-in and receive the redirect back. */
+export function trustedOriginsFor(env: Env): string[] {
+  const local =
+    env.NODE_ENV === 'production'
+      ? []
+      : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5555'];
+  const origins = [
+    ...env.CORS_ORIGINS,
+    authBaseUrl(env),
+    ...[env.STUDENT_APP_URL, env.STAFF_DASHBOARD_URL, env.ADMIN_PORTAL_URL]
+      .filter((url): url is string => Boolean(url))
+      .map((url) => new URL(url).origin),
+    ...local,
+  ];
+  return [...new Set(origins)];
+}
+
+export function authBaseUrl(env: Env): string {
+  return env.BETTER_AUTH_URL ?? `http://localhost:${env.PORT}`;
+}
+
+function reject(code: keyof typeof SRM_REJECTION_MESSAGE): never {
+  throw new APIError('FORBIDDEN', { code, message: SRM_REJECTION_MESSAGE[code] });
+}
+
+/** Defence in depth for every stored identity: SRM address, verified by Google. */
+function assertStoredIdentity(user: { email?: unknown; emailVerified?: unknown }) {
+  const rejection = srmIdentityRejection({ email: user.email, emailVerified: user.emailVerified });
+  if (rejection) reject(rejection);
+}
+
+/**
+ * Test-only sign-in: creates (or reuses) an identity and a session without
+ * Google, through the same SRM gate, so automated tests can sign in. Present
+ * only when NODE_ENV=test AND AUTH_TEST_SIGN_IN=true; env validation refuses
+ * to start otherwise, and this factory refuses again as a second guard.
+ */
+function testSignIn(env: Env) {
+  if (env.NODE_ENV !== 'test' || !env.AUTH_TEST_SIGN_IN) {
+    throw new Error('The test sign-in endpoint is only available with NODE_ENV=test');
+  }
+  const body = z.object({
+    email: z.string().max(254),
+    name: z.string().trim().min(1).max(120).optional(),
+    /** Simulates Google's email_verified claim (default true). */
+    emailVerified: z.boolean().optional(),
+  });
+  return {
+    id: 'serve-test-sign-in',
+    endpoints: {
+      testSignIn: createAuthEndpoint('/test/sign-in', { method: 'POST', body }, async (c) => {
+        const email = normalizeEmail(c.body.email) ?? '';
+        const emailVerified = c.body.emailVerified ?? true;
+        const existing = await c.context.internalAdapter.findUserByEmail(email);
+        const user =
+          existing?.user ??
+          (await c.context.internalAdapter.createUser(
+            { email, name: c.body.name ?? email.split('@')[0] ?? 'Student', emailVerified },
+            { method: TEST_SIGN_IN_METHOD },
+          ));
+        // A returning test user is re-checked like a returning Google user.
+        if (existing) {
+          const rejection = srmIdentityRejection({ email, emailVerified });
+          if (rejection) reject(rejection);
+        }
+        const session = await c.context.internalAdapter.createSession(user.id);
+        await setSessionCookie(c, { session, user });
+        return c.json({ token: session.token, user: { id: user.id, email: user.email } });
+      }),
+    },
+  } as const;
+}
+
+export interface CreateAuthOptions {
+  env: Env;
+  prisma: PrismaClient;
+  logger: Logger;
+}
+
+export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
+  const google =
+    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+      ? {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          // Google also enforces the hosted domain on the account chooser and
+          // in the id token's `hd` claim (rejected when missing or different).
+          ...(env.GOOGLE_REQUIRE_HOSTED_DOMAIN ? { hd: SRM_EMAIL_DOMAIN } : {}),
+          prompt: 'select_account' as const,
+          // Sign-in only through the redirect flow (state + PKCE); raw ID
+          // tokens posted by a client are not accepted.
+          disableIdTokenSignIn: true,
+          // Refresh name/picture/email from Google on every sign-in, so a
+          // changed address is re-validated (user.validateUserInfo).
+          overrideUserInfoOnSignIn: true,
+        }
+      : undefined;
+  if (!google && env.NODE_ENV !== 'test') {
+    logger.warn(
+      'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set: Google sign-in is unavailable until they are configured in backend/.env',
+    );
+  }
+  const testPlugins = env.NODE_ENV === 'test' && env.AUTH_TEST_SIGN_IN ? [testSignIn(env)] : [];
+
+  const options = {
+    appName: 'SERVE',
+    baseURL: authBaseUrl(env),
+    basePath: AUTH_BASE_PATH,
+    secret: env.BETTER_AUTH_SECRET ?? (env.NODE_ENV === 'test' ? TEST_ONLY_SECRET : undefined),
+    trustedOrigins: trustedOriginsFor(env),
+    database: prismaAdapter(prisma, { provider: 'postgresql' }),
+    telemetry: { enabled: false },
+    user: {
+      modelName: 'AuthUser',
+      /**
+       * The SRM gate. Runs when an identity is created, when an account is
+       * linked, and on EVERY returning Google sign-in with Google's fresh
+       * email and email_verified (not the stored row).
+       */
+      validateUserInfo: ({ user, source }) => {
+        const viaGoogle = source.method === 'oauth' && source.oauth?.providerId === 'google';
+        const viaTest = source.method === TEST_SIGN_IN_METHOD && testPlugins.length > 0;
+        if (!viaGoogle && !viaTest) {
+          return { error: 'SIGN_IN_METHOD_NOT_ALLOWED', errorDescription: 'Sign in with Google.' };
+        }
+        if (viaGoogle) {
+          const profile = source.oauth?.profile;
+          // Google's own claim, when present, must agree.
+          if (profile && 'email_verified' in profile && profile.email_verified !== true) {
+            return {
+              error: 'EMAIL_NOT_VERIFIED',
+              errorDescription: SRM_REJECTION_MESSAGE.EMAIL_NOT_VERIFIED,
+            };
+          }
+        }
+        const rejection = srmIdentityRejection({
+          email: user.email,
+          emailVerified: user.emailVerified,
+        });
+        return rejection
+          ? { error: rejection, errorDescription: SRM_REJECTION_MESSAGE[rejection] }
+          : undefined;
+      },
+    },
+    session: { modelName: 'AuthSession' },
+    account: {
+      modelName: 'AuthAccount',
+      // One Google account per identity. Never attach another sign-in method
+      // (or another Google account) to an existing identity by email.
+      accountLinking: { enabled: false },
+    },
+    verification: { modelName: 'AuthVerification' },
+    emailAndPassword: { enabled: false },
+    socialProviders: google ? { google } : {},
+    databaseHooks: {
+      user: {
+        create: {
+          before: (user) => {
+            assertStoredIdentity(user);
+            return Promise.resolve({
+              data: { ...user, email: normalizeEmail(user.email) ?? user.email },
+            });
+          },
+        },
+        update: {
+          before: (data) => {
+            // Partial updates: check the values being written.
+            if (
+              data.email !== undefined &&
+              srmIdentityRejection({ email: data.email, emailVerified: true })
+            ) {
+              reject('EMAIL_DOMAIN_NOT_ALLOWED');
+            }
+            if (data.emailVerified === false) reject('EMAIL_NOT_VERIFIED');
+            return Promise.resolve(
+              data.email === undefined
+                ? undefined
+                : { data: { ...data, email: normalizeEmail(data.email) ?? data.email } },
+            );
+          },
+        },
+      },
+      session: {
+        create: {
+          // Every new session (Google, native exchange, test) re-checks the
+          // stored identity, so an identity that no longer qualifies cannot
+          // sign in by any path.
+          before: async (session) => {
+            const user = await prisma.authUser.findUnique({
+              where: { id: session.userId },
+              select: { email: true, emailVerified: true },
+            });
+            if (!user) reject('EMAIL_DOMAIN_NOT_ALLOWED');
+            assertStoredIdentity(user);
+          },
+        },
+      },
+      account: {
+        create: {
+          before: (account) => {
+            if (account.providerId !== 'google' && testPlugins.length === 0) {
+              throw new APIError('FORBIDDEN', {
+                code: 'SIGN_IN_METHOD_NOT_ALLOWED',
+                message: 'Sign in with Google.',
+              });
+            }
+            return Promise.resolve();
+          },
+        },
+      },
+    },
+    advanced: {
+      // Better Auth skips its origin / callbackURL check under NODE_ENV=test
+      // by default. Keep it on everywhere so tests prove the production rule:
+      // sign-in may only redirect back to a trusted SERVE app.
+      disableOriginCheck: false,
+      cookiePrefix: COOKIE_PREFIX,
+      useSecureCookies: env.NODE_ENV === 'production',
+      // HttpOnly session cookie, sent on top-level navigations and same-site
+      // requests only. The three apps reach the API same-site (one domain in
+      // production; localhost ports locally).
+      defaultCookieAttributes: { sameSite: 'lax', httpOnly: true },
+    },
+    plugins: [
+      // Native app: the session token as `Authorization: Bearer <token>`.
+      bearer(),
+      ...testPlugins,
+    ],
+    onAPIError: {
+      // OAuth failures (e.g. a non-SRM account) land on a JSON-free page of
+      // the app that started the sign-in via its errorCallbackURL; this is
+      // only the fallback.
+      errorURL: `${authBaseUrl(env)}/api/auth-error`,
+    },
+    logger: {
+      level: env.NODE_ENV === 'test' ? 'error' : 'warn',
+      log: (level, message, ...args) => {
+        const fields = args.length > 0 ? { details: args } : {};
+        if (level === 'error') logger.error(fields, `better-auth: ${message}`);
+        else if (level === 'warn') logger.warn(fields, `better-auth: ${message}`);
+        else logger.debug(fields, `better-auth: ${message}`);
+      },
+    },
+  } satisfies BetterAuthOptions;
+
+  return betterAuth(options);
+}
+
+export type ServeAuth = ReturnType<typeof createAuth>;

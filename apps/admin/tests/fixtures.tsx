@@ -270,7 +270,7 @@ export function staffOrder(overrides: Partial<StaffOrder> = {}): StaffOrder {
 export const meAdmin = (overrides: Partial<MeAdmin> = {}): MeAdmin => ({
   registered: true,
   id: uuid(),
-  firebaseUid: 'uid-admin',
+  authUserId: 'uid-admin',
   name: 'Dev Admin',
   email: 'admin@serve.dev',
   isActive: true,

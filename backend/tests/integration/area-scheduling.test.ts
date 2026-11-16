@@ -21,7 +21,7 @@ import { nextEvent, startTestServer, subscribeMenu, type TestServer } from '../h
 /**
  * Automatic Day/Night switching on the server, manual overrides, and the
  * rule that a staff pause is never lifted by the schedule.
- * Real PostgreSQL, real Firebase Auth Emulator, real Socket.IO. The server
+ * Real PostgreSQL, real Better Auth sessions, real Socket.IO. The server
  * clock is injected so each test controls "now".
  */
 

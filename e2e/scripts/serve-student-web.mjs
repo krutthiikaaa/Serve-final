@@ -16,9 +16,6 @@ const app = path.resolve(import.meta.dirname, '../../apps/student');
 const out = path.join(app, 'build', 'web-e2e');
 const defines = {
   API_URL: E2E.apiUrl,
-  FIREBASE_API_KEY: E2E.firebaseApiKey,
-  FIREBASE_PROJECT_ID: E2E.firebaseProjectId,
-  FIREBASE_AUTH_EMULATOR_HOST: new URL(E2E.emulatorUrl).host,
   STAFF_DASHBOARD_URL: E2E.staffUrl,
   ADMIN_PORTAL_URL: E2E.adminUrl,
 };

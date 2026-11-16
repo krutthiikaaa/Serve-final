@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:serve_student/core/api_exception.dart';
 import 'package:serve_student/services/api/models.dart';
-import 'package:serve_student/services/auth/auth_controller.dart';
 import 'package:serve_student/ui/screens/role_selection_screen.dart';
-import 'package:serve_student/ui/widgets/serve_splash.dart';
 
 import '../support/fakes.dart';
 
-final loginEmail = find.byKey(const Key('login-email'));
-final loginPassword = find.byKey(const Key('login-password'));
+const _google = 'Continue with Google';
+
+Future<void> _chooseRole(WidgetTester tester, String role) async {
+  await tester.ensureVisible(find.text(role));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(role));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   setUp(() {
@@ -20,7 +24,7 @@ void main() {
     RoleSelectionScreen.maxImageWait = const Duration(milliseconds: 1500);
   });
 
-  testWidgets('signed out: role selection → login → home (routed by /me)', (tester) async {
+  testWidgets('signed out: role selection → Google sign-in → home (routed by /me)', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
     await tester.pumpWidget(h.app);
@@ -31,190 +35,101 @@ void main() {
     expect(find.text('Canteen Staff'), findsOneWidget);
     expect(find.text('Administrator'), findsOneWidget);
 
-    await tester.tap(find.text('Student'));
-    await tester.pumpAndSettle();
-    expect(find.text('Welcome back'), findsOneWidget);
-
-    await tester.enterText(loginEmail, 'asha@example.edu');
-    await tester.enterText(loginPassword, 'secret');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await _chooseRole(tester, 'Student');
+    await tester.tap(find.widgetWithText(FilledButton, _google));
     await tester.pumpAndSettle();
 
     expect(find.text('Hi, Asha'), findsOneWidget);
-    expect(h.api.calls.where((c) => c.startsWith('sso:')), isEmpty);
+    expect(h.store.value?.token, 'session-token', reason: 'the session survives an app restart');
     expect(h.realtime.started, isTrue, reason: 'realtime starts only for a registered student');
   });
 
-  testWidgets('wrong password shows a friendly error and stays on login', (tester) async {
+  testWidgets('a signed-in Google account without a SERVE profile completes it (name + hostel)', (tester) async {
     usePhoneSize(tester);
-    final h = TestHarness();
-    h.firebase.signInError = const AuthException('INVALID_LOGIN_CREDENTIALS', 'Incorrect email or password.');
+    final h = TestHarness()..api.meValue = const UnregisteredMe(email: 'asha@srmap.edu.in');
     await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Student'));
-    await tester.pumpAndSettle();
-    await tester.enterText(loginEmail, 'asha@example.edu');
-    await tester.enterText(loginPassword, 'nope');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
-    expect(find.text('Incorrect email or password.'), findsOneWidget);
-    expect(h.auth.status, AuthStatus.signedOut);
-  });
-
-  testWidgets('new account: registration with hostel creates Firebase + SERVE accounts', (tester) async {
-    usePhoneSize(tester);
-    final h = TestHarness();
-    await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Student'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Create an account'));
-    await tester.pumpAndSettle();
-    expect(find.text('Create your account'), findsOneWidget);
-
-    await tester.enterText(find.widgetWithText(TextFormField, 'Full name'), 'Asha Rao');
-    await tester.enterText(find.widgetWithText(TextFormField, 'University email'), 'asha@example.edu');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret1');
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Krishna  ·').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
-    await tester.pumpAndSettle();
-
-    expect(h.firebase.calls, ['signUp:asha@example.edu']);
-    expect(h.api.calls, contains('register:Asha Rao:asha@example.edu:1c35f533-0000-4000-8000-000000000001'));
-    expect(find.text('Hi, Asha'), findsOneWidget);
-  });
-
-  testWidgets('Create an account stays in the same popup', (tester) async {
-    usePhoneSize(tester);
-    await tester.pumpWidget(TestHarness().app);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Student'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Create an account'));
-    await tester.pumpAndSettle();
-    expect(find.text('Create your account'), findsOneWidget);
-    expect(find.text('Order. Track. Collect.'), findsOneWidget);
-    expect(find.byType(AppBar), findsNothing);
-    expect(find.byType(RoleSelectionScreen), findsOneWidget);
-    expect(find.byType(ServeSplashStage), findsNothing);
-    await tester.tap(find.text('Sign in'));
-    await tester.pumpAndSettle();
-    expect(find.text('Welcome back'), findsOneWidget);
-    expect(find.byType(ServeSplashStage), findsNothing);
-  });
-
-  testWidgets('registration validates required fields', (tester) async {
-    usePhoneSize(tester);
-    final h = TestHarness();
-    await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Student'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Create an account'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
-    await tester.pumpAndSettle();
-    expect(find.text('Enter your name'), findsOneWidget);
-    expect(find.text('Select your hostel'), findsWidgets);
-    expect(h.firebase.calls, isEmpty);
-  });
-
-  testWidgets('a Firebase user without a SERVE account completes registration', (tester) async {
-    usePhoneSize(tester);
-    final h = TestHarness()..api.meValue = const UnregisteredMe(email: 'asha@example.edu');
-    await tester.pumpWidget(h.app);
-    await h.auth.signIn('asha@example.edu', 'pw');
+    await h.auth.signInWithGoogle();
     await tester.pumpAndSettle();
     expect(find.text('Complete your profile'), findsOneWidget);
+    expect(find.text('asha@srmap.edu.in'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, 'Password'), findsNothing);
     expect(find.text('Order. Track. Collect.'), findsOneWidget);
     expect(find.byType(AppBar), findsNothing);
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Full name'), 'Asha Rao');
+    await tester.tap(find.text('Select your hostel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Krishna').last);
+    await tester.pumpAndSettle();
+    h.api.meValue = h.api.onRegister?.call('Asha Rao', 'x') ?? h.api.meValue;
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Finish registration'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish registration'));
+    await tester.pumpAndSettle();
+    // The email is never sent: the server takes it from the Google session.
+    expect(h.api.calls.where((c) => c.startsWith('register:')).single, startsWith('register:Asha Rao:'));
+    expect(find.text('Hi, Asha'), findsOneWidget);
   });
 
-  testWidgets('student forgot password sends a Firebase reset and stays in the popup', (tester) async {
+  testWidgets('registration requires a name and a hostel', (tester) async {
+    usePhoneSize(tester);
+    final h = TestHarness()..api.meValue = const UnregisteredMe(email: 'asha@srmap.edu.in');
+    await tester.pumpWidget(h.app);
+    await h.auth.signInWithGoogle();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Finish registration'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish registration'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter your name'), findsOneWidget);
+    expect(find.text('Select your hostel'), findsWidgets);
+    expect(h.api.calls.where((c) => c.startsWith('register:')), isEmpty);
+  });
+
+  testWidgets('"Use a different account" signs out of the Google session', (tester) async {
+    usePhoneSize(tester);
+    final h = TestHarness()..api.meValue = const UnregisteredMe(email: 'asha@srmap.edu.in');
+    await tester.pumpWidget(h.app);
+    await h.auth.signInWithGoogle();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Use a different account'));
+    await tester.tap(find.text('Use a different account'));
+    await tester.pumpAndSettle();
+    expect(h.google.calls, contains('signOut:session-token'));
+    expect(h.store.value, isNull);
+    expect(find.widgetWithText(FilledButton, _google), findsOneWidget);
+  });
+
+  testWidgets('staff are sent to the staff dashboard to sign in with Google', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
     await tester.pumpWidget(h.app);
     await h.auth.restore();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Student'));
-    await tester.pumpAndSettle();
-    await tester.enterText(loginEmail, 'asha@example.edu');
-    await tester.tap(find.text('Forgot password?'));
-    await tester.pumpAndSettle();
-    expect(find.text('Reset your password'), findsOneWidget);
-    expect(find.text('Order. Track. Collect.'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, 'Send reset link'));
-    await tester.pumpAndSettle();
-    expect(h.firebase.calls, ['reset:asha@example.edu']);
-    expect(find.textContaining('Reset email sent'), findsOneWidget);
-    await tester.tap(find.text('Back to login'));
-    await tester.pumpAndSettle();
-    expect(find.text('Welcome back'), findsOneWidget);
-    expect(find.byType(ServeSplashStage), findsNothing);
+    await _chooseRole(tester, 'Canteen Staff');
+    expect(find.text('Staff sign in'), findsOneWidget);
+    expect(find.textContaining('@srmap.edu.in'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Open staff dashboard'), findsOneWidget);
+    expect(find.byType(TextFormField), findsNothing);
+    expect(h.google.calls, isEmpty, reason: 'staff never sign in inside the student app');
   });
 
-  testWidgets('staff create account requests access and stays pending', (tester) async {
+  testWidgets('admin access is provisioned and opens the admin portal', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
     await tester.pumpWidget(h.app);
     await h.auth.restore();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Canteen Staff'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Create an account'));
-    await tester.pumpAndSettle();
-    expect(find.text('Request staff access'), findsOneWidget);
-    expect(find.text('Order. Track. Collect.'), findsOneWidget);
-    expect(find.byType(AppBar), findsNothing);
-
-    await tester.enterText(find.widgetWithText(TextFormField, 'Full name'), 'Kiran Rao');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Work email'), 'kiran@serve.dev');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret1');
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Krishna & Godavari Night Canteen · Night').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Request access'));
-    await tester.pumpAndSettle();
-
-    expect(h.firebase.calls, ['signUp:kiran@serve.dev']);
-    expect(h.api.calls, contains('registerStaff:Kiran Rao:kiran@serve.dev:9703a1b2-0000-4000-8000-000000000001'));
-    expect(find.text('Request sent'), findsOneWidget);
-    expect(h.auth.status, AuthStatus.signedOut);
-    expect(find.text('Hi, Asha'), findsNothing);
-  });
-
-  testWidgets('admin create account is provisioning-only', (tester) async {
-    usePhoneSize(tester);
-    final h = TestHarness();
-    await tester.pumpWidget(h.app);
-    await h.auth.restore();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Administrator'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Create an account'));
-    await tester.pumpAndSettle();
-    expect(find.text('Admin accounts are provisioned'), findsOneWidget);
-    expect(find.widgetWithText(TextFormField, 'Full name'), findsNothing);
-    expect(h.firebase.calls, isEmpty);
-    expect(h.api.calls, isEmpty);
-    await tester.tap(find.widgetWithText(FilledButton, 'Back to login'));
-    await tester.pumpAndSettle();
+    await _chooseRole(tester, 'Administrator');
     expect(find.text('Admin sign in'), findsOneWidget);
+    expect(find.textContaining('no public admin sign-up'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Open admin portal'), findsOneWidget);
+    expect(h.google.calls, isEmpty);
   });
 
   testWidgets('staff and admin accounts are turned away', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness()..api.meValue = const OtherRoleMe(role: 'STAFF', name: 'Kiran');
     await tester.pumpWidget(h.app);
-    await h.auth.signIn('staff@serve.dev', 'pw');
+    await h.auth.signInWithGoogle();
     await tester.pumpAndSettle();
     expect(find.text('This is a staff account'), findsOneWidget);
     expect(h.realtime.started, isFalse);
@@ -229,7 +144,7 @@ void main() {
       return h.api.meValue;
     });
     await tester.pumpWidget(h.app);
-    await h.auth.signIn('asha@example.edu', 'pw');
+    await h.auth.signInWithGoogle();
     await tester.pumpAndSettle();
     expect(find.text(ApiException.networkMessage), findsOneWidget);
     fail = false;

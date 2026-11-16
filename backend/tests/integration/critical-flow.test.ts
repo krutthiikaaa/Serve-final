@@ -16,7 +16,7 @@ import { nextEvent, startTestServer, subscribeMenu, type TestServer } from '../h
 /**
  * CRITICAL END-TO-END BACKEND SCENARIO (master spec §57)
  *
- * Real HTTP + Socket.IO server, real PostgreSQL, real Firebase Auth Emulator
+ * Real HTTP + Socket.IO server, real PostgreSQL, real Better Auth sessions
  * tokens. Database state is asserted at every critical point. Steps run in
  * order and share state.
  */

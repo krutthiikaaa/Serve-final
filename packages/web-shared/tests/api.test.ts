@@ -25,6 +25,26 @@ function client(
 }
 
 describe('ApiClient', () => {
+  it('sends the session cookie and no Authorization header when no token source is set', async () => {
+    const fetchImpl = vi.fn(async () => json(200, { data: { ok: true } }));
+    const api = new ApiClient({ baseUrl: 'http://localhost:5001', fetchImpl });
+    await api.get('/auth/me');
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.credentials).toBe('include');
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it('signs out (onUnauthorized) when the session has ended', async () => {
+    const onUnauthorized = vi.fn();
+    const api = new ApiClient({
+      baseUrl: 'http://localhost:5001',
+      onUnauthorized,
+      fetchImpl: async () => json(401, errorBody('AUTH_REQUIRED')),
+    });
+    await expect(api.get('/auth/me')).rejects.toMatchObject({ status: 401, code: 'AUTH_REQUIRED' });
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
   it('prefixes /api, encodes the query, drops empty values and sends the bearer token', async () => {
     const { api, fetchImpl } = client([json(200, { data: [] })]);
     await api.get('/staff/orders', { status: 'active', cursor: undefined, limit: 10, q: '' });

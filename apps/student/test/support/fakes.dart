@@ -9,7 +9,7 @@ import 'package:serve_student/services/api/api_client.dart';
 import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/services/api/serve_api.dart';
 import 'package:serve_student/services/auth/auth_controller.dart';
-import 'package:serve_student/services/auth/firebase_auth_client.dart';
+import 'package:serve_student/services/auth/serve_auth_client.dart';
 import 'package:serve_student/services/auth/session_store.dart';
 import 'package:serve_student/services/favourites/favourites_store.dart';
 import 'package:serve_student/services/realtime/realtime_service.dart';
@@ -18,9 +18,6 @@ import 'fixtures.dart' as fx;
 
 const testConfig = AppConfig(
   apiUrl: 'http://localhost:5001',
-  firebaseApiKey: 'demo-api-key',
-  firebaseProjectId: 'demo-serve',
-  authEmulatorHost: '127.0.0.1:9099',
   staffDashboardUrl: 'http://localhost:5173',
   adminPortalUrl: 'http://localhost:5174',
 );
@@ -66,9 +63,7 @@ class FakeServeApi extends ServeApi {
     fx.kgId: CanteenPaymentConfig.fromJson(fx.paymentConfigJson()),
     fx.vedId: CanteenPaymentConfig.fromJson(fx.paymentConfigJson(canteenId: fx.vedId)),
   };
-  StudentMe Function(String name, String email, String hostelId)? onRegister;
-  Me Function(String name, String email, String? requestedCanteenId)? onRegisterStaff;
-  SsoHandoff Function(String audience)? onInitiateSso;
+  StudentMe Function(String name, String hostelId)? onRegister;
   List<AppNotification> notificationList = [];
   int unread = 0;
   final idempotencyKeys = <String>[];
@@ -80,27 +75,9 @@ class FakeServeApi extends ServeApi {
   Future<List<Hostel>> hostels() async => hostelList;
 
   @override
-  Future<StudentMe> registerStudent({required String name, required String email, required String hostelId}) async {
-    calls.add('register:$name:$email:$hostelId');
-    return onRegister?.call(name, email, hostelId) ?? fx.studentMe();
-  }
-
-  @override
-  Future<SsoHandoff> initiateSso(String audience) async {
-    calls.add('sso:$audience');
-    return onInitiateSso?.call(audience) ??
-        SsoHandoff(
-          redirectUrl: audience == 'STAFF'
-              ? 'http://localhost:5173/sso/callback?code=test-staff-code-xx'
-              : 'http://localhost:5174/sso/callback?code=test-admin-code-xx',
-          expiresAt: DateTime.now().add(const Duration(seconds: 60)),
-        );
-  }
-
-  @override
-  Future<Me> registerStaff({required String name, required String email, String? requestedCanteenId}) async {
-    calls.add('registerStaff:$name:$email:$requestedCanteenId');
-    return onRegisterStaff?.call(name, email, requestedCanteenId) ?? OtherRoleMe(role: 'STAFF', name: name);
+  Future<StudentMe> registerStudent({required String name, required String hostelId}) async {
+    calls.add('register:$name:$hostelId');
+    return onRegister?.call(name, hostelId) ?? fx.studentMe();
   }
 
   @override
@@ -292,58 +269,41 @@ class FakeRealtime extends RealtimeService {
   }
 }
 
-class FakeFirebase extends FirebaseAuthClient {
-  FakeFirebase() : super(testConfig);
+/// Google sign-in double: the system-browser step and the backend exchange
+/// are replaced; AuthController and everything above it are real.
+class FakeAuthClient extends ServeAuthClient {
+  FakeAuthClient() : super(testConfig);
   final calls = <String>[];
+
+  /// When set, sign-in fails with this (e.g. a non-SRM account).
   AuthException? signInError;
 
   /// When set, sign-in waits for it to complete (to observe loading states).
   Completer<void>? signInGate;
 
-  FirebaseSession _session(String email) => FirebaseSession(
-    uid: 'uid-$email',
-    email: email,
-    idToken: 'id-token',
-    refreshToken: 'refresh',
-    expiresAt: DateTime.now().add(const Duration(hours: 1)),
-  );
-
   @override
-  Future<FirebaseSession> signIn(String email, String password) async {
-    calls.add('signIn:$email');
+  Future<String> nativeSignIn() async {
+    calls.add('google');
     await signInGate?.future;
     if (signInError != null) throw signInError!;
-    return _session(email);
+    return 'session-token';
   }
 
   @override
-  Future<FirebaseSession> signUp(String email, String password) async {
-    calls.add('signUp:$email');
-    return _session(email);
-  }
-
-  @override
-  Future<FirebaseSession> refresh(FirebaseSession session) async {
-    calls.add('refresh');
-    return _session(session.email ?? 'x');
-  }
-
-  @override
-  Future<void> sendPasswordReset(String email) async {
-    calls.add('reset:$email');
-    if (signInError != null) throw signInError!;
+  Future<void> signOut({String? token}) async {
+    calls.add('signOut:$token');
   }
 }
 
 class TestHarness {
-  TestHarness({FakeServeApi? api, FavouritesStore? favouritesStore}) : api = api ?? FakeServeApi() {
-    auth = AuthController(firebase: firebase, store: store)..attach(this.api.me);
-    services = AppServices(config: testConfig, auth: auth, api: this.api, realtime: realtime, favouritesStore: favouritesStore);
+  TestHarness({FakeServeApi? api, FavouritesStore? favouritesStore, AppConfig config = testConfig}) : api = api ?? FakeServeApi() {
+    auth = AuthController(client: google, store: store, isWeb: false)..attach(this.api.me);
+    services = AppServices(config: config, auth: auth, api: this.api, realtime: realtime, favouritesStore: favouritesStore);
   }
 
   final FakeServeApi api;
   final realtime = FakeRealtime();
-  final firebase = FakeFirebase();
+  final google = FakeAuthClient();
   final store = MemorySessionStore();
   late final AuthController auth;
   late final AppServices services;
@@ -353,7 +313,7 @@ class TestHarness {
   /// Signed in as a registered student, on the home tab.
   Future<void> pumpSignedIn(WidgetTester tester) async {
     await tester.pumpWidget(app);
-    await auth.signIn('asha@example.edu', 'password');
+    await auth.signInWithGoogle();
     await tester.pumpAndSettle();
   }
 }

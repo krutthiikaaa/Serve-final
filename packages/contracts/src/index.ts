@@ -269,7 +269,8 @@ export const notificationSchema = z.strictObject({
 const meBase = {
   registered: z.literal(true),
   id: uuid,
-  firebaseUid: z.string(),
+  /** Better Auth sign-in identity this account is linked to. */
+  authUserId: z.string(),
   name: z.string(),
   email: z.email(),
   isActive: z.boolean(),
@@ -282,11 +283,12 @@ const canteenState = z.strictObject({
   isAcceptingOrders: z.boolean(),
   isPaused: z.boolean(),
 });
+/** Signed in with a verified @srmap.edu.in Google account, no SERVE account yet. */
 export const meUnregisteredSchema = z.strictObject({
   registered: z.literal(false),
   role: z.null(),
-  firebaseUid: z.string(),
-  email: z.string().nullable(),
+  authUserId: z.string(),
+  email: z.email(),
 });
 export const meStudentSchema = z.strictObject({
   ...meBase,
@@ -321,13 +323,10 @@ export const meStaffSchema = z.strictObject({
 });
 export const meAdminSchema = z.strictObject({ ...meBase, role: z.literal('ADMIN') });
 
-export const ssoAudienceSchema = z.enum(['STAFF', 'ADMIN']);
-export const ssoInitiateResultSchema = z.strictObject({
-  redirectUrl: z.url(),
+/** `POST /api/native-auth/exchange` (native app): a session token for `Authorization: Bearer`. */
+export const nativeAuthExchangeResultSchema = z.strictObject({
+  token: z.string().min(1),
   expiresAt: isoDate,
-});
-export const ssoExchangeResultSchema = z.strictObject({
-  customToken: z.string().min(1),
 });
 
 export const changeRequestSchema = z.strictObject({

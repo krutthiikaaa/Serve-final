@@ -2,8 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { createCanteenRecord, truncateAll } from '../helpers/db.js';
-import { createFirebaseUser } from '../helpers/firebase.js';
-import { testEnv } from '../helpers/test-app.js';
+import { createTestUser } from '../helpers/identity.js';
 import {
   bearer,
   canteenBySlug,
@@ -64,9 +63,34 @@ const orderEvents = (events: { name: string }[]) =>
 describe('socket authentication', () => {
   it('rejects connections without a valid token or account', async () => {
     expect(await server.rejectedConnect(null)).toBe('AUTH_REQUIRED');
-    expect(await server.rejectedConnect('garbage.token.value')).toBe('AUTH_TOKEN_INVALID');
-    const unregistered = await createFirebaseUser();
-    expect(await server.rejectedConnect(unregistered.idToken)).toBe('ACCOUNT_NOT_REGISTERED');
+    // An invalid or forged session token is the same as no session.
+    expect(await server.rejectedConnect('garbage.token.value')).toBe('AUTH_REQUIRED');
+    const unregistered = await createTestUser();
+    expect(await server.rejectedConnect(unregistered.token)).toBe('ACCOUNT_NOT_REGISTERED');
+  });
+
+  it('accepts the web apps’ session cookie, and refuses a signed-out session', async () => {
+    const cookie = `serve.session_token=${encodeURIComponent(studentA.token)}`;
+    // A raw token is not a valid signed cookie: only Better Auth's signed cookie value works.
+    expect(await server.rejectedConnectWithCookie(cookie)).toBe('AUTH_REQUIRED');
+    const signIn = await request(server.app)
+      .post('/api/auth/test/sign-in')
+      .set('Origin', 'http://localhost:5173')
+      .send({ email: studentA.email });
+    const sessionCookie = String(signIn.headers['set-cookie'])
+      .split(/,(?=\s*serve\.)/)
+      .map((part) => part.split(';')[0]!.trim())
+      .find((part) => part.startsWith('serve.session_token='))!;
+    const socket = await server.connectWithCookie(sessionCookie);
+    expect(socket.connected).toBe(true);
+    socket.disconnect();
+    await request(server.app)
+      .post('/api/auth/sign-out')
+      .set('Cookie', sessionCookie)
+      .set('Origin', 'http://localhost:5173')
+      .send({})
+      .expect(200);
+    expect(await server.rejectedConnectWithCookie(sessionCookie)).toBe('AUTH_REQUIRED');
   });
 
   it('accepts registered users', async () => {
@@ -75,33 +99,31 @@ describe('socket authentication', () => {
     socket.disconnect();
   });
 
-  it('disconnects a socket when its ID token expires', async () => {
-    // Emulator-format token (unsigned; accepted only by the emulator) for a
-    // real user, expiring in 2 seconds.
-    const env = testEnv();
-    const now = Math.floor(Date.now() / 1000);
-    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-    const shortLived = [
-      encode({ alg: 'none', typ: 'JWT' }),
-      encode({
-        iss: `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`,
-        aud: env.FIREBASE_PROJECT_ID,
-        auth_time: now,
-        iat: now,
-        exp: now + 2,
-        sub: studentA.uid,
-        user_id: studentA.uid,
-        email: studentA.email,
-        firebase: { identities: {}, sign_in_provider: 'password' },
-      }),
-      '',
-    ].join('.');
-    const socket = await server.connect(shortLived);
+  it('disconnects a socket when its session is signed out or revoked', async () => {
+    const session = await createTestUser(studentA.email);
+    const socket = await server.connect(session.token);
     const expired = nextEvent<{ reason: string }>(socket, 'auth.expired', () => true, 6_000);
     const disconnected = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+    await request(server.app)
+      .post('/api/auth/sign-out')
+      .set('Authorization', `Bearer ${session.token}`)
+      .send({})
+      .expect(200);
     expect((await expired).reason).toBe('TOKEN_EXPIRED');
     expect(await disconnected).toBe('io server disconnect');
-    expect(await server.rejectedConnect(shortLived)).toBe('AUTH_TOKEN_EXPIRED');
+    expect(await server.rejectedConnect(session.token)).toBe('AUTH_REQUIRED');
+  });
+
+  it('disconnects a socket when its session expires', async () => {
+    const session = await createTestUser(studentA.email);
+    const socket = await server.connect(session.token);
+    const expired = nextEvent<{ reason: string }>(socket, 'auth.expired', () => true, 6_000);
+    // The stored session ends (as at its expiry time); the next re-check notices.
+    await server.prisma.authSession.updateMany({
+      where: { token: session.token },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    expect((await expired).reason).toBe('TOKEN_EXPIRED');
   });
 });
 

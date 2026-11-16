@@ -4,9 +4,6 @@ export declare const E2E: {
   staffUrl: string;
   adminUrl: string;
   studentUrl: string;
-  emulatorUrl: string;
-  firebaseProjectId: string;
-  firebaseApiKey: string;
   adminEmail: string;
   password: string;
 };

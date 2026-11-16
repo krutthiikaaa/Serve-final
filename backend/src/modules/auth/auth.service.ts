@@ -1,13 +1,12 @@
 import { areaCanteenSelect, defaultCanteenOf } from '../canteens/service-areas.js';
 import { canteenAvailability, canteenSelect } from '../canteens/canteen.dto.js';
-import type { Env } from '../../config/env.js';
 import type { PrismaClient } from '../../lib/prisma.js';
-import type { VerifiedIdentity } from '../../lib/firebase.js';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors.js';
+import type { VerifiedIdentity } from '../../lib/session.js';
+import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
 import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
 import { activeAdminRecipients, writeNotifications } from '../notifications/notification.writer.js';
-import { isFirebaseUidRegistered, type Principal } from './principal.js';
+import { isAuthUserRegistered, isAuthUserTaken, type Principal } from './principal.js';
 import {
   changeRequestInclude,
   toChangeRequestDto,
@@ -15,36 +14,33 @@ import {
 
 export interface StudentRegistration {
   name: string;
-  email: string;
+  /** Optional confirmation only: the address always comes from the session. */
+  email?: string | undefined;
   hostelId: string;
 }
 
 export interface StaffRegistration {
   name: string;
-  email: string;
+  /** Optional confirmation only: the address always comes from the session. */
+  email?: string | undefined;
   /** Optional: request access to a canteen immediately. */
   requestedCanteenId?: string | undefined;
 }
 
 interface Deps {
   prisma: PrismaClient;
-  env: Pick<Env, 'STUDENT_EMAIL_DOMAINS'>;
   events: EventPublisher;
 }
 
-export function createAuthService({ prisma, env, events }: Deps) {
-  /** The email must come from the verified Firebase token; the body may only confirm it. */
-  function verifiedEmail(identity: VerifiedIdentity, claimed: string): string {
-    if (!identity.email) {
+export function createAuthService({ prisma, events }: Deps) {
+  /**
+   * The email always comes from the signed-in identity (Google-verified
+   * @srmap.edu.in, enforced by Better Auth). A body may only confirm it.
+   */
+  function verifiedEmail(identity: VerifiedIdentity, claimed: string | undefined): string {
+    if (claimed !== undefined && claimed.trim().toLowerCase() !== identity.email) {
       throw new ValidationError(
-        'Your Firebase account has no email address.',
-        undefined,
-        'EMAIL_REQUIRED',
-      );
-    }
-    if (identity.email !== claimed) {
-      throw new ValidationError(
-        'Email does not match the signed-in Firebase account.',
+        'Email does not match the signed-in Google account.',
         undefined,
         'EMAIL_MISMATCH',
       );
@@ -53,13 +49,13 @@ export function createAuthService({ prisma, env, events }: Deps) {
   }
 
   async function assertUnregistered(uid: string): Promise<void> {
-    if (await isFirebaseUidRegistered(prisma, uid)) {
+    if (await isAuthUserRegistered(prisma, uid)) {
       throw new ConflictError('This account is already registered.', 'ALREADY_REGISTERED');
     }
   }
 
   function translateUniqueError(err: unknown): never {
-    if (isUniqueViolation(err, 'firebaseUid')) {
+    if (isAuthUserTaken(err)) {
       throw new ConflictError('This account is already registered.', 'ALREADY_REGISTERED');
     }
     if (isUniqueViolation(err, 'email')) {
@@ -71,19 +67,8 @@ export function createAuthService({ prisma, env, events }: Deps) {
   return {
     /** Creates ONLY a Student. No input can produce any other role. */
     async registerStudent(identity: VerifiedIdentity, input: StudentRegistration) {
+      // Only verified @srmap.edu.in identities ever get a session (Better Auth).
       const emailAddress = verifiedEmail(identity, input.email);
-
-      const allowed = env.STUDENT_EMAIL_DOMAINS;
-      if (allowed.length > 0) {
-        const domain = emailAddress.split('@')[1] ?? '';
-        if (!allowed.includes(domain)) {
-          throw new ForbiddenError(
-            'Registration is limited to university email addresses.',
-            'EMAIL_DOMAIN_NOT_ALLOWED',
-          );
-        }
-      }
-
       await assertUnregistered(identity.uid);
 
       const hostel = await prisma.hostel.findUnique({ where: { id: input.hostelId } });
@@ -99,7 +84,7 @@ export function createAuthService({ prisma, env, events }: Deps) {
       try {
         await prisma.student.create({
           data: {
-            firebaseUid: identity.uid,
+            authUserId: identity.uid,
             email: emailAddress,
             name: input.name,
             hostelId: hostel.id,
@@ -128,7 +113,7 @@ export function createAuthService({ prisma, env, events }: Deps) {
       try {
         await prisma.$transaction(async (tx) => {
           const staff = await tx.staff.create({
-            data: { firebaseUid: identity.uid, email: emailAddress, name: input.name },
+            data: { authUserId: identity.uid, email: emailAddress, name: input.name },
           });
           if (input.requestedCanteenId) {
             const request = await tx.canteenChangeRequest.create({
@@ -158,7 +143,7 @@ export function createAuthService({ prisma, env, events }: Deps) {
         return {
           registered: false as const,
           role: null,
-          firebaseUid: identity.uid,
+          authUserId: identity.uid,
           email: identity.email,
         };
       }
@@ -166,7 +151,7 @@ export function createAuthService({ prisma, env, events }: Deps) {
         registered: true as const,
         role: principal.role,
         id: principal.id,
-        firebaseUid: principal.firebaseUid,
+        authUserId: principal.authUserId,
         name: principal.name,
         email: principal.email,
         isActive: principal.isActive,

@@ -1,6 +1,5 @@
 import type { AppContext } from './context.js';
 import { createAuthService } from './modules/auth/auth.service.js';
-import { createSsoService } from './modules/auth/sso.service.js';
 import { createCanteensService } from './modules/canteens/canteens.service.js';
 import { createMenuService } from './modules/menu/menu.service.js';
 import { createOrdersService } from './modules/orders/orders.service.js';
@@ -17,7 +16,6 @@ export function createServices(ctx: AppContext) {
   const canteens = createCanteensService(ctx.prisma, { clock: ctx.clock, logger: ctx.logger });
   return {
     auth: createAuthService(ctx),
-    sso: createSsoService(ctx),
     canteens,
     menu: createMenuService(ctx.prisma, ctx.events),
     orders: createOrdersService(ctx),
