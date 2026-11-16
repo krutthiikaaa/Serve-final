@@ -252,3 +252,52 @@
     flex-wrap: wrap;
   }
 }
+
+/* Payment QR management */
+.qr-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.qr-preview {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+.qr-preview img,
+.qr-empty {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+.qr-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.qr-meta {
+  display: grid;
+  gap: 12px;
+}
+.qr-history summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+}
+@media (max-width: 720px) {
+  .qr-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.title-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

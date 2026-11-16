@@ -28,8 +28,8 @@ const BUILD_MARKER = '.serve-web-build';
 
 /**
  * Resolves WEB_ROOT and fails fast when a built app is missing, or when a
- * production server is pointed at a `build:web --local` preview (wired to the
- * Auth Emulator and the demo project).
+ * production server is pointed at a `build:web --local` preview (a debuggable
+ * profile build meant for local testing only).
  */
 export function resolveWebRoot(webRoot: string, nodeEnv: Env['NODE_ENV']): string {
   const root = path.resolve(webRoot);
@@ -46,7 +46,7 @@ export function resolveWebRoot(webRoot: string, nodeEnv: Env['NODE_ENV']): strin
     const { local } = JSON.parse(readFileSync(marker, 'utf8')) as { local?: unknown };
     if (local === true) {
       throw new Error(
-        `WEB_ROOT (${root}) holds a local preview build (Auth Emulator, demo project). Build for production with \`npm run build:web\` (without --local).`,
+        `WEB_ROOT (${root}) holds a local preview build (not for production). Build for production with \`npm run build:web\` (without --local).`,
       );
     }
   }
@@ -57,13 +57,11 @@ export function resolveWebRoot(webRoot: string, nodeEnv: Env['NODE_ENV']): strin
  * Content Security Policy for the HTML apps (the API keeps `default-src 'none'`).
  * Scripts come only from this origin; 'wasm-unsafe-eval' lets the Flutter
  * renderer compile its WebAssembly. Network access is limited to this origin
- * and https/wss endpoints: Firebase Auth's REST API and menu images, which
- * staff may host anywhere.
+ * and https/wss endpoints (menu images, which staff may host anywhere).
+ * Google sign-in is a top-level navigation to /api/auth, not a fetch.
  */
 export function pageContentSecurityPolicy(env: Env): Record<string, string[]> {
   const connectSrc = ["'self'", 'https:', 'wss:'];
-  // Development/test only: production configuration rejects the emulator.
-  if (env.FIREBASE_AUTH_EMULATOR_HOST) connectSrc.push(`http://${env.FIREBASE_AUTH_EMULATOR_HOST}`);
   return {
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
@@ -85,8 +83,7 @@ function pageHelmetOptions(env: Env): HelmetOptions {
   return {
     contentSecurityPolicy: { useDefaults: false, directives: pageContentSecurityPolicy(env) },
     crossOriginResourcePolicy: { policy: 'same-origin' },
-    // Sends the origin (never the path) to Firebase, so an API key restricted
-    // to https://YOUR_DOMAIN/* keeps working.
+    // Cross-origin requests carry the origin, never the path.
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     xFrameOptions: { action: 'deny' },
   };

@@ -30,7 +30,18 @@ export function paymentConfigWarnings(row: PaymentConfigRow): string[] {
   return [];
 }
 
-export function toAdminPaymentConfigDto(row: PaymentConfigRow) {
+/** Active uploaded QR (see qr-codes.ts), or null. */
+export interface PaymentQr {
+  id: string;
+  url: string;
+  contentType: string;
+  uploadedAt: Date;
+}
+
+const qrSummary = (qr: PaymentQr | null | undefined) =>
+  qr ? { id: qr.id, url: qr.url, contentType: qr.contentType, uploadedAt: qr.uploadedAt } : null;
+
+export function toAdminPaymentConfigDto(row: PaymentConfigRow, qr: PaymentQr | null = null) {
   return {
     canteenId: row.canteenId,
     mode: row.mode,
@@ -41,13 +52,14 @@ export function toAdminPaymentConfigDto(row: PaymentConfigRow) {
     instructions: row.instructions,
     isActive: row.isActive,
     demoQr: row.mode === 'DEMO' ? toDemoQr(row.canteenId) : null,
+    qr: qrSummary(qr),
     warnings: paymentConfigWarnings(row),
     updatedAt: row.updatedAt,
   };
 }
 
 /** Cashier-facing config. Official VPA/QR are omitted in DEMO so they cannot be treated as payable. */
-export function toStaffPaymentConfigDto(row: PaymentConfigRow) {
+export function toStaffPaymentConfigDto(row: PaymentConfigRow, qr: PaymentQr | null = null) {
   const demo = row.mode === 'DEMO';
   return {
     canteenId: row.canteenId,
@@ -58,6 +70,7 @@ export function toStaffPaymentConfigDto(row: PaymentConfigRow) {
     instructions: demo ? null : row.instructions,
     isActive: row.isActive,
     demoQr: demo ? toDemoQr(row.canteenId) : null,
+    qr: demo ? null : qrSummary(qr),
     warnings: paymentConfigWarnings(row),
     updatedAt: row.updatedAt,
   };
@@ -67,8 +80,8 @@ export function toStaffPaymentConfigDto(row: PaymentConfigRow) {
  * Student checkout config. Same DEMO redaction as staff, plus LIVE drafts are
  * hidden until official details are complete. Never includes `qrStorageKey`.
  */
-export function toStudentPaymentConfigDto(row: PaymentConfigRow) {
-  const staff = toStaffPaymentConfigDto(row);
+export function toStudentPaymentConfigDto(row: PaymentConfigRow, qr: PaymentQr | null = null) {
+  const staff = toStaffPaymentConfigDto(row, qr);
   if (row.mode === 'LIVE' && !officialDetailsReady(row)) {
     return {
       ...staff,
@@ -77,6 +90,7 @@ export function toStudentPaymentConfigDto(row: PaymentConfigRow) {
       qrImageUrl: null,
       instructions: null,
       demoQr: null,
+      qr: null,
     };
   }
   return staff;
@@ -108,8 +122,8 @@ export async function requireCanteenPaymentMode(
   if (row.mode !== expected) {
     throw new ConflictError(
       expected === 'LIVE'
-        ? 'This canteen is in DEMO mode. Use simulated confirmation.'
-        : 'This canteen is LIVE. Simulated confirmation is not allowed.',
+        ? 'This canteen is in test mode. Use simulated confirmation.'
+        : 'This canteen takes live payments. Simulated confirmation is not allowed.',
       expected === 'LIVE' ? 'LIVE_CONFIRMATION_NOT_ALLOWED' : 'DEMO_CONFIRMATION_NOT_ALLOWED',
     );
   }

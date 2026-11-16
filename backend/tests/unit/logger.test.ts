@@ -35,3 +35,49 @@ describe('logger redaction', () => {
     expect(output).toContain('[REDACTED]');
   });
 });
+
+describe('sign-in secrets never reach the logs', () => {
+  it('redacts Better Auth / Google secrets, session cookies and sign-in redirects', () => {
+    const { lines, stream } = capture();
+    const logger = createLogger({ NODE_ENV: 'test', LOG_LEVEL: 'info' }, stream);
+    logger.info(
+      {
+        BETTER_AUTH_SECRET: 'ba-secret-value',
+        GOOGLE_CLIENT_SECRET: 'google-secret-value',
+        provider: { clientSecret: 'nested-secret' },
+        res: {
+          headers: {
+            'set-cookie': 'serve.session_token=abc.sig',
+            location: 'app.serve.student://auth?code=one-time-code',
+            'set-auth-token': 'bearer-session-token',
+          },
+        },
+        body: { code_verifier: 'pkce-verifier' },
+      },
+      'sign-in',
+    );
+    const output = lines.join('');
+    for (const secret of [
+      'ba-secret-value',
+      'google-secret-value',
+      'nested-secret',
+      'abc.sig',
+      'one-time-code',
+      'bearer-session-token',
+      'pkce-verifier',
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+  });
+
+  it('removes one-time codes from logged request URLs', async () => {
+    const { loggableUrl } = await import('../../src/middleware/request-logger.js');
+    expect(loggableUrl('/api/auth/callback/google?code=4/0Ab-secret&state=xyz&scope=email')).toBe(
+      '/api/auth/callback/google?code=[REDACTED]&state=[REDACTED]&scope=email',
+    );
+    expect(loggableUrl('/api/native-auth/start?code_challenge=abc')).toBe(
+      '/api/native-auth/start?code_challenge=abc',
+    );
+    expect(loggableUrl('/api/orders?status=active')).toBe('/api/orders?status=active');
+  });
+});

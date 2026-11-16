@@ -6,10 +6,16 @@ import type { AppContext } from './context.js';
 import { requestLogger } from './middleware/request-logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
-import { createAuthRouter } from './modules/auth/auth.routes.js';
+import { toNodeHandler } from 'better-auth/node';
+import { createAuthRouter, SERVE_AUTH_PATHS } from './modules/auth/auth.routes.js';
+import { createNativeAuthRouter } from './modules/auth/native-auth.routes.js';
+import { AUTH_BASE_PATH, trustedOriginsFor } from './lib/auth.js';
+import { ForbiddenError } from './lib/errors.js';
 import { createServices } from './services.js';
 import {
   createCanteensRouter,
+  createQrImageRouter,
+  createServiceAreaDirectoryRouter,
   createHostelsRouter,
   createMenuRouter,
 } from './modules/canteens/canteens.routes.js';
@@ -55,13 +61,14 @@ export function createApp(ctx: AppContext): Express {
   // authorization is enforced separately on every protected route.
   // On the single domain the apps call /api same-origin, so CORS does not
   // apply to them; the allowlist matters only for apps on other origins.
+  // Credentials: the web apps send Better Auth's HttpOnly session cookie.
   const allowedOrigins = new Set(env.CORS_ORIGINS);
   useForApi(
     cors({
       origin(origin, callback) {
         callback(null, origin === undefined || allowedOrigins.has(origin));
       },
-      credentials: false, // Bearer tokens, not cookies.
+      credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'X-Request-Id'],
       exposedHeaders: [
@@ -80,30 +87,64 @@ export function createApp(ctx: AppContext): Express {
   // Webhooks need the raw body for signature verification: mount before JSON parsing.
   app.use('/api/payments/webhooks', createPaymentWebhookRouter(ctx, services));
 
-  app.use(express.json({ limit: '100kb' }));
-
   // Health probes are mounted before the rate limiter so load-balancer checks
   // never consume (or are blocked by) client quotas.
   app.use('/api/health', createHealthRouter({ prisma }));
 
-  app.use(
-    '/api',
-    rateLimit({
-      windowMs: env.RATE_LIMIT_WINDOW_MS,
-      limit: env.RATE_LIMIT_MAX,
-      standardHeaders: 'draft-8',
-      legacyHeaders: false,
-      handler(_req, res, _next, options) {
-        res.status(options.statusCode).json({
-          error: { code: 'RATE_LIMITED', message: 'Too many requests. Please slow down.' },
-        });
-      },
-    }),
-  );
+  const apiLimiter = rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    limit: env.RATE_LIMIT_MAX,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    handler(_req, res, _next, options) {
+      res.status(options.statusCode).json({
+        error: { code: 'RATE_LIMITED', message: 'Too many requests. Please slow down.' },
+      });
+    },
+  });
+  app.use('/api', apiLimiter);
+
+  // Better Auth (Google sign-in, callback, session, sign-out) reads the raw
+  // request body, so it is mounted before express.json(). SERVE's own
+  // /api/auth routes (me, registration) fall through to the router below.
+  const betterAuth = toNodeHandler(ctx.auth);
+  app.all(`${AUTH_BASE_PATH}/*splat`, (req, res, next) => {
+    const path = req.path.slice(AUTH_BASE_PATH.length);
+    if (SERVE_AUTH_PATHS.has(path)) return next();
+    void betterAuth(req, res);
+  });
+
+  app.use(express.json({ limit: '100kb' }));
+
+  // CSRF defence for cookie sessions: a state-changing API request that
+  // carries cookies (and no Bearer token) must come from a trusted origin.
+  // Browsers always send Origin on such requests; native apps use Bearer.
+  const trustedOrigins = new Set(trustedOriginsFor(env));
+  app.use('/api', (req, _res, next) => {
+    const safe = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+    if (safe || !req.headers.cookie || /^bearer /i.test(req.headers.authorization ?? '')) {
+      return next();
+    }
+    const origin = req.headers.origin;
+    if (!origin || !trustedOrigins.has(origin)) {
+      throw new ForbiddenError('This request did not come from a SERVE app.', 'ORIGIN_NOT_ALLOWED');
+    }
+    next();
+  });
+
+  // Fallback landing page of a failed browser sign-in (apps pass their own).
+  app.get('/api/auth-error', (req, res) => {
+    const code =
+      typeof req.query.error === 'string' ? req.query.error.slice(0, 64) : 'SIGN_IN_FAILED';
+    res.status(403).json({ error: { code, message: 'Sign-in was not completed.' } });
+  });
 
   app.use('/api/auth', createAuthRouter(ctx, services));
+  app.use('/api/native-auth', createNativeAuthRouter(ctx));
   app.use('/api/hostels', createHostelsRouter(ctx));
+  app.use('/api/service-areas', createServiceAreaDirectoryRouter(ctx));
   app.use('/api/canteens', createCanteensRouter(ctx, services));
+  app.use('/api/qr-codes', createQrImageRouter(services));
   app.use('/api/menu', createMenuRouter(ctx, services));
   app.use('/api/cart', createCartRouter(ctx, services));
   app.use('/api/orders', createOrdersRouter(ctx, services));

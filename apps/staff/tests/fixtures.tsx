@@ -37,7 +37,7 @@ export function order(status: OrderStatus, overrides: Partial<StaffOrder> = {}):
     status,
     totalPaise: 12_000,
     currency: 'INR',
-    canteen: { id: CANTEEN_ID, name: 'Krishna & Godavari Night Canteen' },
+    canteen: { id: CANTEEN_ID, name: 'Krishna & Godavari Night Canteen', type: 'NIGHT' },
     student: { id: uuid(), name: 'Asha Rao' },
     items: [
       {
@@ -127,11 +127,22 @@ export const canteen = {
   id: CANTEEN_ID,
   name: 'Krishna & Godavari Night Canteen',
   slug: 'krishna-godavari',
+  type: 'NIGHT' as const,
+  serviceArea: { id: '00000000-0000-4000-8000-00000000a1a1', name: 'Krishna & Godavari' },
   location: 'Between Krishna and Godavari hostels',
   openingHours: '21:00–03:00',
   isActive: true,
   isAcceptingOrders: true,
+  isPaused: false,
   status: 'ACCEPTING_ORDERS' as const,
+  availability: {
+    state: 'OPEN' as const,
+    isOpenNow: true,
+    message: 'Taking orders now.',
+    override: 'FORCE_OPEN' as const,
+    today: null,
+    otherServiceCanteen: null,
+  },
 };
 
 export function dashboard(
@@ -141,8 +152,14 @@ export function dashboard(
   return {
     canteen: {
       ...canteen,
-      isAcceptingOrders: accepting,
+      // "Not accepting" here is a staff pause: still on duty, new orders paused.
+      isPaused: !accepting,
       status: accepting ? 'ACCEPTING_ORDERS' : 'PAUSED',
+      availability: {
+        ...canteen.availability,
+        state: accepting ? 'OPEN' : 'PAUSED',
+        isOpenNow: accepting,
+      },
     },
     orders: { active: 6, awaitingPreparation: 3, preparing: 2, ready: 1, ...overrides },
     pendingPayments: 0,
@@ -154,17 +171,32 @@ export function meStaff(overrides: Partial<MeStaff> = {}): MeStaff {
   return {
     registered: true,
     id: uuid(),
-    firebaseUid: 'uid-staff',
+    authUserId: 'uid-staff',
     name: 'Kiran Staff',
     email: 'staff.kg@serve.dev',
     isActive: true,
     role: 'STAFF',
     status: 'APPROVED',
-    canteen: { id: CANTEEN_ID, name: canteen.name, isActive: true, isAcceptingOrders: true },
+    canteen: {
+      id: CANTEEN_ID,
+      name: canteen.name,
+      type: 'NIGHT',
+      isActive: true,
+      isAcceptingOrders: true,
+      isPaused: false,
+      availability: canteen.availability,
+    },
     assignments: [
       {
         canteenId: CANTEEN_ID,
-        canteen: { id: CANTEEN_ID, name: canteen.name, isActive: true, isAcceptingOrders: true },
+        canteen: {
+          id: CANTEEN_ID,
+          name: canteen.name,
+          type: 'NIGHT',
+          isActive: true,
+          isAcceptingOrders: true,
+          isPaused: false,
+        },
         capabilities: ['KITCHEN', 'MENU', 'PAUSE'],
       },
     ],

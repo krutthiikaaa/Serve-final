@@ -37,12 +37,15 @@ export type RealtimeEventName =
   | 'menu.item_availability_changed'
   | 'menu.category_updated'
   | 'canteen.status_changed'
+  | 'canteen.payment_qr_updated'
+  | 'service_area.updated'
   | 'change_request.created'
   | 'change_request.updated'
   | 'staff.approved'
   | 'staff.rejected'
   | 'staff.canteen_assigned'
   | 'staff.deactivated'
+  | 'staff.unassigned'
   | 'notification.created';
 
 /**

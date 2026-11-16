@@ -97,6 +97,27 @@ class CanteenStatusLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // With backend availability (Day/Night aware) the state is shown by
+    // [ServiceAvailabilityPills]; only the hours are added here.
+    if (canteen.availability != null) {
+      final hours = canteen.openingHours;
+      if (hours == null) return const SizedBox.shrink();
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.schedule_rounded, size: 14, color: ServeColors.muted),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              hours,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: ServeColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      );
+    }
     final pill = switch (canteen.status) {
       CanteenStatus.acceptingOrders => const StatusPill(
         label: 'Accepting orders',
@@ -172,31 +193,72 @@ class SummaryRow extends StatelessWidget {
   }
 }
 
-/// DAY/NIGHT selector using the existing segmented look.
-class ServicePeriodToggle extends StatelessWidget {
-  const ServicePeriodToggle({super.key, required this.value, required this.onChanged, this.enabledPeriods});
-  final ServicePeriod value;
-  final ValueChanged<ServicePeriod> onChanged;
-  final Set<ServicePeriod>? enabledPeriods;
+/// Day / Night identification shown wherever a canteen is named.
+class CanteenTypeChip extends StatelessWidget {
+  const CanteenTypeChip({super.key, required this.type, this.dense = false});
+  final ServicePeriod type;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
+    final day = type == ServicePeriod.day;
     return Semantics(
-      label: 'Service period',
+      label: '${type.label} canteen',
+      excludeSemantics: true,
       child: Container(
-        height: 44,
+        padding: EdgeInsets.symmetric(horizontal: dense ? 7 : 9, vertical: dense ? 2 : 4),
+        decoration: BoxDecoration(
+          color: ServeColors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: ServeColors.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              day ? Icons.wb_sunny_outlined : Icons.nightlight_round,
+              size: dense ? 12 : 14,
+              color: day ? ServeColors.orangeInk : ServeColors.oliveInk,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              type.label,
+              style: TextStyle(fontSize: dense ? 11 : 12, fontWeight: FontWeight.w700, color: ServeColors.ink),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Switches between the Day and Night canteen of the student's service area.
+/// Only one of them takes orders at a time (decided by the backend); the other
+/// can still be browsed.
+class ServiceSwitch extends StatelessWidget {
+  const ServiceSwitch({super.key, required this.service, required this.selectedId, required this.onSelect});
+  final StudentService service;
+  final String? selectedId;
+  final ValueChanged<Canteen> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = [
+      for (final type in ServicePeriod.values)
+        if (service.ofType(type) != null) service.ofType(type)!,
+    ];
+    if (options.length < 2) return const SizedBox.shrink();
+    return Semantics(
+      label: 'Day or Night canteen',
+      container: true,
+      child: Container(
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(color: ServeColors.surfaceMuted, borderRadius: BorderRadius.circular(12)),
         child: Row(
           children: [
-            for (final period in ServicePeriod.values)
+            for (final canteen in options)
               Expanded(
-                child: _PeriodChip(
-                  period: period,
-                  selected: value == period,
-                  enabled: enabledPeriods == null || enabledPeriods!.contains(period),
-                  onTap: () => onChanged(period),
-                ),
+                child: _ServiceOption(canteen: canteen, selected: canteen.id == selectedId, onTap: () => onSelect(canteen)),
               ),
           ],
         ),
@@ -205,32 +267,58 @@ class ServicePeriodToggle extends StatelessWidget {
   }
 }
 
-class _PeriodChip extends StatelessWidget {
-  const _PeriodChip({required this.period, required this.selected, required this.enabled, required this.onTap});
-  final ServicePeriod period;
+class _ServiceOption extends StatelessWidget {
+  const _ServiceOption({required this.canteen, required this.selected, required this.onTap});
+  final Canteen canteen;
   final bool selected;
-  final bool enabled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected ? ServeColors.oliveStrong : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
+    final open = canteen.availability?.state == AvailabilityState.open;
+    final fg = selected ? ServeColors.white : ServeColors.ink;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${canteen.type.canteenLabel}, ${canteen.availability?.label ?? ''}',
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? ServeColors.oliveStrong : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
-        child: Center(
-          child: Text(
-            period.label.toUpperCase(),
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-              color: selected
-                  ? ServeColors.white
-                  : enabled
-                  ? ServeColors.muted
-                  : ServeColors.line,
+        child: InkWell(
+          key: Key('service-${canteen.type.apiValue}'),
+          onTap: selected ? null : onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+            child: Column(
+              children: [
+                Text(
+                  canteen.type.label.toUpperCase(),
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: fg, letterSpacing: 0.4),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, size: 7, color: open ? (selected ? ServeColors.white : ServeColors.oliveInk) : ServeColors.muted),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        canteen.availability?.label ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: selected ? ServeColors.white.withValues(alpha: 0.9) : ServeColors.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -239,34 +327,27 @@ class _PeriodChip extends StatelessWidget {
   }
 }
 
+/// The canteen's own type and whether it can take an order right now.
 class ServiceAvailabilityPills extends StatelessWidget {
   const ServiceAvailabilityPills({super.key, required this.canteen});
   final Canteen canteen;
 
   @override
   Widget build(BuildContext context) {
-    final periods = canteen.supportedPeriods.isEmpty ? const <ServicePeriod>[] : canteen.supportedPeriods;
-    if (periods.isEmpty) {
-      return const StatusPill(
-        label: 'No day or night service configured',
-        icon: Icons.info_outline_rounded,
-        foreground: ServeColors.muted,
-        background: ServeColors.surfaceMuted,
-      );
-    }
+    final a = canteen.availability;
+    final open = a == null ? canteen.availabilityFor(canteen.type) == ServiceAvailability.open : a.state == AvailabilityState.open;
     return Wrap(
       spacing: 8,
       runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        for (final period in periods)
-          StatusPill(
-            label: '${period.label} · ${canteen.availabilityLabel(period)}',
-            icon: canteen.availabilityFor(period) == ServiceAvailability.open ? Icons.circle : Icons.schedule_rounded,
-            foreground: canteen.availabilityFor(period) == ServiceAvailability.open ? ServeColors.oliveInk : ServeColors.muted,
-            background: canteen.availabilityFor(period) == ServiceAvailability.open
-                ? ServeColors.oliveTint
-                : ServeColors.surfaceMuted,
-          ),
+        CanteenTypeChip(type: canteen.type),
+        StatusPill(
+          label: a?.label ?? canteen.availabilityLabel(canteen.type),
+          icon: open ? Icons.circle : Icons.schedule_rounded,
+          foreground: open ? ServeColors.oliveInk : ServeColors.muted,
+          background: open ? ServeColors.oliveTint : ServeColors.surfaceMuted,
+        ),
       ],
     );
   }

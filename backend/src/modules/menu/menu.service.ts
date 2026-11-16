@@ -3,7 +3,6 @@ import type { EventPublisher } from '../../realtime/events.js';
 import { Outbox, rooms } from '../../realtime/events.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
-import { DEFAULT_SERVICE_PERIOD } from '../canteens/availability.js';
 import { canteenTakesOrders } from '../canteens/canteen.dto.js';
 import {
   categorySelect,
@@ -57,7 +56,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
   async function canteenState(canteenId: string) {
     const canteen = await prisma.canteen.findUnique({
       where: { id: canteenId },
-      select: { id: true, isActive: true, isAcceptingOrders: true },
+      select: { id: true, isActive: true, isAcceptingOrders: true, isPaused: true },
     });
     if (!canteen) throw new NotFoundError('Canteen not found.', 'CANTEEN_NOT_FOUND');
     return canteen;
@@ -99,13 +98,22 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
     });
   }
 
-  /** Keep the NIGHT sell price in lockstep with the existing staff catalogue APIs. */
-  async function syncNightService(item: Pick<MenuItemRow, 'id' | 'pricePaise' | 'isAvailable'>) {
+  /**
+   * Keep the sell price of the item's canteen type (DAY or NIGHT) in lockstep
+   * with the staff/admin catalogue APIs. A Day canteen's items are priced for
+   * DAY, a Night canteen's for NIGHT.
+   */
+  async function syncPeriodService(item: Pick<MenuItemRow, 'id' | 'pricePaise' | 'isAvailable'>) {
+    const owner = await prisma.menuItem.findUniqueOrThrow({
+      where: { id: item.id },
+      select: { canteen: { select: { type: true } } },
+    });
+    const period = owner.canteen.type;
     await prisma.menuItemService.upsert({
-      where: { menuItemId_period: { menuItemId: item.id, period: DEFAULT_SERVICE_PERIOD } },
+      where: { menuItemId_period: { menuItemId: item.id, period } },
       create: {
         menuItemId: item.id,
-        period: DEFAULT_SERVICE_PERIOD,
+        period,
         pricePaise: item.pricePaise,
         isAvailable: item.isAvailable,
       },
@@ -246,7 +254,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
       } catch (err) {
         conflictOnName(err, 'item');
       }
-      await syncNightService(item);
+      await syncPeriodService(item);
       const dto = await itemDto(item);
       const outbox = new Outbox();
       outbox.emit('menu.item_updated', menuRooms(canteenId), { item: dto, change: 'created' });
@@ -276,7 +284,7 @@ export function createMenuService(prisma: PrismaClient, events: EventPublisher) 
       } catch (err) {
         conflictOnName(err, 'item');
       }
-      await syncNightService(item);
+      await syncPeriodService(item);
       const dto = await itemDto(item);
       const targets = menuRooms(item.canteenId);
       const outbox = new Outbox();

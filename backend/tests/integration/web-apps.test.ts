@@ -106,7 +106,8 @@ describe('web apps on one origin', () => {
     expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain('http://127.0.0.1:9099'); // Auth Emulator, test environment only
+    // No Firebase Auth Emulator any more: sign-in is a top-level navigation to /api/auth.
+    expect(csp).not.toContain('9099');
     expect(res.headers['x-frame-options']).toBe('DENY');
     expect(res.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
     // Pages are same-origin: no CORS grant even for an allowed origin.
@@ -173,9 +174,10 @@ describe('page CSP by environment', () => {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgresql://serve:pw@db.internal:5432/serve',
       CORS_ORIGINS: 'https://serve.example',
-      FIREBASE_PROJECT_ID: 'serve-demo-project',
-      FIREBASE_CLIENT_EMAIL: 'sa@serve-demo-project.iam.gserviceaccount.com',
-      FIREBASE_PRIVATE_KEY: 'key',
+      BETTER_AUTH_URL: 'https://serve.example',
+      BETTER_AUTH_SECRET: SECRET,
+      GOOGLE_CLIENT_ID: '123-abc.apps.googleusercontent.com',
+      GOOGLE_CLIENT_SECRET: 'placeholder',
       PAYMENT_MODE: 'mock',
       PAYMENT_SECRET: SECRET,
       DEMO_MODE: 'true',

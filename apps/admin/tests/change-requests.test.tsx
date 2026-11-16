@@ -44,7 +44,7 @@ describe('change requests', () => {
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Approve and assign' }));
 
-    expect(api.approveRequest).toHaveBeenCalledWith(r.id, 'Welcome aboard');
+    expect(api.approveRequest).toHaveBeenCalledWith(r.id, 'Welcome aboard', false);
     expect(
       await screen.findByText('Priya Staff assigned to Vedavathi Night Canteen'),
     ).toBeInTheDocument();

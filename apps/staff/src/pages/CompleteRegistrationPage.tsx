@@ -17,9 +17,9 @@ export function CompleteRegistrationPage() {
     setBusy(true);
     setError(null);
     try {
+      // The email comes from the signed-in Google account on the server.
       await api.registerStaff({
         name: name.trim(),
-        email: user?.email ?? '',
         ...(canteenId ? { requestedCanteenId: canteenId } : {}),
       });
       await refreshMe();

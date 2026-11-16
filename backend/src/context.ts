@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { Env } from './config/env.js';
-import type { IdentityVerifier } from './lib/firebase.js';
+import type { ServeAuth } from './lib/auth.js';
+import type { SessionVerifier } from './lib/session.js';
 import type { Clock } from './lib/time.js';
 import type { PrismaClient } from './lib/prisma.js';
 import type { EventPublisher } from './realtime/events.js';
@@ -11,7 +12,10 @@ export interface AppContext {
   env: Env;
   logger: Logger;
   prisma: PrismaClient;
-  verifier: IdentityVerifier;
+  /** Better Auth (Google sign-in, sessions), mounted at /api/auth. */
+  auth: ServeAuth;
+  /** Request → signed-in identity (session cookie or Bearer token). */
+  sessions: SessionVerifier;
   events: EventPublisher;
   payments: PaymentProvider;
   /** Injectable clock for schedule evaluation. Defaults to the system clock. */

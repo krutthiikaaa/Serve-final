@@ -242,7 +242,7 @@ function OrderBoard() {
                       >
                         <div className="order-card-top">
                           <span className="order-number">{order.orderNumber}</span>
-                          {order.payment?.isSimulated ? <Tag tone="warning">DEMO</Tag> : null}
+                          {order.payment?.isSimulated ? <Tag tone="warning">Simulated</Tag> : null}
                           <span className="muted small">
                             {order.paidAt ? timeAgo(order.paidAt, now) : ''}
                           </span>

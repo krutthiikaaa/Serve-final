@@ -14,7 +14,8 @@ class FakeIoSocket {
     readonly url: string,
     readonly options: {
       transports: string[];
-      auth: (cb: (data: { token: string }) => void) => void;
+      withCredentials?: boolean;
+      auth: (cb: (data: { token?: string }) => void) => void;
     },
   ) {}
   on(name: string, fn: Handler) {
@@ -36,7 +37,7 @@ class FakeIoSocket {
     for (const fn of this.handlers.get(name) ?? []) fn(...args);
   }
   handshake() {
-    return new Promise<{ token: string }>((resolve) => this.options.auth(resolve));
+    return new Promise<{ token?: string }>((resolve) => this.options.auth(resolve));
   }
 }
 
@@ -66,7 +67,18 @@ beforeEach(() => {
 });
 
 describe('RealtimeProvider', () => {
-  it('connects over websocket and sends the current Firebase token in the handshake', async () => {
+  it('sends the session cookie (withCredentials) and no token when none is configured', async () => {
+    render(
+      <RealtimeProvider url="http://localhost:5001" enabled>
+        <span />
+      </RealtimeProvider>,
+    );
+    const socket = sockets.at(-1)!;
+    expect(socket.options.withCredentials).toBe(true);
+    await expect(socket.handshake()).resolves.toEqual({});
+  });
+
+  it('connects over websocket and sends a configured bearer token in the handshake', async () => {
     const getToken = vi.fn(async (force?: boolean) => (force ? 'fresh' : 'cached'));
     render(
       <RealtimeProvider url="http://localhost:5001" getToken={getToken} enabled>

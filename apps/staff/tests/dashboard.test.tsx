@@ -1,7 +1,9 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { Route, Routes } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { DashboardPage } from '../src/pages/DashboardPage';
+import { StaffLayout } from '../src/components/StaffLayout';
 import {
   CANTEEN_ID,
   canteen,
@@ -32,7 +34,7 @@ describe('staff dashboard', () => {
     api.orders.mockResolvedValue({ data: [], nextCursor: null });
     api.setAcceptingOrders.mockResolvedValue({
       ...canteen,
-      isAcceptingOrders: false,
+      isPaused: true,
       status: 'PAUSED',
     });
     renderStaff(<DashboardPage />, { api });
@@ -69,8 +71,10 @@ describe('staff dashboard', () => {
             canteen: {
               id: CANTEEN_ID,
               name: canteen.name,
+              type: 'NIGHT',
               isActive: true,
               isAcceptingOrders: true,
+              isPaused: false,
             },
             capabilities: ['CASHIER'],
           },
@@ -82,5 +86,82 @@ describe('staff dashboard', () => {
     expect(screen.queryByText('Awaiting preparation')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Active orders' })).not.toBeInTheDocument();
     expect(api.orders).not.toHaveBeenCalled();
+  });
+});
+
+describe('one name for the canteen state', () => {
+  const offDuty = {
+    ...canteen,
+    isAcceptingOrders: false,
+    status: 'PAUSED' as const,
+    availability: {
+      ...canteen.availability,
+      state: 'OTHER_SERVICE_ACTIVE' as const,
+      isOpenNow: false,
+      message: 'Krishna & Godavari Day Canteen is serving this area right now.',
+      otherServiceCanteen: {
+        id: '00000000-0000-4000-8000-0000000000d1',
+        name: 'Krishna & Godavari Day Canteen',
+        type: 'DAY' as const,
+      },
+    },
+  };
+
+  it('header and dashboard both say "Off duty" while the other canteen serves', async () => {
+    const api = fakeStaffApi();
+    api.dashboard.mockResolvedValue({ ...dashboard(), canteen: offDuty });
+    api.orders.mockResolvedValue({ data: [], nextCursor: null });
+    const me = meStaff({
+      canteen: {
+        id: CANTEEN_ID,
+        name: canteen.name,
+        type: 'NIGHT',
+        isActive: true,
+        isAcceptingOrders: false,
+        isPaused: false,
+        availability: offDuty.availability,
+      },
+    });
+    renderStaff(
+      <Routes>
+        <Route element={<StaffLayout me={me} />}>
+          <Route index element={<DashboardPage />} />
+        </Route>
+      </Routes>,
+      { api, me },
+    );
+    const banner = await screen.findByRole('region', { name: 'Canteen status' });
+    expect(within(banner).getByText('Off duty')).toBeInTheDocument();
+    expect(within(banner).getByText(/is serving this area now/)).toBeInTheDocument();
+    const header = document.querySelector('.topbar-title') as HTMLElement;
+    expect(within(header).getByText('Off duty')).toBeInTheDocument();
+    expect(screen.queryByText('Paused')).not.toBeInTheDocument();
+    // Off duty is not a pause: nothing for staff to pause or resume here.
+    expect(screen.queryByRole('button', { name: /Pause orders|Resume orders/ })).toBeNull();
+  });
+
+  it('shows "Closed by schedule" with the opening time, and keeps a pause visible', async () => {
+    const api = fakeStaffApi();
+    api.dashboard.mockResolvedValue({
+      ...dashboard(),
+      canteen: {
+        ...offDuty,
+        isPaused: true,
+        availability: {
+          ...offDuty.availability,
+          state: 'CLOSED_BY_SCHEDULE',
+          message: 'Closed by schedule. Opens at 18:00.',
+          otherServiceCanteen: null,
+        },
+      },
+    });
+    api.orders.mockResolvedValue({ data: [], nextCursor: null });
+    renderStaff(<DashboardPage />, { api });
+    const banner = await screen.findByRole('region', { name: 'Canteen status' });
+    expect(within(banner).getByText('Closed by schedule')).toBeInTheDocument();
+    expect(within(banner).getByText(/Opens at 18:00/)).toBeInTheDocument();
+    expect(within(banner).getByText(/Your pause stays in place/)).toBeInTheDocument();
+    // Staff may lift their own pause even while closed by schedule.
+    expect(within(banner).getByRole('button', { name: 'Resume orders' })).toBeInTheDocument();
   });
 });

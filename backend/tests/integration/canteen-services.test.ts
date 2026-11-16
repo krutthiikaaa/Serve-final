@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { SEED_CANTEENS, SEED_MENU, seedDatabase } from '../../src/db/seed.js';
-import { createTestPrisma, truncateAll } from '../helpers/db.js';
+import { SEED_CANTEENS, SEED_DAY_MENU, SEED_MENU, seedDatabase } from '../../src/db/seed.js';
+import {
+  createCanteenRecord,
+  createHostelRecord,
+  createTestPrisma,
+  truncateAll,
+} from '../helpers/db.js';
 
 /**
  * Phase 1 schema, backfill and seed guarantees. Hits the real PostgreSQL
@@ -14,9 +19,7 @@ const prisma = createTestPrisma();
 afterAll(() => prisma.$disconnect());
 
 async function makeCanteen(name = `Canteen ${randomUUID().slice(0, 8)}`) {
-  return prisma.canteen.create({
-    data: { name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-') },
-  });
+  return createCanteenRecord(prisma, { name });
 }
 
 async function makeMenu(canteenId: string, pricePaise = 7_000, isAvailable = true) {
@@ -36,9 +39,7 @@ async function makeMenu(canteenId: string, pricePaise = 7_000, isAvailable = tru
 }
 
 async function makeStudent(canteenId: string) {
-  const hostel = await prisma.hostel.create({
-    data: { name: `Hostel ${randomUUID().slice(0, 8)}`, canteenId },
-  });
+  const hostel = await createHostelRecord(prisma, { canteenId });
   const tag = randomUUID().slice(0, 8);
   return prisma.student.create({
     data: {
@@ -464,43 +465,48 @@ describe('migration backfill of existing rows', () => {
 describe('seed compatibility with day/night services', () => {
   beforeAll(() => truncateAll(prisma));
 
-  it('seeds NIGHT services and prices without DAY rows, hours, or CASHIER', async () => {
+  it('seeds one service per canteen matching its type, without hours or CASHIER', async () => {
     const first = await seedDatabase(prisma);
     const second = await seedDatabase(prisma);
     expect(first).toEqual(second);
-    expect(first.canteens).toBe(SEED_CANTEENS.length);
+    expect(first.canteens).toBe(SEED_CANTEENS.length * 2);
 
     const canteens = await prisma.canteen.findMany({ include: { services: true } });
-    expect(canteens).toHaveLength(SEED_CANTEENS.length);
+    expect(canteens).toHaveLength(SEED_CANTEENS.length * 2);
     for (const canteen of canteens) {
-      expect(canteen.openingHours).toBe('9:00 PM – 3:00 AM');
+      expect(canteen.openingHours).toBe(
+        canteen.type === 'NIGHT' ? '9:00 PM – 3:00 AM' : '8:00 AM – 8:00 PM',
+      );
       expect(canteen.services).toHaveLength(1);
       expect(canteen.services[0]).toMatchObject({
-        period: 'NIGHT',
+        period: canteen.type,
         isEnabled: true,
         override: 'FORCE_OPEN',
       });
+      // Night canteens take orders; Day canteens wait for an admin switch.
+      expect(canteen.isAcceptingOrders).toBe(canteen.type === 'NIGHT');
     }
-    expect(await prisma.canteenService.count({ where: { period: 'DAY' } })).toBe(0);
     expect(await prisma.canteenOperatingSchedule.count()).toBe(0);
-    expect(await prisma.canteenPaymentConfig.count()).toBe(SEED_CANTEENS.length);
+    expect(await prisma.canteenPaymentConfig.count()).toBe(SEED_CANTEENS.length * 2);
     const paymentConfigs = await prisma.canteenPaymentConfig.findMany();
     expect(paymentConfigs.every((row) => row.mode === 'DEMO' && row.upiVpa === null)).toBe(true);
 
-    const items = await prisma.menuItem.findMany({ include: { services: true } });
-    const itemsPerCanteen = SEED_MENU.reduce((sum, section) => sum + section.items.length, 0);
-    expect(items).toHaveLength(SEED_CANTEENS.length * itemsPerCanteen);
+    const items = await prisma.menuItem.findMany({
+      include: { services: true, canteen: { select: { type: true } } },
+    });
+    const count = (menu: typeof SEED_MENU) => menu.reduce((sum, s) => sum + s.items.length, 0);
+    expect(items).toHaveLength(SEED_CANTEENS.length * (count(SEED_MENU) + count(SEED_DAY_MENU)));
     for (const item of items) {
       expect(item.services).toHaveLength(1);
       expect(item.services[0]).toMatchObject({
-        period: 'NIGHT',
+        period: item.canteen.type,
         pricePaise: item.pricePaise,
         isAvailable: item.isAvailable,
       });
     }
 
     const coffee = await prisma.menuItem.findFirstOrThrow({
-      where: { name: 'Coffee' },
+      where: { name: 'Coffee', canteen: { slug: 'krishna-godavari' } },
       include: { services: true },
     });
     expect(coffee.pricePaise).toBe(3_000);

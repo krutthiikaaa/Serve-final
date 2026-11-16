@@ -113,7 +113,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
                 Text(
                   [
                     order.canteen.name,
-                    formatServicePeriod(order.servicePeriod),
+                    formatServicePeriod(order.canteen.type ?? order.servicePeriod),
                     formatDateTime(order.createdAt),
                   ].join(' · '),
                   style: const TextStyle(color: ServeColors.muted),
@@ -159,10 +159,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
                     ),
                   ),
                 ),
-                if (order.hasReceipt) ...[
-                  const SizedBox(height: 16),
-                  _ReceiptCard(order: order),
-                ],
+                if (order.hasReceipt) ...[const SizedBox(height: 16), _ReceiptCard(order: order)],
                 const SizedBox(height: 16),
                 Card(
                   child: Padding(
@@ -186,7 +183,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
   }
 
   static String _paymentLabel(Payment p) {
-    if (p.isSimulated && p.isSuccess) return 'DEMO · simulated';
+    if (p.isSimulated && p.isSuccess) return 'Simulated';
     return switch (p.status) {
       'SUCCESS' => p.failureReason != null ? 'Paid · refund pending' : 'Paid',
       'REFUNDED' => 'Refunded',
@@ -214,10 +211,7 @@ class _ReceiptCard extends StatelessWidget {
             Text('Pickup token ${order.pickupToken}', style: const TextStyle(fontWeight: FontWeight.w700)),
             if (demo) ...[
               const SizedBox(height: 10),
-              const NoticeBanner(
-                message: 'DEMO TRANSACTION — NO REAL PAYMENT',
-                icon: Icons.science_outlined,
-              ),
+              const NoticeBanner(message: 'SIMULATED TRANSACTION — NO REAL PAYMENT', icon: Icons.science_outlined),
             ],
           ],
         ),

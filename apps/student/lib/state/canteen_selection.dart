@@ -2,73 +2,73 @@ import 'package:flutter/foundation.dart';
 
 import '../services/api/models.dart';
 
-/// The canteen and DAY/NIGHT service the student is browsing.
-/// Defaults to the hostel's canteen (`defaultCanteen` from /me). Period comes
-/// from backend-supported services, never from the phone clock.
+/// The canteen the student is browsing. Defaults to the canteen serving their
+/// hostel's service area (`defaultCanteen` from /me, or `current` from
+/// /students/me/service). Day and Night canteens are separate canteens, so the
+/// service period is simply the selected canteen's type — never the phone clock.
 class CanteenSelection extends ChangeNotifier {
   String? _id;
   String? _name;
-  ServicePeriod _period = ServicePeriod.night;
-  bool _periodChosen = false;
+  ServicePeriod _type = ServicePeriod.night;
   Canteen? _details;
 
   String? get id => _id;
   String? get name => _name;
-  ServicePeriod get period => _period;
+
+  /// DAY or NIGHT: the selected canteen's own (and only) service period.
+  ServicePeriod get period => _type;
   Canteen? get details => _details;
 
   void initialize(StudentMe me) {
     if (_id != null) return;
-    _id = me.defaultCanteen.id;
-    _name = me.defaultCanteen.name;
+    final canteen = me.defaultCanteen;
+    if (canteen == null) return;
+    _id = canteen.id;
+    _name = canteen.name;
+    _type = canteen.type;
     notifyListeners();
   }
 
-  void select(String id, String name, {Canteen? details}) {
-    final same = _id == id;
+  void select(String id, String name, {Canteen? details, ServicePeriod? type}) {
     _id = id;
     _name = name;
     if (details != null) _details = details;
-    if (!same) _periodChosen = false;
-    if (_details != null) _adoptPeriod(_details!);
+    _type = details?.type ?? type ?? (_details?.id == id ? _details!.type : _type);
     notifyListeners();
   }
 
-  void selectPeriod(ServicePeriod period) {
-    if (_period == period) return;
-    _period = period;
-    _periodChosen = true;
-    notifyListeners();
-  }
-
-  /// Aligns the selected period with backend services when the student has not
-  /// explicitly picked one. Does not invent hours.
+  /// Keeps name/type/availability in sync with the latest backend data.
   void applyCanteen(Canteen canteen) {
     if (_id != null && canteen.id != _id) return;
+    _id ??= canteen.id;
     _details = canteen;
     _name = canteen.name;
-    _adoptPeriod(canteen);
+    _type = canteen.type;
     notifyListeners();
   }
 
-  void _adoptPeriod(Canteen canteen) {
-    if (_periodChosen && canteen.supports(_period)) return;
-    final open = canteen.services.where((s) => s.isEnabled && s.isOpenNow).map((s) => s.period).toList();
-    if (open.contains(_period)) return;
-    if (open.isNotEmpty) {
-      _period = open.first;
+  /// Follows the area's serving canteen unless the student picked one.
+  void applyService(StudentService service) {
+    final current = service.current;
+    if (current == null) return;
+    final chosenStillExists = _id != null && service.canteens.any((c) => c.id == _id);
+    if (chosenStillExists) {
+      final fresh = service.canteens.firstWhere((c) => c.id == _id);
+      if (_details?.availability?.state != fresh.availability?.state || _details?.id != fresh.id) {
+        _details = fresh;
+        _name = fresh.name;
+        _type = fresh.type;
+        notifyListeners();
+      }
       return;
     }
-    if (canteen.supportedPeriods.isNotEmpty && !canteen.supports(_period)) {
-      _period = canteen.supportedPeriods.first;
-    }
+    select(current.id, current.name, details: current);
   }
 
   void reset() {
     _id = null;
     _name = null;
-    _period = ServicePeriod.night;
-    _periodChosen = false;
+    _type = ServicePeriod.night;
     _details = null;
   }
 }

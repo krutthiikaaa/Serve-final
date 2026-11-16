@@ -4,14 +4,7 @@ import '../../theme/serve_theme.dart';
 
 /// Status / provisioning copy shown inside the central popup.
 class AuthInfoPane extends StatelessWidget {
-  const AuthInfoPane({
-    super.key,
-    required this.icon,
-    required this.heading,
-    required this.body,
-    this.actionLabel,
-    this.onAction,
-  });
+  const AuthInfoPane({super.key, required this.icon, required this.heading, required this.body, this.actionLabel, this.onAction});
 
   final IconData icon;
   final String heading;

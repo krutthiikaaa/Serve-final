@@ -20,10 +20,11 @@ export const RealtimeContext = createContext<RealtimeContextValue>({
 
 /**
  * One authenticated Socket.IO connection per signed-in session.
- * - The token is supplied through the `auth` callback, so every (re)connect
- *   sends a fresh Firebase ID token.
+ * - Every (re)connect sends the Better Auth session cookie (withCredentials);
+ *   an optional bearer token goes through the `auth` callback.
  * - The client never names rooms: the server assigns them from PostgreSQL.
- * - On `auth.expired` the server disconnects; we force-refresh and reconnect.
+ * - On `auth.expired` (session ended or expired) the server disconnects; we
+ *   reconnect once, which succeeds only if the session is still valid.
  */
 export function RealtimeProvider({
   url,
@@ -32,7 +33,8 @@ export function RealtimeProvider({
   children,
 }: {
   url: string;
-  getToken: (forceRefresh?: boolean) => Promise<string | null>;
+  /** Optional bearer token; the web apps use the session cookie instead. */
+  getToken?: (forceRefresh?: boolean) => Promise<string | null>;
   enabled: boolean;
   children: ReactNode;
 }) {
@@ -47,10 +49,13 @@ export function RealtimeProvider({
     let forceRefresh = false;
     const s = io(url, {
       transports: ['websocket'],
+      // Sends Better Auth's session cookie with the handshake.
+      withCredentials: true,
       auth: (cb) => {
-        void tokenRef.current(forceRefresh).then((token) => {
+        const getToken = tokenRef.current ?? (() => Promise.resolve(null));
+        void getToken(forceRefresh).then((token) => {
           forceRefresh = false;
-          cb({ token: token ?? '' });
+          cb(token ? { token } : {});
         });
       },
     });

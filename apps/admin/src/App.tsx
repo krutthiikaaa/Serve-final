@@ -6,12 +6,10 @@ import {
   Button,
   ErrorState,
   NotificationsProvider,
+  GoogleSignIn,
   RealtimeProvider,
-  SignInForm,
   Spinner,
-  SsoCallbackPage,
   ToastProvider,
-  initFirebaseAuth,
   isConnectivityError,
   ssoLog,
   useAuth,
@@ -36,10 +34,9 @@ import { SettingsPage } from './pages/SettingsPage';
 const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export function App() {
-  const auth = useMemo(() => initFirebaseAuth(config.firebase), []);
   return (
     <ToastProvider>
-      <AuthProvider auth={auth} baseUrl={config.apiUrl}>
+      <AuthProvider baseUrl={config.apiUrl} appUrl={config.appUrl}>
         <BrowserRouter basename={routerBasename}>
           <Gate />
         </BrowserRouter>
@@ -50,23 +47,22 @@ export function App() {
 
 /**
  * Admin access is decided by the backend account (`/api/auth/me`), never by
- * the token or the URL. Admin accounts are provisioned by the bootstrap script;
- * there is no self-registration here.
+ * the Google sign-in or the URL. Admin accounts are provisioned by email with
+ * the bootstrap script; there is no self-registration here.
  */
 export function Gate() {
   return (
     <Routes>
-      <Route
-        path="/sso/callback"
-        element={<SsoCallbackPage audience="ADMIN" studentAppUrl={config.studentAppUrl} />}
-      />
+      {/* Old SSO handoff links: the shared SERVE session already signs the user in. */}
+      <Route path="/sso/callback" element={<Navigate to="/" replace />} />
       <Route path="*" element={<AccountGate />} />
     </Routes>
   );
 }
 
 function AccountGate() {
-  const { status, me, user, error, api, getToken, refreshMe, signIn, signOut } = useAuth();
+  const { status, me, user, error, api, refreshMe, signInWithGoogle, signInError, signOut } =
+    useAuth();
   const client = useMemo(() => adminApi(api), [api]);
 
   if (
@@ -111,10 +107,12 @@ function AccountGate() {
       <AuthLayout subtitle="Admin portal">
         <section className="section">
           <div className="section-body">
-            <SignInForm onSubmit={signIn} />
+            <GoogleSignIn onSignIn={signInWithGoogle} error={signInError} />
           </div>
         </section>
-        <p className="auth-switch">Admin accounts are created by the SERVE operations team.</p>
+        <p className="auth-switch">
+          Admin access is granted by the SERVE operations team to SRM Google accounts.
+        </p>
       </AuthLayout>
     );
   }
@@ -152,7 +150,7 @@ function AccountGate() {
   });
   return (
     <AdminApiContext.Provider value={client}>
-      <RealtimeProvider url={config.apiUrl} getToken={getToken} enabled>
+      <RealtimeProvider url={config.apiUrl} enabled>
         <NotificationsProvider api={api}>
           <Routes>
             <Route element={<AdminLayout me={me} />}>

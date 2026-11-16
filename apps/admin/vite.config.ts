@@ -4,20 +4,13 @@ import react from '@vitejs/plugin-react';
 /**
  * Admin portal — http://localhost:5174 in development, served under /admin/ in
  * builds (the single-domain deployment, see docs/deployment.md).
- * Production builds refuse the Firebase emulator and a localhost or plain-http
- * API. Without VITE_API_URL a build calls the origin that serves it.
+ * Production builds refuse a localhost or plain-http API. Without
+ * VITE_API_URL a build calls the origin that serves it. Sign-in (Google via
+ * Better Auth) is entirely backend-side: no auth secret or key is built in.
  */
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
   if (mode === 'production') {
-    const missing = ['VITE_FIREBASE_API_KEY', 'VITE_FIREBASE_PROJECT_ID'].filter(
-      (key) => !env[key],
-    );
-    if (missing.length > 0) throw new Error(`Production build requires: ${missing.join(', ')}`);
-    if (env.VITE_FIREBASE_AUTH_EMULATOR_URL)
-      throw new Error('VITE_FIREBASE_AUTH_EMULATOR_URL must not be set for production builds');
-    if (env.VITE_FIREBASE_PROJECT_ID?.startsWith('demo-'))
-      throw new Error('VITE_FIREBASE_PROJECT_ID: demo- projects only exist in the Auth Emulator');
     if (env.VITE_API_URL && !env.VITE_API_URL.startsWith('https://'))
       throw new Error('VITE_API_URL must use https in production (or be unset for same-origin)');
     if (/localhost|127\.0\.0\.1/.test(env.VITE_API_URL ?? ''))
@@ -33,7 +26,7 @@ export default defineConfig(({ command, mode }) => {
         output: {
           codeSplitting: {
             groups: [
-              { name: 'firebase', test: /node_modules[\\/]@firebase/ },
+              { name: 'auth', test: /node_modules[\\/](better-auth|@better-auth|better-call)/ },
               { name: 'vendor', test: /node_modules/ },
             ],
           },
@@ -41,14 +34,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     resolve: {
-      dedupe: [
-        'react',
-        'react-dom',
-        'react-router-dom',
-        '@firebase/app',
-        '@firebase/auth',
-        'socket.io-client',
-      ],
+      dedupe: ['react', 'react-dom', 'react-router-dom', 'better-auth', 'socket.io-client'],
     },
     test: {
       environment: 'jsdom',
@@ -56,8 +42,6 @@ export default defineConfig(({ command, mode }) => {
       include: ['tests/**/*.test.tsx', 'tests/**/*.test.ts'],
       env: {
         VITE_API_URL: 'http://localhost:5001',
-        VITE_FIREBASE_API_KEY: 'test-key',
-        VITE_FIREBASE_PROJECT_ID: 'demo-serve',
       },
     },
   };

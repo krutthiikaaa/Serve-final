@@ -8,9 +8,7 @@ import {
   NotificationsProvider,
   RealtimeProvider,
   Spinner,
-  SsoCallbackPage,
   ToastProvider,
-  initFirebaseAuth,
   isConnectivityError,
   ssoLog,
   useAuth,
@@ -36,10 +34,9 @@ import { AccountPage } from './pages/AccountPage';
 const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export function App() {
-  const auth = useMemo(() => initFirebaseAuth(config.firebase), []);
   return (
     <ToastProvider>
-      <AuthProvider auth={auth} baseUrl={config.apiUrl}>
+      <AuthProvider baseUrl={config.apiUrl} appUrl={config.appUrl}>
         <BrowserRouter basename={routerBasename}>
           <Gate />
         </BrowserRouter>
@@ -49,23 +46,22 @@ export function App() {
 }
 
 /**
- * Routes purely on the backend account (`/api/auth/me`). The Firebase token
- * only proves identity; nothing here trusts a client-side role.
+ * Routes purely on the backend account (`/api/auth/me`). The Google sign-in
+ * (Better Auth session) only proves identity; nothing here trusts a
+ * client-side role.
  */
 export function Gate() {
   return (
     <Routes>
-      <Route
-        path="/sso/callback"
-        element={<SsoCallbackPage audience="STAFF" studentAppUrl={config.studentAppUrl} />}
-      />
+      {/* Old SSO handoff links: the shared SERVE session already signs the user in. */}
+      <Route path="/sso/callback" element={<Navigate to="/" replace />} />
       <Route path="*" element={<AccountGate />} />
     </Routes>
   );
 }
 
 function AccountGate() {
-  const { status, me, user, error, api, getToken, refreshMe, signOut } = useAuth();
+  const { status, me, user, error, api, refreshMe, signOut } = useAuth();
   const client = useMemo(() => staffApi(api), [api]);
 
   if (
@@ -124,7 +120,7 @@ function AccountGate() {
   const realtimeEnabled = me.registered && me.role === 'STAFF' && me.status !== 'DEACTIVATED';
   return (
     <StaffApiContext.Provider value={client}>
-      <RealtimeProvider url={config.apiUrl} getToken={getToken} enabled={realtimeEnabled}>
+      <RealtimeProvider url={config.apiUrl} enabled={realtimeEnabled}>
         <NotificationsProvider api={api}>
           {!me.registered ? (
             <CompleteRegistrationPage />

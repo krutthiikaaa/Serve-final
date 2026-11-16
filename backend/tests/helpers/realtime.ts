@@ -4,18 +4,19 @@ import { io as connectClient, type Socket } from 'socket.io-client';
 import { createApp } from '../../src/app.js';
 import { createRealtimeServer, RealtimeBridge } from '../../src/realtime/socket-server.js';
 import { buildTestContext } from './test-app.js';
+import type { Clock } from '../../src/lib/time.js';
 
 /**
  * Starts the REAL backend (Express + Socket.IO) on an ephemeral port, wired to
- * the test database and the Firebase Auth Emulator — the same composition as
+ * the test database and real Better Auth sessions — the same composition as
  * src/server.ts.
  */
-export async function startTestServer() {
+export async function startTestServer(options: { clock?: Clock } = {}) {
   const bridge = new RealtimeBridge();
-  const ctx = buildTestContext({ events: bridge });
+  const ctx = buildTestContext({ events: bridge, clock: options.clock });
   const app = createApp(ctx);
   const server: Server = createServer(app);
-  const realtime = createRealtimeServer(server, ctx);
+  const realtime = createRealtimeServer(server, { ...ctx, sessionRecheckMs: 300 });
   bridge.attach(realtime.publisher);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -45,6 +46,36 @@ export async function startTestServer() {
     async rejectedConnect(token: string | null): Promise<string | undefined> {
       const socket = connectClient(url, {
         auth: token === null ? {} : { token },
+        transports: ['websocket'],
+        reconnection: false,
+        forceNew: true,
+      });
+      sockets.push(socket);
+      return new Promise((resolve, reject) => {
+        socket.once('connect', () => reject(new Error('connection unexpectedly succeeded')));
+        socket.once('connect_error', (err: Error & { data?: { code?: string } }) =>
+          resolve(err.data?.code),
+        );
+      });
+    },
+    /** Connect as a browser would: the session cookie, no auth token. */
+    async connectWithCookie(cookie: string): Promise<Socket> {
+      const socket = connectClient(url, {
+        extraHeaders: { cookie },
+        transports: ['websocket'],
+        reconnection: false,
+        forceNew: true,
+      });
+      sockets.push(socket);
+      await new Promise<void>((resolve, reject) => {
+        socket.once('connect', () => resolve());
+        socket.once('connect_error', (err) => reject(err));
+      });
+      return socket;
+    },
+    async rejectedConnectWithCookie(cookie: string): Promise<string | undefined> {
+      const socket = connectClient(url, {
+        extraHeaders: { cookie },
         transports: ['websocket'],
         reconnection: false,
         forceNew: true,

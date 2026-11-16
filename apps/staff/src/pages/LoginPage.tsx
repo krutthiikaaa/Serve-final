@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom';
-import { AuthLayout, SignInForm, useAuth } from '@serve/web-shared';
+import { AuthLayout, GoogleSignIn, useAuth } from '@serve/web-shared';
 
 export function LoginPage() {
-  const { signIn } = useAuth();
+  const { signInWithGoogle, signInError } = useAuth();
   return (
     <AuthLayout subtitle="Staff dashboard">
       <section className="section">
         <div className="section-body">
-          <SignInForm onSubmit={signIn} />
+          <GoogleSignIn onSignIn={signInWithGoogle} error={signInError} />
         </div>
       </section>
       <p className="auth-switch">

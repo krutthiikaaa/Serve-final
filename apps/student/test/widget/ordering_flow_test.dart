@@ -9,22 +9,27 @@ import '../support/fixtures.dart' as fx;
 Finder navTab(String label) => find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
 
 void main() {
-  testWidgets('home shows DAY and NIGHT from the backend and switching period reloads the menu', (tester) async {
+  testWidgets('home shows the area’s Day and Night canteens; switching loads the Day canteen menu', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
     await h.pumpSignedIn(tester);
-    expect(find.text('DAY'), findsWidgets);
-    expect(find.text('NIGHT'), findsWidgets);
-    expect(find.textContaining('Open now'), findsWidgets);
-    final before = h.api.calls.where((c) => c.startsWith('menu:')).length;
-    await tester.tap(find.text('DAY').first);
+    expect(find.text('SERVING KRISHNA & GODAVARI'), findsOneWidget);
+    expect(find.byKey(const Key('service-NIGHT')), findsOneWidget);
+    expect(find.byKey(const Key('service-DAY')), findsOneWidget);
+    expect(find.text('Taking orders'), findsWidgets);
+    expect(find.text('Off duty'), findsOneWidget);
+    expect(h.services.selection.period, ServicePeriod.night);
+
+    await tester.tap(find.byKey(const Key('service-DAY')));
     await tester.pumpAndSettle();
-    expect(h.api.calls.where((c) => c.startsWith('menu:')).length, greaterThan(before));
-    expect(h.api.calls, contains('menu:${fx.kgId}:DAY'));
+    expect(h.api.calls, contains('menu:${fx.kgDayId}:DAY'));
+    expect(h.services.selection.id, fx.kgDayId);
     expect(h.services.selection.period, ServicePeriod.day);
+    // The Day canteen is off duty while Night serves: browsable, not orderable.
+    expect(find.text('Krishna & Godavari Night Canteen is serving your area right now.'), findsOneWidget);
   });
 
-  testWidgets('switching period with a cart asks to clear it', (tester) async {
+  testWidgets('switching to the other canteen with a cart asks to clear it', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
     await h.pumpSignedIn(tester);
@@ -34,16 +39,25 @@ void main() {
       period: ServicePeriod.night,
     );
     await tester.pump();
-    await tester.tap(find.text('DAY').first);
+    await tester.tap(find.byKey(const Key('service-DAY')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('different day or night service'), findsOneWidget);
+    expect(find.textContaining('items from another canteen'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(h.services.cart.isEmpty, isFalse);
+    expect(h.services.selection.id, fx.kgId);
     expect(h.services.selection.period, ServicePeriod.night);
   });
 
-  testWidgets('order details show a demo receipt warning and keep historical orders without a period', (tester) async {
+  testWidgets('shows a clear unavailable state when neither canteen takes orders', (tester) async {
+    usePhoneSize(tester);
+    final h = TestHarness();
+    h.api.menus[fx.kgId] = fx.menu(status: 'PAUSED', state: 'PAUSED');
+    await h.pumpSignedIn(tester);
+    expect(find.byKey(const Key('area-unavailable')), findsOneWidget);
+  });
+
+  testWidgets('order details show a simulated-payment warning and keep historical orders without a period', (tester) async {
     usePhoneSize(tester);
     final demo = fx.order(status: 'COLLECTED', simulated: true, number: 'SV8801');
     final historic = fx.order(status: 'COLLECTED', servicePeriod: null, number: 'SV0900');
@@ -54,12 +68,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Past'));
     await tester.pumpAndSettle();
-    expect(find.text('DEMO'), findsWidgets);
+    expect(find.text('Simulated'), findsWidgets);
     expect(find.text('Service period not recorded'), findsOneWidget);
     await tester.tap(find.text('SV8801'));
     await tester.pumpAndSettle();
     expect(find.byType(OrderDetailsScreen), findsOneWidget);
-    expect(find.text('DEMO TRANSACTION — NO REAL PAYMENT'), findsOneWidget);
+    expect(find.text('SIMULATED TRANSACTION — NO REAL PAYMENT'), findsOneWidget);
+    expect(find.textContaining('DEMO'), findsNothing);
     expect(find.textContaining('Receipt RC1001'), findsOneWidget);
   });
 

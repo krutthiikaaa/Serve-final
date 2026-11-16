@@ -1,5 +1,5 @@
 import type { Request, RequestHandler } from 'express';
-import type { IdentityVerifier, VerifiedIdentity } from '../lib/firebase.js';
+import type { SessionVerifier, VerifiedIdentity } from '../lib/session.js';
 import type { PrismaClient } from '../lib/prisma.js';
 import { ForbiddenError, UnauthorizedError } from '../lib/errors.js';
 import {
@@ -11,7 +11,7 @@ import {
 } from '../modules/auth/principal.js';
 
 export interface AuthContext extends VerifiedIdentity {
-  /** null when the Firebase user has not registered a SERVE account yet. */
+  /** null when the signed-in identity has not registered a SERVE account yet. */
   principal: Principal | null;
 }
 
@@ -26,29 +26,22 @@ declare module 'express-serve-static-core' {
 /** An approved staff member with a guaranteed canteen assignment. */
 export type ApprovedStaffPrincipal = StaffPrincipal & { status: 'APPROVED'; canteenId: string };
 
-const BEARER = /^Bearer ([A-Za-z0-9._~+/=-]+)$/;
-
-export function bearerToken(header: string | undefined): string | null {
-  const match = header ? BEARER.exec(header) : null;
-  return match?.[1] ?? null;
-}
-
 /**
- * authenticateUser: verifies the Firebase ID token, then loads the caller's
- * account from PostgreSQL. Authorization decisions downstream use only this
- * database-backed context.
+ * authenticateUser: verifies the Better Auth session (HttpOnly cookie from the
+ * web apps, or `Authorization: Bearer <session token>` from the native app),
+ * then loads the caller's account from PostgreSQL. Authorization decisions
+ * downstream use only this database-backed context.
  */
 export function createAuthenticate(deps: {
-  verifier: IdentityVerifier;
+  sessions: SessionVerifier;
   prisma: PrismaClient;
 }): RequestHandler {
   return async (req, _res, next) => {
-    const token = bearerToken(req.headers.authorization);
-    if (!token) {
+    const identity = await deps.sessions.verify(req.headers);
+    if (!identity) {
       throw new UnauthorizedError('Authentication required', 'AUTH_REQUIRED');
     }
-    const identity = await deps.verifier.verifyIdToken(token);
-    const principal = await resolvePrincipal(deps.prisma, identity.uid);
+    const principal = await resolvePrincipal(deps.prisma, identity);
     req.auth = { ...identity, principal };
     next();
   };

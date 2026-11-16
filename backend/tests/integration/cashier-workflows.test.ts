@@ -33,46 +33,32 @@ beforeAll(async () => {
   coffee = await itemByName(prisma, kg.id, 'Coffee');
   admin = await newAdmin(prisma, env);
   student = await newStudent(app, prisma);
+  // One dedicated account per canteen. It works the till and the kitchen;
+  // `onlyCapabilities` narrows it to prove each capability check on its own.
   cashier = await newApprovedStaff(app, admin, kg.id);
-  kitchen = await newApprovedStaff(app, admin, kg.id);
+  kitchen = cashier;
+  await onlyCapabilities(['CASHIER', 'KITCHEN']);
+});
+
+async function onlyCapabilities(capabilities: string[]) {
   await request(app)
     .put(`/api/admin/staff/${cashier.id}/assignments`)
     .set(bearer(admin.token))
-    .send({
-      primaryCanteenId: kg.id,
-      assignments: [
-        { canteenId: kg.id, capabilities: ['CASHIER'] },
-        { canteenId: yn.id, capabilities: ['CASHIER'] },
-      ],
-    })
+    .send({ primaryCanteenId: kg.id, assignments: [{ canteenId: kg.id, capabilities }] })
     .expect(200);
-  await request(app)
-    .put(`/api/admin/staff/${kitchen.id}/assignments`)
-    .set(bearer(admin.token))
-    .send({
-      primaryCanteenId: kg.id,
-      assignments: [{ canteenId: kg.id, capabilities: ['KITCHEN'] }],
-    })
-    .expect(200);
-});
+}
 afterAll(() => prisma.$disconnect());
 
-describe('staff assignments on /auth/me and canteen switching', () => {
-  it('returns assigned canteens and capabilities without granting extras on switch', async () => {
+describe('dedicated staff account on /auth/me (no canteen switching)', () => {
+  it('returns exactly its own canteen and capabilities', async () => {
     const me = await request(app).get('/api/auth/me').set(bearer(cashier.token)).expect(200);
-    expect(me.body.data.canteen.id).toBe(kg.id);
-    expect(me.body.data.assignments).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          canteenId: kg.id,
-          capabilities: ['CASHIER'],
-        }),
-        expect.objectContaining({
-          canteenId: yn.id,
-          capabilities: ['CASHIER'],
-        }),
-      ]),
-    );
+    expect(me.body.data.canteen).toMatchObject({ id: kg.id, type: 'NIGHT' });
+    expect(me.body.data.assignments).toEqual([
+      expect.objectContaining({
+        canteenId: kg.id,
+        capabilities: expect.arrayContaining(['CASHIER', 'KITCHEN']),
+      }),
+    ]);
   });
 
   it('rejects an unassigned canteen id', async () => {
@@ -111,11 +97,13 @@ describe('app order cashier confirmation', () => {
       .send({ utr: 'AXIS123456789' })
       .expect(200);
 
+    await onlyCapabilities(['KITCHEN']);
     await request(app)
       .post(`/api/staff/orders/${placed.id}/confirm-demo-payment`)
       .set(bearer(kitchen.token))
       .send({ simulatedPaymentReceived: true })
       .expect(403);
+    await onlyCapabilities(['CASHIER', 'KITCHEN']);
 
     const liveRejected = await request(app)
       .post(`/api/staff/orders/${placed.id}/confirm-payment`)
@@ -135,7 +123,7 @@ describe('app order cashier confirmation', () => {
     expect(confirmed.body.data.order.payment.utr).toBe('AXIS123456789');
     expect(confirmed.body.data.receipt.receiptNumber).toMatch(/^RC\d+$/);
     expect(confirmed.body.data.receipt.simulated).toBe(true);
-    expect(confirmed.body.data.receipt.notice).toBe('DEMO TRANSACTION — NO REAL PAYMENT');
+    expect(confirmed.body.data.receipt.notice).toBe('SIMULATED TRANSACTION — NO REAL PAYMENT');
     receiptSchema.parse(confirmed.body.data.receipt);
 
     const kitchenList = await request(app)
@@ -182,14 +170,25 @@ describe('app order cashier confirmation', () => {
       .expect(409);
   });
 
-  it('cannot confirm another canteen payment queue', async () => {
+  it('cannot reach another canteen’s payment queue by naming its id', async () => {
     const placed = await placeOrder(app, student, kg.id, [{ menuItemId: coffee.id, quantity: 1 }]);
     const res = await request(app)
       .post(`/api/staff/orders/${placed.id}/confirm-demo-payment?canteenId=${yn.id}`)
       .set(bearer(cashier.token))
       .send({ simulatedPaymentReceived: true })
+      .expect(403);
+    expect(res.body.error.code).toBe('CANTEEN_NOT_ASSIGNED');
+
+    const ynCoffee = await itemByName(prisma, yn.id, 'Coffee');
+    const foreign = await placeOrder(app, student, yn.id, [
+      { menuItemId: ynCoffee.id, quantity: 1 },
+    ]);
+    const notMine = await request(app)
+      .post(`/api/staff/orders/${foreign.id}/confirm-demo-payment`)
+      .set(bearer(cashier.token))
+      .send({ simulatedPaymentReceived: true })
       .expect(404);
-    expect(res.body.error.code).toBe('ORDER_NOT_FOUND');
+    expect(notMine.body.error.code).toBe('ORDER_NOT_FOUND');
   });
 });
 
@@ -258,16 +257,21 @@ describe('walk-in POS', () => {
       .expect(422);
   });
 
-  it('kitchen staff cannot complete a walk-in sale', async () => {
-    await request(app)
-      .post('/api/staff/pos/demo-sales')
-      .set(bearer(kitchen.token))
-      .send({
-        servicePeriod: 'NIGHT',
-        paymentMethod: 'CASH',
-        simulatedPaymentReceived: true,
-        items: [{ menuItemId: coffee.id, quantity: 1 }],
-      })
-      .expect(403);
+  it('kitchen-only staff cannot complete a walk-in sale', async () => {
+    await onlyCapabilities(['KITCHEN']);
+    try {
+      await request(app)
+        .post('/api/staff/pos/demo-sales')
+        .set(bearer(kitchen.token))
+        .send({
+          servicePeriod: 'NIGHT',
+          paymentMethod: 'CASH',
+          simulatedPaymentReceived: true,
+          items: [{ menuItemId: coffee.id, quantity: 1 }],
+        })
+        .expect(403);
+    } finally {
+      await onlyCapabilities(['CASHIER', 'KITCHEN']);
+    }
   });
 });

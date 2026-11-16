@@ -11,11 +11,11 @@ vi.mock('socket.io-client', () => ({
   io: () => ({ on() {}, off() {}, removeAllListeners() {}, disconnect() {}, connect() {} }),
 }));
 
-const renderGate = (me: Me | null) =>
+const renderGate = (me: Me | null, path = '/') =>
   render(
     <ToastProvider>
       <FakeAuthProvider me={me}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[path]}>
           <Gate />
         </MemoryRouter>
       </FakeAuthProvider>
@@ -23,17 +23,24 @@ const renderGate = (me: Me | null) =>
   );
 
 describe('admin routing (decided only by /api/auth/me)', () => {
-  it('shows sign-in and no self-registration when signed out', () => {
+  it('shows Google sign-in (SRM accounts) and no self-registration when signed out', () => {
     renderGate(null);
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+    expect(screen.getByText('@srmap.edu.in')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
     expect(screen.queryByText(/create account/i)).not.toBeInTheDocument();
+  });
+
+  it('old SSO handoff links open the portal with the shared session', () => {
+    renderGate(meAdmin(), '/sso/callback?code=old-one-time-code');
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
   });
 
   it('refuses staff accounts', () => {
     renderGate({
       registered: true,
       id: '00000000-0000-4000-8000-000000000001',
-      firebaseUid: 'u',
+      authUserId: 'u',
       name: 'S',
       email: 's@serve.dev',
       isActive: true,
@@ -47,8 +54,8 @@ describe('admin routing (decided only by /api/auth/me)', () => {
     expect(screen.getByText(/Use the staff dashboard instead/)).toBeInTheDocument();
   });
 
-  it('refuses Firebase users without a SERVE account', () => {
-    renderGate({ registered: false, role: null, firebaseUid: 'u', email: 'x@serve.dev' });
+  it('refuses Google users without a SERVE admin account', () => {
+    renderGate({ registered: false, role: null, authUserId: 'u', email: 'x@srmap.edu.in' });
     expect(
       screen.getByText('This account is not registered as a SERVE admin.'),
     ).toBeInTheDocument();

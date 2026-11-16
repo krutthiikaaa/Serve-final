@@ -2,146 +2,125 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/api_exception.dart';
 import '../api/models.dart';
-import 'firebase_auth_client.dart';
+import 'platform_auth.dart';
+import 'serve_auth_client.dart';
 import 'session_store.dart';
 
 enum AuthStatus { initializing, signedOut, loadingAccount, ready, error }
 
-/// Loads `/api/auth/me` for the signed-in Firebase user.
+/// Loads `/api/auth/me` for the signed-in identity.
 typedef MeLoader = Future<Me> Function();
 
-/// Firebase proves identity; the backend decides the role. This controller
-/// keeps both in one state machine:
+/// Google (Better Auth, @srmap.edu.in only) proves identity; the backend
+/// decides the role. This controller keeps both in one state machine:
 /// initializing → signedOut | loadingAccount → ready | error.
+///
+/// Web: the session is the backend's HttpOnly cookie (nothing stored here).
+/// Android / iOS: the session token, kept in secure storage, sent as Bearer.
 class AuthController extends ChangeNotifier {
-  AuthController({required this._firebase, required this._store, DateTime Function()? clock}) : _now = clock ?? DateTime.now;
+  AuthController({required this._client, required this._store, bool? isWeb}) : _isWeb = isWeb ?? kIsWeb;
 
-  final FirebaseAuthClient _firebase;
+  final ServeAuthClient _client;
   final SessionStore _store;
-  final DateTime Function() _now;
+  final bool _isWeb;
   late MeLoader _loadMe;
 
   AuthStatus status = AuthStatus.initializing;
-  FirebaseSession? _session;
+  String? _token;
+  bool _webSession = false;
   Me? me;
   Object? error;
-  Future<FirebaseSession>? _refreshing;
 
-  String? get email => _session?.email;
-  bool get isSignedIn => _session != null;
+  /// Why the last Google sign-in was refused (shown on the sign-in screen).
+  String? signInError;
+
+  String? get email => switch (me) {
+    UnregisteredMe(:final email) => email,
+    StudentMe(:final email) => email,
+    _ => null,
+  };
+  bool get isSignedIn => _isWeb ? _webSession : _token != null;
   StudentMe? get student => me is StudentMe ? me! as StudentMe : null;
 
-  /// Wired after the API client exists (the client needs [idToken]).
+  /// Wired after the API client exists (the client needs [sessionToken]).
   void attach(MeLoader loadMe) => _loadMe = loadMe;
 
-  /// Restores a persisted session on app start.
+  /// Restores the session on app start (and after returning from Google on web).
   Future<void> restore() async {
+    if (_isWeb) {
+      final refused = PlatformAuth.takeSignInError();
+      if (refused != null) signInError = signInErrorMessage(refused);
+      // The cookie, if any, is sent with /me; 401 means signed out.
+      _webSession = true;
+      return refreshMe();
+    }
     final stored = await _store.read();
     if (stored == null) return _set(AuthStatus.signedOut);
-    try {
-      _session = await _firebase.refresh(
-        FirebaseSession(uid: stored.uid, email: stored.email, idToken: '', refreshToken: stored.refreshToken, expiresAt: _now()),
-      );
-      await _persist();
-      await refreshMe();
-    } on AuthException catch (e) {
-      if (e.code == 'network-request-failed') {
-        error = e;
-        _session = FirebaseSession(uid: stored.uid, email: stored.email, idToken: '', refreshToken: stored.refreshToken, expiresAt: _now());
-        return _set(AuthStatus.error);
-      }
-      await signOut();
-    }
-  }
-
-  Future<void> signIn(String email, String password) async {
-    _session = await _firebase.signIn(email, password);
-    await _persist();
+    _token = stored.token;
     await refreshMe();
   }
 
-  /// Firebase sign-in + `/me` without publishing [AuthStatus.ready], so the
-  /// caller can accept or reject the account before [AuthGate] routes.
-  Future<Me> identify(String email, String password) async {
-    _session = await _firebase.signIn(email, password);
-    await _persist();
-    if (status != AuthStatus.ready) _set(AuthStatus.loadingAccount);
+  /// Google sign-in. On web the page leaves for Google and the app restarts
+  /// signed in; natively the system browser returns the session here.
+  Future<void> signInWithGoogle() async {
+    signInError = null;
+    notifyListeners();
     try {
-      if (_session!.idToken.isEmpty) await idToken(forceRefresh: true);
-      return await _loadMe();
-    } catch (_) {
-      await signOut();
-      rethrow;
+      if (_isWeb) {
+        final root = PlatformAuth.webAppRoot()!;
+        await PlatformAuth.navigateTo(await _client.webSignInUrl(root));
+        return;
+      }
+      _token = await _client.nativeSignIn();
+      await _store.write(StoredSession(token: _token!));
+      await refreshMe();
+    } on AuthException catch (e) {
+      signInError = e.message;
+      notifyListeners();
+      if (e.code == 'network-request-failed') rethrow;
     }
   }
 
-  /// Creates the Firebase account without leaving the registration screen:
-  /// the caller registers with SERVE next and then calls [setMe]. If that
-  /// step is abandoned, the next sign-in lands on "complete registration".
-  Future<void> createAccount(String email, String password) async {
-    _session = await _firebase.signUp(email, password);
-    await _persist();
-  }
-
-  /// Firebase email reset. Does not change [status]; the popup stays put.
-  Future<void> sendPasswordReset(String email) => _firebase.sendPasswordReset(email);
-
   Future<void> signOut() async {
-    _session = null;
+    final token = _token;
+    _token = null;
+    _webSession = false;
     me = null;
     error = null;
     await _store.clear();
     _set(AuthStatus.signedOut);
+    await _client.signOut(token: token);
   }
 
   /// Re-reads `/api/auth/me` (after registration, reconnects, retries).
   Future<void> refreshMe() async {
-    if (_session == null) return _set(AuthStatus.signedOut);
+    if (!isSignedIn) return _set(AuthStatus.signedOut);
     if (status != AuthStatus.ready) _set(AuthStatus.loadingAccount);
     try {
-      if (_session!.idToken.isEmpty) await idToken(forceRefresh: true);
       me = await _loadMe();
       error = null;
       _set(AuthStatus.ready);
     } on ApiException catch (e) {
-      if (e.status == 401) return signOut();
-      error = e;
-      _set(AuthStatus.error);
-    } on AuthException catch (e) {
+      if (e.status == 401) {
+        // No (or an ended) session: signed out, quietly.
+        _token = null;
+        _webSession = false;
+        me = null;
+        await _store.clear();
+        return _set(AuthStatus.signedOut);
+      }
       error = e;
       _set(AuthStatus.error);
     }
   }
 
-  /// A valid ID token, refreshed shortly before expiry or on demand.
-  Future<String?> idToken({bool forceRefresh = false}) async {
-    final session = _session;
-    if (session == null) return null;
-    if (!forceRefresh && session.idToken.isNotEmpty && !session.expiresWithin(const Duration(minutes: 2), _now())) {
-      return session.idToken;
-    }
-    // Concurrent callers share one refresh.
-    final refreshing = _refreshing ??= _firebase.refresh(session);
-    try {
-      _session = await refreshing;
-      await _persist();
-      return _session!.idToken;
-    } on AuthException catch (e) {
-      if (e.code != 'network-request-failed') await signOut();
-      rethrow;
-    } finally {
-      _refreshing = null;
-    }
-  }
+  /// The native app's session token for `Authorization: Bearer` (null on web,
+  /// where the cookie is sent instead).
+  Future<String?> sessionToken({bool forceRefresh = false}) async => _token;
 
   void setMe(Me value) {
     me = value;
     _set(AuthStatus.ready);
-  }
-
-  Future<void> _persist() async {
-    final s = _session;
-    if (s != null) await _store.write(StoredSession(uid: s.uid, email: s.email, refreshToken: s.refreshToken));
   }
 
   void _set(AuthStatus next) {

@@ -112,10 +112,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> with WidgetsB
                       title: Text(order.canteen.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: Text(
                         [
-                          formatServicePeriod(order.servicePeriod),
+                          formatServicePeriod(order.canteen.type ?? order.servicePeriod),
                           '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
                           formatRupees(order.totalPaise),
-                          if (order.payment?.isSimulated == true) 'DEMO',
+                          if (order.payment?.isSimulated == true) 'Simulated',
                           if (order.status == OrderStatus.placed) 'payment pending',
                         ].join(' · '),
                       ),

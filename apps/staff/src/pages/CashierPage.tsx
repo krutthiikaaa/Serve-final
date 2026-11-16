@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { MenuItem, Receipt, ServicePeriod, StaffOrder } from '@serve/contracts';
 import {
   Button,
+  CanteenTypeBadge,
   EmptyState,
   ErrorState,
   Field,
@@ -51,11 +52,11 @@ export function CashierPage() {
           <h1>Cashier</h1>
           <p>Payments and walk-in billing at {assignment?.canteen.name}</p>
         </div>
-        {isDemo ? <Tag tone="warning">DEMO mode</Tag> : <Tag tone="success">LIVE</Tag>}
+        {isDemo ? <Tag tone="warning">Test mode</Tag> : <Tag tone="success">Live payments</Tag>}
       </div>
       {isDemo ? (
         <div className="notice" role="status">
-          DEMO mode — simulated payments only. These are not real collected money.
+          Test mode — simulated payments only. These are not real collected money.
         </div>
       ) : null}
       <div className="segmented no-print" role="tablist" aria-label="Cashier tools">
@@ -139,7 +140,7 @@ function PendingQueue({
           });
       toast(
         isDemo
-          ? `Demo payment recorded for ${result.order.orderNumber}`
+          ? `Test payment recorded for ${result.order.orderNumber}`
           : `Payment confirmed for ${result.order.orderNumber}`,
       );
       onReceipt(result.receipt);
@@ -263,7 +264,7 @@ function PendingQueue({
         <Modal
           title={
             isDemo
-              ? `Simulate DEMO payment for ${acting.orderNumber}`
+              ? `Simulate payment for ${acting.orderNumber}`
               : `Confirm payment for ${acting.orderNumber}`
           }
           onClose={close}
@@ -280,7 +281,7 @@ function PendingQueue({
         >
           <p>
             {isDemo
-              ? 'This records a simulated DEMO payment. No real money is collected.'
+              ? 'This records a simulated payment. No real money is collected.'
               : 'Confirm only after checking the merchant account or official records.'}{' '}
             Total <strong>{formatRupees(acting.totalPaise)}</strong>.
           </p>
@@ -327,7 +328,8 @@ function WalkInPos({
   const api = useStaffApi();
   const toast = useToast();
   const { connectionEpoch } = useRealtime();
-  const [period, setPeriod] = useState<ServicePeriod>('NIGHT');
+  // The POS sells this canteen's own menu (Day or Night); there is no period switch.
+  const period: ServicePeriod = useStaffCanteen().canteenType;
   const [categoryId, setCategoryId] = useState('all');
   const [method, setMethod] = useState<'CASH' | 'UPI'>('CASH');
   const [guestName, setGuestName] = useState('');
@@ -397,7 +399,7 @@ function WalkInPos({
           });
       toast(
         isDemo
-          ? `Demo bill ${result.order.orderNumber} recorded`
+          ? `Test bill ${result.order.orderNumber} recorded`
           : `Bill ${result.order.orderNumber} completed`,
       );
       onReceipt(result.receipt);
@@ -418,24 +420,7 @@ function WalkInPos({
       <section className="section pos-menu">
         <div className="section-header">
           <h2>Menu</h2>
-          <div className="segmented" role="tablist" aria-label="Service period">
-            {(['DAY', 'NIGHT'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={period === value}
-                className={period === value ? 'active' : ''}
-                onClick={() => {
-                  setPeriod(value);
-                  setCategoryId('all');
-                  setLines([]);
-                }}
-              >
-                {value === 'DAY' ? 'Day' : 'Night'}
-              </button>
-            ))}
-          </div>
+          <CanteenTypeBadge type={period} />
         </div>
         {menu.loading && !menu.data ? (
           <SkeletonRows />
@@ -469,7 +454,7 @@ function WalkInPos({
                 title={
                   categories.length === 0 ? 'No items on this menu' : 'No items in this category'
                 }
-                body="Switch category or service period to see available dishes."
+                body="Switch category to see available dishes."
               />
             ) : (
               <div className="table-wrap">
@@ -607,7 +592,7 @@ function WalkInPos({
               ) : null}
               {isDemo ? (
                 <p className="notice" role="status">
-                  DEMO TRANSACTION — NO REAL PAYMENT
+                  SIMULATED TRANSACTION — NO REAL PAYMENT
                 </p>
               ) : null}
               {method === 'UPI' ? (
@@ -625,7 +610,7 @@ function WalkInPos({
 
       {confirming ? (
         <Modal
-          title={isDemo ? 'Record simulated DEMO sale' : 'Confirm payment received'}
+          title={isDemo ? 'Record simulated test sale' : 'Confirm payment received'}
           onClose={() => setConfirming(false)}
           footer={
             <>
@@ -645,7 +630,7 @@ function WalkInPos({
           <FormError error={error} />
           <p>
             {isDemo
-              ? 'This is a simulated DEMO sale. It must not be treated as real collected money.'
+              ? 'This is a simulated sale. It must not be treated as real collected money.'
               : `Selecting ${method} is not proof of payment. Confirm only after ${
                   method === 'CASH'
                     ? 'the cash is in the till'
@@ -760,7 +745,7 @@ function SalesHistory({
               onChange={(e) => setSimulated(e.target.value as typeof simulated)}
             >
               <option value="all">All modes</option>
-              <option value="true">Demo</option>
+              <option value="true">Simulated</option>
               <option value="false">Live</option>
             </Select>
           )}
@@ -832,7 +817,7 @@ function SalesHistory({
                   <td className="num">{formatRupees(order.totalPaise)}</td>
                   <td>
                     {order.payment?.isSimulated ? (
-                      <Tag tone="warning">DEMO</Tag>
+                      <Tag tone="warning">Simulated</Tag>
                     ) : (
                       <Tag tone="success">LIVE</Tag>
                     )}

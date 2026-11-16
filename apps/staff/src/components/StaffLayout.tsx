@@ -1,6 +1,8 @@
 import { Link, Outlet } from 'react-router-dom';
 import type { MeStaff } from '@serve/contracts';
 import {
+  AvailabilityTag,
+  CanteenTypeBadge,
   ConnectionBanner,
   IconBag,
   IconBell,
@@ -8,9 +10,7 @@ import {
   IconReceipt,
   IconUser,
   IconUtensils,
-  Select,
   Shell,
-  Tag,
   useAuth,
   useNotifications,
   useRealtime,
@@ -23,12 +23,15 @@ export function StaffLayout({ me }: { me: MeStaff }) {
   const { signOut, refreshMe } = useAuth();
   const { state } = useRealtime();
   const { unreadCount } = useNotifications();
-  const { canteenId, assignment, assignments, selectCanteen, hasCapability } = useStaffCanteen();
-  const canteen = assignment?.canteen ?? me.canteen!;
+  const { hasCapability } = useStaffCanteen();
+  const canteen = me.canteen!;
 
   useServerEvent('staff.canteen_assigned', () => void refreshMe());
   useServerEvent('staff.deactivated', () => void refreshMe());
+  useServerEvent('staff.unassigned', () => void refreshMe());
   useServerEvent('canteen.status_changed', () => void refreshMe());
+  // The other canteen of the area switching on/off changes this one's state too.
+  useServerEvent('service_area.updated', () => void refreshMe());
 
   const nav = [
     { to: '/', label: 'Dashboard', icon: <IconGrid /> },
@@ -45,27 +48,11 @@ export function StaffLayout({ me }: { me: MeStaff }) {
     <Shell
       product="Staff dashboard"
       context={
-        assignments.length > 1 ? (
-          <>
-            <small>Working at</small>
-            <Select
-              aria-label="Selected canteen"
-              value={canteenId}
-              onChange={(event) => selectCanteen(event.target.value)}
-            >
-              {assignments.map((row) => (
-                <option key={row.canteenId} value={row.canteenId}>
-                  {row.canteen.name}
-                </option>
-              ))}
-            </Select>
-          </>
-        ) : (
-          <>
-            <small>Assigned canteen</small>
-            {canteen.name}
-          </>
-        )
+        <>
+          <small>Your canteen</small>
+          <span className="context-name">{canteen.name}</span>
+          <CanteenTypeBadge type={canteen.type} />
+        </>
       }
       nav={nav}
       onSignOut={() => void signOut()}
@@ -74,7 +61,8 @@ export function StaffLayout({ me }: { me: MeStaff }) {
         <>
           <div className="topbar-title">
             <strong>{canteen.name}</strong>
-            <CanteenStatusTag canteen={canteen} />
+            <CanteenTypeBadge type={canteen.type} />
+            <AvailabilityTag state={canteen.availability.state} />
           </div>
           <div className="topbar-actions">
             <Link
@@ -99,18 +87,5 @@ export function StaffLayout({ me }: { me: MeStaff }) {
     >
       <Outlet />
     </Shell>
-  );
-}
-
-export function CanteenStatusTag({
-  canteen,
-}: {
-  canteen: { isActive: boolean; isAcceptingOrders: boolean };
-}) {
-  if (!canteen.isActive) return <Tag tone="danger">Inactive</Tag>;
-  return canteen.isAcceptingOrders ? (
-    <Tag tone="success">Accepting orders</Tag>
-  ) : (
-    <Tag tone="warning">Paused</Tag>
   );
 }

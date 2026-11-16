@@ -129,14 +129,14 @@ describe('schedule validation', () => {
   });
 });
 
-const accepting = { isActive: true, isAcceptingOrders: true };
+const accepting = { isActive: true, isAcceptingOrders: true, isPaused: false };
 const enabledOpen = { isEnabled: true, override: 'FORCE_OPEN' as const };
 const enabledAuto = { isEnabled: true, override: 'AUTO' as const };
 
 describe('availability priority', () => {
   it('rejects inactive canteens before every other check', () => {
     const result = evaluateServiceAvailability({
-      canteen: { isActive: false, isAcceptingOrders: true },
+      canteen: { isActive: false, isAcceptingOrders: true, isPaused: false },
       service: { isEnabled: true, override: 'FORCE_OPEN' },
       schedules: [overnightMon],
       now: monday(22),
@@ -146,7 +146,7 @@ describe('availability priority', () => {
 
   it('rejects a global pause even when the service is FORCE_OPEN', () => {
     const result = evaluateServiceAvailability({
-      canteen: { isActive: true, isAcceptingOrders: false },
+      canteen: { isActive: true, isAcceptingOrders: false, isPaused: false },
       service: { isEnabled: true, override: 'FORCE_OPEN' },
       schedules: [],
       now: monday(12),

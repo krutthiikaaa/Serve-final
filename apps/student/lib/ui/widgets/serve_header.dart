@@ -49,9 +49,21 @@ class ServeHeader extends StatelessWidget implements PreferredSizeWidget {
                               alignment: Alignment.centerLeft,
                               child: width < 360
                                   ? const ServeLogo(height: 32)
-                                  : const FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: ServeLockup(logoHeight: 32)),
+                                  : const FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: ServeLockup(logoHeight: 32),
+                                    ),
                             )
-                          : Semantics(header: true, child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineSmall)),
+                          : Semantics(
+                              header: true,
+                              child: Text(
+                                title!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.headlineSmall,
+                              ),
+                            ),
                     ),
             ),
             if (onSearch != null && width >= 360)
@@ -95,12 +107,7 @@ class ServeHeader extends StatelessWidget implements PreferredSizeWidget {
 class _HeaderNav extends StatelessWidget {
   const _HeaderNav();
 
-  static const _items = [
-    (HomeTabs.home, 'Home'),
-    (HomeTabs.menu, 'Menu'),
-    (HomeTabs.orders, 'Orders'),
-    (HomeTabs.profile, 'Profile'),
-  ];
+  static const _items = [(HomeTabs.home, 'Home'), (HomeTabs.menu, 'Menu'), (HomeTabs.orders, 'Orders'), (HomeTabs.profile, 'Profile')];
 
   @override
   Widget build(BuildContext context) {

@@ -64,8 +64,11 @@ export function fieldErrors(err: unknown): Record<string, string> {
 export interface ApiClientOptions {
   /** Backend origin, e.g. http://localhost:5001 (no trailing slash). */
   baseUrl: string;
-  /** Current Firebase ID token; `forceRefresh` after an expired-token response. */
-  getToken: (forceRefresh?: boolean) => Promise<string | null>;
+  /**
+   * Optional bearer token. The web apps leave it unset: they authenticate
+   * with Better Auth's HttpOnly session cookie (sent with credentials).
+   */
+  getToken?: (forceRefresh?: boolean) => Promise<string | null>;
   /** Called when the backend rejects the session for good. */
   onUnauthorized?: () => void;
   fetchImpl?: typeof fetch;
@@ -75,6 +78,8 @@ export type Query = Record<string, string | number | boolean | undefined | null>
 
 export interface RequestOptions {
   body?: unknown;
+  /** Binary upload (e.g. a QR image). Sent as-is with `contentType`; never JSON-encoded. */
+  file?: { data: Blob; contentType: string };
   query?: Query;
   headers?: Record<string, string>;
   /** Public endpoints (e.g. /hostels) skip the Authorization header. */
@@ -88,8 +93,8 @@ export interface ApiResponse<T> {
 }
 
 /**
- * Typed HTTP client for the SERVE backend. One place for auth headers,
- * error mapping and the single retry after an expired Firebase token.
+ * Typed HTTP client for the SERVE backend. One place for credentials (the
+ * session cookie), error mapping and the sign-out on an ended session.
  */
 export class ApiClient {
   private readonly fetchImpl: typeof fetch;
@@ -105,8 +110,9 @@ export class ApiClient {
   ): Promise<ApiResponse<T>> {
     const attempt = async (forceRefresh: boolean): Promise<Response> => {
       const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
-      if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-      if (!options.anonymous) {
+      if (options.file) headers['Content-Type'] = options.file.contentType;
+      else if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+      if (!options.anonymous && this.options.getToken) {
         const token = await this.options.getToken(forceRefresh);
         if (token) headers.Authorization = `Bearer ${token}`;
       }
@@ -114,7 +120,13 @@ export class ApiClient {
         return await this.fetchImpl(this.url(path, options.query), {
           method,
           headers,
-          body: options.body === undefined ? undefined : JSON.stringify(options.body),
+          // The session cookie lives on the SERVE backend (same site).
+          credentials: 'include',
+          body: options.file
+            ? options.file.data
+            : options.body === undefined
+              ? undefined
+              : JSON.stringify(options.body),
         });
       } catch {
         throw new ApiError(0, 'NETWORK_ERROR', NETWORK_MESSAGE);
@@ -145,6 +157,15 @@ export class ApiClient {
 
   get<T>(path: string, query?: Query) {
     return this.data<T>('GET', path, { query });
+  }
+
+  /**
+   * Absolute URL for a server-relative path the API returned (e.g. a QR image
+   * at `/api/qr-codes/:id`). Only same-API paths are accepted.
+   */
+  assetUrl(apiPath: string): string {
+    if (!apiPath.startsWith('/api/')) throw new Error('Not an API path');
+    return new URL(apiPath, this.options.baseUrl).toString();
   }
 
   private url(path: string, query?: Query): string {

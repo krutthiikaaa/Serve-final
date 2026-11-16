@@ -101,7 +101,6 @@ const ANY_ROLE_ROUTES: Route[] = [
   ['get', '/api/auth/me'],
   ['post', '/api/auth/student/register'],
   ['post', '/api/auth/staff/register'],
-  ['post', '/api/auth/sso/initiate'],
   ['get', '/api/canteens'],
   ['get', `/api/canteens/${anyId}`],
   ['get', `/api/canteens/${anyId}/menu`],
@@ -146,11 +145,14 @@ describe('authentication is required everywhere except health and hostels', () =
   it('public endpoints stay public', async () => {
     await request(app).get('/api/health').expect(200);
     await request(app).get('/api/hostels').expect(200);
-    const sso = await request(app)
-      .post('/api/auth/sso/exchange')
-      .send({ code: 'x'.repeat(24), audience: 'STAFF' });
-    expect(sso.body.error.code).toBe('SSO_CODE_INVALID');
-    expect(sso.body.error.code).not.toBe('AUTH_REQUIRED');
+    // Native sign-in exchange: public, but useless without a valid code.
+    const exchange = await request(app)
+      .post('/api/native-auth/exchange')
+      .send({ code: 'x'.repeat(24), code_verifier: 'y'.repeat(43) });
+    expect(exchange.body.error.code).toBe('NATIVE_CODE_INVALID');
+    // Better Auth's own session probe answers without a session.
+    const session = await request(app).get('/api/auth/get-session').expect(200);
+    expect(session.body).toBeNull();
   });
 });
 

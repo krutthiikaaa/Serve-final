@@ -2,7 +2,7 @@
   "name": "@serve/e2e",
   "version": "0.1.0",
   "private": true,
-  "description": "SERVE end-to-end tests (Playwright) against the real backend, PostgreSQL and the Firebase Auth Emulator",
+  "description": "SERVE end-to-end tests (Playwright) against the real backend, PostgreSQL and Better Auth sessions",
   "type": "module",
   "scripts": {
     "test": "playwright test",

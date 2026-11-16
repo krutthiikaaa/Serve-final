@@ -6,18 +6,24 @@ import type { PrismaClient } from '../lib/prisma.js';
  * Idempotent and non-destructive: every record is upserted by its natural key
  * with an empty `update`, so re-running never duplicates rows and never
  * overwrites changes made through the app (e.g. a price edited by staff).
- * Each canteen gets a NIGHT service with FORCE_OPEN and no schedule rows.
- * Each menu item gets a NIGHT MenuItemService copying the catalogue price.
- * DAY services, operating hours and CASHIER are not seeded. Each canteen gets
- * a DEMO payment config with no official UPI/QR (never LIVE, never invented VPA).
+ * Each service area gets a NIGHT canteen (taking orders) and a DAY canteen
+ * (not taking orders, so Day/Night exclusivity holds). Each canteen gets a
+ * FORCE_OPEN service for its own type and no schedule rows; each menu item a
+ * MenuItemService for that type copying the catalogue price. Operating hours
+ * and CASHIER are not seeded. Each canteen gets a test-mode (DEMO) payment
+ * config with no official UPI/QR (never LIVE, never an invented VPA).
  *
  * Frontends must never depend on these values; they read everything through
  * the API.
  */
 
 interface SeedCanteen {
+  /** Night canteen slug; also the service area's slug. */
   slug: string;
+  /** Night canteen name. */
   name: string;
+  /** Service area name. */
+  area: string;
   location: string;
   hostels: string[];
 }
@@ -25,30 +31,35 @@ interface SeedCanteen {
 export const SEED_CANTEENS: readonly SeedCanteen[] = [
   {
     slug: 'krishna-godavari',
+    area: 'Krishna & Godavari',
     name: 'Krishna & Godavari Night Canteen',
     location: 'Between Krishna and Godavari hostels',
     hostels: ['Krishna', 'Godavari'],
   },
   {
     slug: 'yamuna-narmada',
+    area: 'Yamuna & Narmada',
     name: 'Yamuna & Narmada Night Canteen',
     location: 'Between Yamuna and Narmada hostels',
     hostels: ['Yamuna', 'Narmada'],
   },
   {
     slug: 'new-hostel',
+    area: 'New Hostel',
     name: 'New Hostel Night Canteen',
     location: 'New Hostel ground floor',
     hostels: ['New Hostel'],
   },
   {
     slug: 'vedavathi',
+    area: 'Vedavathi',
     name: 'Vedavathi Night Canteen',
     location: 'Vedavathi hostel courtyard',
     hostels: ['Vedavathi'],
   },
   {
     slug: 'ganga-a-b',
+    area: 'Ganga A & Ganga B',
     name: 'Ganga A & Ganga B Night Canteen',
     location: 'Between Ganga A and Ganga B hostels',
     hostels: ['Ganga A', 'Ganga B'],
@@ -56,6 +67,13 @@ export const SEED_CANTEENS: readonly SeedCanteen[] = [
 ];
 
 const SEED_OPENING_HOURS = '9:00 PM – 3:00 AM';
+const SEED_DAY_OPENING_HOURS = '8:00 AM – 8:00 PM';
+
+/** Day canteen of a seeded area: "<Area> Day Canteen", slug "<area-slug>-day". */
+export const dayCanteenOf = (seed: Pick<SeedCanteen, 'slug' | 'area'>) => ({
+  slug: `${seed.slug}-day`,
+  name: `${seed.area} Day Canteen`,
+});
 
 interface SeedItem {
   name: string;
@@ -178,6 +196,57 @@ export const SEED_MENU: readonly { category: string; items: SeedItem[] }[] = [
   },
 ];
 
+/** Daytime menu for Day canteens. */
+export const SEED_DAY_MENU: readonly { category: string; items: SeedItem[] }[] = [
+  {
+    category: 'Breakfast',
+    items: [
+      {
+        name: 'Idli (2 pcs)',
+        description: 'Steamed idli with sambar and chutney.',
+        priceRupees: 35,
+      },
+      { name: 'Vada (2 pcs)', description: 'Crisp medu vada with chutney.', priceRupees: 40 },
+      { name: 'Upma', description: 'Semolina upma with vegetables.', priceRupees: 35 },
+      {
+        name: 'Poha',
+        description: 'Flattened rice with peanuts and curry leaves.',
+        priceRupees: 35,
+      },
+      { name: 'Masala Dosa', description: 'Dosa filled with spiced potato.', priceRupees: 55 },
+    ],
+  },
+  {
+    category: 'Meals',
+    items: [
+      { name: 'Veg Meals', description: 'Rice, dal, sabzi, curd and papad.', priceRupees: 80 },
+      { name: 'Curd Rice', description: 'Rice with seasoned curd.', priceRupees: 50 },
+      { name: 'Lemon Rice', description: 'Tangy rice with peanuts.', priceRupees: 50 },
+      {
+        name: 'Chapati with Kurma',
+        description: 'Two chapatis with vegetable kurma.',
+        priceRupees: 60,
+      },
+    ],
+  },
+  {
+    category: 'Snacks',
+    items: [
+      { name: 'Samosa (2 pcs)', description: 'Potato samosas with chutney.', priceRupees: 30 },
+      { name: 'Veg Puff', description: 'Flaky pastry with spiced vegetables.', priceRupees: 25 },
+      { name: 'Bread Omelette', description: 'Omelette with toasted bread.', priceRupees: 45 },
+    ],
+  },
+  {
+    category: 'Hot Beverages',
+    items: [
+      { name: 'Coffee', description: 'Hot filter-style coffee.', priceRupees: 25 },
+      { name: 'Masala Tea', description: 'Tea brewed with masala spices.', priceRupees: 20 },
+      { name: 'Hot Milk', description: 'A glass of hot milk.', priceRupees: 25 },
+    ],
+  },
+];
+
 export interface SeedResult {
   canteens: number;
   hostels: number;
@@ -188,83 +257,120 @@ export interface SeedResult {
 export async function seedDatabase(prisma: PrismaClient): Promise<SeedResult> {
   const result: SeedResult = { canteens: 0, hostels: 0, categories: 0, items: 0 };
 
-  for (const seedCanteen of SEED_CANTEENS) {
-    const canteen = await prisma.canteen.upsert({
-      where: { slug: seedCanteen.slug },
+  for (const seed of SEED_CANTEENS) {
+    const area = await prisma.serviceArea.upsert({
+      where: { slug: seed.slug },
+      update: {},
+      create: { slug: seed.slug, name: seed.area },
+    });
+
+    const night = await prisma.canteen.upsert({
+      where: { slug: seed.slug },
       update: {},
       create: {
-        slug: seedCanteen.slug,
-        name: seedCanteen.name,
-        location: seedCanteen.location,
+        slug: seed.slug,
+        name: seed.name,
+        type: 'NIGHT',
+        serviceAreaId: area.id,
+        location: seed.location,
         openingHours: SEED_OPENING_HOURS,
       },
     });
-    result.canteens += 1;
-
-    await prisma.canteenService.upsert({
-      where: { canteenId_period: { canteenId: canteen.id, period: 'NIGHT' } },
+    const day = dayCanteenOf(seed);
+    const dayCanteen = await prisma.canteen.upsert({
+      where: { slug: day.slug },
       update: {},
       create: {
-        canteenId: canteen.id,
-        period: 'NIGHT',
-        isEnabled: true,
-        override: 'FORCE_OPEN',
+        slug: day.slug,
+        name: day.name,
+        type: 'DAY',
+        serviceAreaId: area.id,
+        location: seed.location,
+        openingHours: SEED_DAY_OPENING_HOURS,
+        // The Night canteen of the area takes orders; Day/Night are exclusive.
+        isAcceptingOrders: false,
       },
     });
 
-    await prisma.canteenPaymentConfig.upsert({
-      where: { canteenId: canteen.id },
-      update: {},
-      create: { canteenId: canteen.id, mode: 'DEMO', isActive: false },
-    });
-
-    for (const hostelName of seedCanteen.hostels) {
+    for (const hostelName of seed.hostels) {
       await prisma.hostel.upsert({
         where: { name: hostelName },
         update: {},
-        create: { name: hostelName, canteenId: canteen.id },
+        create: { name: hostelName, serviceAreaId: area.id, canteenId: night.id },
       });
       result.hostels += 1;
     }
 
-    for (const [index, section] of SEED_MENU.entries()) {
-      const category = await prisma.menuCategory.upsert({
-        where: { canteenId_name: { canteenId: canteen.id, name: section.category } },
-        update: {},
-        create: { canteenId: canteen.id, name: section.category, sortOrder: (index + 1) * 10 },
-      });
-      result.categories += 1;
-
-      for (const item of section.items) {
-        const menuItem = await prisma.menuItem.upsert({
-          where: { canteenId_name: { canteenId: canteen.id, name: item.name } },
-          update: {},
-          create: {
-            canteenId: canteen.id,
-            categoryId: category.id,
-            name: item.name,
-            description: item.description,
-            pricePaise: item.priceRupees * 100,
-            // No stock photography is bundled; clients render category
-            // placeholders until real image URLs are set by staff.
-            imageUrl: null,
-          },
-        });
-        result.items += 1;
-
-        await prisma.menuItemService.upsert({
-          where: { menuItemId_period: { menuItemId: menuItem.id, period: 'NIGHT' } },
-          update: {},
-          create: {
-            menuItemId: menuItem.id,
-            period: 'NIGHT',
-            pricePaise: menuItem.pricePaise,
-            isAvailable: menuItem.isAvailable,
-          },
-        });
-      }
+    for (const [canteen, menu] of [
+      [night, SEED_MENU],
+      [dayCanteen, SEED_DAY_MENU],
+    ] as const) {
+      await seedCanteen(prisma, canteen, menu, result);
     }
   }
 
   return result;
+}
+
+async function seedCanteen(
+  prisma: PrismaClient,
+  canteen: { id: string; type: 'DAY' | 'NIGHT' },
+  menu: readonly { category: string; items: SeedItem[] }[],
+  result: SeedResult,
+) {
+  result.canteens += 1;
+  await prisma.canteenService.upsert({
+    where: { canteenId_period: { canteenId: canteen.id, period: canteen.type } },
+    update: {},
+    create: {
+      canteenId: canteen.id,
+      period: canteen.type,
+      isEnabled: true,
+      override: 'FORCE_OPEN',
+    },
+  });
+
+  await prisma.canteenPaymentConfig.upsert({
+    where: { canteenId: canteen.id },
+    update: {},
+    create: { canteenId: canteen.id, mode: 'DEMO', isActive: false },
+  });
+
+  for (const [index, section] of menu.entries()) {
+    const category = await prisma.menuCategory.upsert({
+      where: { canteenId_name: { canteenId: canteen.id, name: section.category } },
+      update: {},
+      create: { canteenId: canteen.id, name: section.category, sortOrder: (index + 1) * 10 },
+    });
+    result.categories += 1;
+
+    for (const item of section.items) {
+      const menuItem = await prisma.menuItem.upsert({
+        where: { canteenId_name: { canteenId: canteen.id, name: item.name } },
+        update: {},
+        create: {
+          canteenId: canteen.id,
+          categoryId: category.id,
+          name: item.name,
+          description: item.description,
+          pricePaise: item.priceRupees * 100,
+          // No stock photography is bundled; clients render category
+          // placeholders until real image URLs are set by staff.
+          imageUrl: null,
+        },
+      });
+      result.items += 1;
+
+      await prisma.menuItemService.upsert({
+        where: { menuItemId_period: { menuItemId: menuItem.id, period: canteen.type } },
+        update: {},
+        create: {
+          menuItemId: menuItem.id,
+          period: canteen.type,
+          pricePaise: menuItem.pricePaise,
+          isAvailable: menuItem.isAvailable,
+        },
+      });
+    }
+  }
 }

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { StaffPage } from '../src/pages/StaffPage';
 import { adminCanteen, fakeAdminApi, renderAdmin, staffDetail, staffSummary } from './fixtures';
 
-describe('staff assignments and capabilities', () => {
+describe('dedicated account permissions', () => {
   it('saves explicit capabilities and does not grant cashier unless checked', async () => {
     const api = fakeAdminApi();
     const kg = adminCanteen('Krishna & Godavari Night Canteen');
@@ -34,11 +34,11 @@ describe('staff assignments and capabilities', () => {
     renderAdmin(<StaffPage />, { api });
     await userEvent.click(await screen.findByRole('button', { name: 'Manage Priya Staff' }));
     const dialog = await screen.findByRole('dialog', { name: 'Priya Staff' });
-    expect(within(dialog).getByText('Primary')).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: 'Permissions' })).toBeInTheDocument();
     expect(within(dialog).getByRole('checkbox', { name: 'Cashier' })).not.toBeChecked();
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Menu' }));
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Pause orders' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save assignments' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save permissions' }));
     await waitFor(() =>
       expect(api.updateStaffAssignments).toHaveBeenCalledWith(s.id, {
         primaryCanteenId: kg.id,
@@ -47,7 +47,7 @@ describe('staff assignments and capabilities', () => {
     );
   });
 
-  it('can assign a second canteen without making cashier the default', async () => {
+  it('never offers to grant a second canteen', async () => {
     const api = fakeAdminApi();
     const kg = adminCanteen('Krishna & Godavari Night Canteen');
     const ved = adminCanteen('Vedavathi Night Canteen');
@@ -61,26 +61,11 @@ describe('staff assignments and capabilities', () => {
         ],
       }),
     );
-    api.updateStaffAssignments.mockResolvedValue({
-      ...s,
-      canteenId: kg.id,
-      assignments: [],
-    });
-
     renderAdmin(<StaffPage />, { api });
     await userEvent.click(await screen.findByRole('button', { name: 'Manage Priya Staff' }));
     const dialog = await screen.findByRole('dialog', { name: 'Priya Staff' });
-    await userEvent.selectOptions(within(dialog).getByLabelText('Add another canteen'), ved.id);
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add canteen' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save assignments' }));
-    await waitFor(() =>
-      expect(api.updateStaffAssignments).toHaveBeenCalledWith(s.id, {
-        primaryCanteenId: kg.id,
-        assignments: [
-          { canteenId: kg.id, capabilities: ['KITCHEN'] },
-          { canteenId: ved.id, capabilities: [] },
-        ],
-      }),
-    );
+    expect(within(dialog).queryByLabelText('Add another canteen')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Make primary')).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/For Krishna & Godavari Night Canteen/)).toBeInTheDocument();
   });
 });

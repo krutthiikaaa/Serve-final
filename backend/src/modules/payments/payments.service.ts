@@ -32,7 +32,10 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
   async function ownedOrder(student: StudentPrincipal, orderId: string) {
     const order = await prisma.order.findFirst({
       where: { id: orderId, studentId: student.id },
-      include: { payment: true, canteen: { select: { isActive: true, isAcceptingOrders: true } } },
+      include: {
+        payment: true,
+        canteen: { select: { isActive: true, isAcceptingOrders: true, isPaused: true } },
+      },
     });
     if (!order?.payment) throw new NotFoundError('Order not found.', 'ORDER_NOT_FOUND');
     return { ...order, payment: order.payment };

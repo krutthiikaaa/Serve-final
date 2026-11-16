@@ -6,18 +6,18 @@
  *   dist/web/staff     staff dashboard, served at /staff/
  *   dist/web/admin     admin portal, served at /admin/
  *
- * Production (default) needs the PUBLIC Firebase web config in the environment:
- *   FIREBASE_API_KEY=… FIREBASE_PROJECT_ID=… npm run build:web
- * Optional: FIREBASE_AUTH_DOMAIN, and API_URL (https) only when the backend is
- * NOT on the same origin as the pages. Unset = same origin (/api, /socket.io).
+ * Production (default): no configuration is needed. Sign-in (Google via
+ * Better Auth) happens entirely on the backend, so no auth key is built in.
+ * Optional: API_URL (https) only when the backend is NOT on the same origin as
+ * the pages. Unset = same origin (/api, /socket.io).
  *
- *   npm run build:web -- --local     Builds for a local single-domain preview
- *                                    against the Firebase Auth Emulator and
- *                                    the demo-serve project (never deploy it).
+ *   npm run build:web -- --local     Builds a local single-domain preview
+ *                                    (debuggable Flutter profile build; the
+ *                                    backend refuses it in production).
  *   npm run build:web -- --out <dir> Output folder (default dist/web).
  *
- * Firebase Admin credentials, database URLs and payment secrets are never used
- * here: everything in these builds is public.
+ * Google / Better Auth secrets, database URLs and payment secrets are never
+ * used here: everything in these builds is public.
  */
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -50,30 +50,8 @@ function run(command, args, options) {
 
 // --- configuration ------------------------------------------------------------
 const apiUrl = process.env.API_URL ?? '';
-let firebase;
-if (local) {
-  firebase = {
-    apiKey: 'demo-api-key',
-    projectId: 'demo-serve',
-    emulatorUrl: process.env.FIREBASE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099',
-  };
-} else {
-  const missing = ['FIREBASE_API_KEY', 'FIREBASE_PROJECT_ID'].filter((key) => !process.env[key]);
-  if (missing.length > 0) {
-    fail(
-      `set ${missing.join(' and ')} (public Firebase web config; see docs/deployment.md), ` +
-        'or use --local for a local preview against the Auth Emulator.',
-    );
-  }
-  firebase = {
-    apiKey: process.env.FIREBASE_API_KEY,
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    authDomain: process.env.FIREBASE_AUTH_DOMAIN ?? '',
-  };
-  if (firebase.projectId.startsWith('demo-'))
-    fail('demo- Firebase projects only exist in the emulator; use --local for a local preview.');
-  if (apiUrl && !apiUrl.startsWith('https://')) fail('API_URL must use https (or be unset).');
-}
+if (!local && apiUrl && !apiUrl.startsWith('https://'))
+  fail('API_URL must use https (or be unset).');
 
 // Refuse to delete anything that is not a previous build:web output.
 const unsafeOut = [path.parse(out).root, root, path.dirname(root), process.env.HOME ?? ''];
@@ -91,15 +69,11 @@ rmSync(staging, { recursive: true, force: true });
 const viteEnv = {
   ...process.env,
   VITE_API_URL: apiUrl,
-  VITE_FIREBASE_API_KEY: firebase.apiKey,
-  VITE_FIREBASE_PROJECT_ID: firebase.projectId,
-  VITE_FIREBASE_AUTH_DOMAIN: firebase.authDomain ?? '',
-  VITE_FIREBASE_AUTH_EMULATOR_URL: firebase.emulatorUrl ?? '',
 };
 for (const app of ['staff', 'admin']) {
   const cwd = path.join(root, 'apps', app);
   run('npx', ['tsc', '--noEmit'], { cwd });
-  // "local-demo" mode skips the production-only checks (the emulator is allowed).
+  // "local-demo" mode skips the production-only checks (e.g. an http API).
   const mode = local ? ['--mode', 'local-demo'] : [];
   run('npx', ['vite', 'build', ...mode, '--outDir', path.join(staging, app), '--emptyOutDir'], {
     cwd,
@@ -110,13 +84,7 @@ for (const app of ['staff', 'admin']) {
 // --- student (Flutter web, served at /) ---------------------------------------
 // --no-web-resources-cdn: the Flutter renderer is served from this origin
 // (the page CSP allows no third-party scripts). --csp: no eval in the output.
-const defines = local
-  ? {}
-  : {
-      FIREBASE_API_KEY: firebase.apiKey,
-      FIREBASE_PROJECT_ID: firebase.projectId,
-      ...(apiUrl ? { API_URL: apiUrl } : {}),
-    };
+const defines = !local && apiUrl ? { API_URL: apiUrl } : {};
 run(
   flutter,
   [
@@ -145,6 +113,6 @@ writeFileSync(
 );
 console.log(
   `\nWeb apps ready in ${path.relative(root, out) || out}` +
-    (local ? ' (LOCAL PREVIEW: emulator + demo project; never deploy this build)' : '') +
+    (local ? ' (LOCAL PREVIEW: profile build; never deploy this build)' : '') +
     `\nServe them with the backend: WEB_ROOT=${out}`,
 );

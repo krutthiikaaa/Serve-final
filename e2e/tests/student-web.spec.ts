@@ -3,6 +3,7 @@ import type { StaffOrder } from '@serve/contracts';
 import { approvedStaff, uniqueEmail } from './support/api';
 import { E2E } from './support/constants.mjs';
 import { enableFlutterSemantics, typeInto } from './support/flutter';
+import { signIn } from './support/ui';
 
 /**
  * The real Flutter student app (web build) against the isolated stack:
@@ -39,21 +40,28 @@ test('student registers, orders, pays and watches the order become ready live', 
   await page.goto(E2E.studentUrl);
   await enableFlutterSemantics(page);
 
-  await test.step('registration with hostel', async () => {
+  await test.step('SRM Google sign-in, then registration with hostel', async () => {
     await expect(page.getByRole('button', { name: /^Student/ })).toBeVisible({ timeout: 60_000 });
     await page.getByRole('button', { name: /^Student/ }).click();
-    await page.getByRole('button', { name: 'Create an account' }).click();
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    // Google cannot run here: the test-only sign-in sets the same session
+    // cookie a Google sign-in would, and the app restores it on load.
+    const email = uniqueEmail('web.student');
+    await signIn(page, E2E.studentUrl, email);
+    await enableFlutterSemantics(page);
+    await expect(page.getByText('Complete your profile')).toBeVisible({ timeout: 60_000 });
     await typeInto(page, 'Full name', name);
-    await typeInto(page, 'University email', uniqueEmail('web.student'));
-    await typeInto(page, 'Password', E2E.password);
     await page.getByRole('button', { name: /Select your hostel/ }).click();
     await page
       .getByRole('menuitem', { name: /^Krishna\s+·/ })
       .or(page.getByRole('button', { name: /^Krishna\s+·/ }))
       .first()
       .click();
-    await page.getByRole('button', { name: 'Create account' }).click();
+    await page.getByRole('button', { name: 'Finish registration' }).click();
     await expect(page.getByText(/^Hi, Web/)).toBeVisible({ timeout: 20_000 });
+    // The account was created for the signed-in (session) identity, not a typed email.
+    const me = await page.request.get(`${E2E.apiUrl}/api/auth/me`);
+    expect((await me.json()).data).toMatchObject({ role: 'STUDENT', email, name });
   });
 
   await test.step('menu and cart', async () => {
@@ -65,7 +73,7 @@ test('student registers, orders, pays and watches the order become ready live', 
 
   await test.step('switching canteens asks before clearing the cart', async () => {
     await page.getByRole('button', { name: 'Change' }).click();
-    await page.getByRole('button', { name: /^Vedavathi Night Canteen/ }).click();
+    await page.getByRole('button', { name: /^Ganga A & Ganga B Night Canteen/ }).click();
     await expect(
       page.getByText(
         'Your cart contains items from another canteen. Switching canteens will clear your current cart.',
@@ -77,7 +85,7 @@ test('student registers, orders, pays and watches the order become ready live', 
   });
 
   let orderNumber = '';
-  await test.step('checkout leaves payment pending in DEMO mode', async () => {
+  await test.step('checkout leaves payment pending in test mode', async () => {
     await page.getByRole('button', { name: 'Cart, 2' }).click();
     await page.getByRole('button', { name: 'Checkout' }).click();
     await page.getByRole('button', { name: 'Place order' }).click();
@@ -91,12 +99,13 @@ test('student registers, orders, pays and watches the order become ready live', 
     orderNumber = amountLine?.match(/SV\d+/)?.[0] ?? '';
     expect(orderNumber).toMatch(/^SV\d+$/);
     await page.getByRole('textbox', { name: 'Optional' }).fill('E2EDEMOUTR1');
-    await page.getByRole('button', { name: 'Save demo reference' }).click();
+    await page.getByRole('button', { name: 'Save reference' }).click();
     await expect(page.getByText(/still pending cashier confirmation/i)).toBeVisible({
       timeout: 15_000,
     });
     await page.getByRole('button', { name: 'Track this order' }).click();
-    await expect(page.getByText('Order received').first()).toBeVisible({ timeout: 15_000 });
+    // Unpaid orders read "Order placed" until the cashier confirms payment.
+    await expect(page.getByText('Order placed').first()).toBeVisible({ timeout: 15_000 });
   });
 
   await test.step('cashier confirms DEMO payment; kitchen progresses live', async () => {

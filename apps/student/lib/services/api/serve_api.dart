@@ -5,16 +5,6 @@ import 'models.dart';
 Map<String, dynamic> _m(Object? v) => (v! as Map).cast<String, dynamic>();
 List<Map<String, dynamic>> _l(Object? v) => (v! as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
 
-class SsoHandoff {
-  const SsoHandoff({required this.redirectUrl, required this.expiresAt});
-  factory SsoHandoff.fromJson(Map<String, dynamic> j) => SsoHandoff(
-    redirectUrl: j['redirectUrl'] as String,
-    expiresAt: DateTime.parse(j['expiresAt'] as String),
-  );
-  final String redirectUrl;
-  final DateTime expiresAt;
-}
-
 class CartLineInput {
   const CartLineInput(this.menuItemId, this.quantity);
   final String menuItemId;
@@ -39,80 +29,58 @@ class ServeApi {
 
   Future<List<Hostel>> hostels() async => _l(await client.data<Object>('GET', '/hostels', anonymous: true)).map(Hostel.fromJson).toList();
 
-  Future<StudentMe> registerStudent({required String name, required String email, required String hostelId}) async => StudentMe.fromJson(
-    _m(await client.data<Object>('POST', '/auth/student/register', body: {'name': name, 'email': email, 'hostelId': hostelId})),
-  );
+  /// The email is taken from the signed-in Google account on the server.
+  Future<StudentMe> registerStudent({required String name, required String hostelId}) async =>
+      StudentMe.fromJson(_m(await client.data<Object>('POST', '/auth/student/register', body: {'name': name, 'hostelId': hostelId})));
 
-  Future<SsoHandoff> initiateSso(String audience) async => SsoHandoff.fromJson(
-    _m(await client.data<Object>('POST', '/auth/sso/initiate', body: {'audience': audience})),
-  );
-
-  /// Creates a PENDING staff row. An admin must approve before dashboard access.
-  Future<Me> registerStaff({required String name, required String email, String? requestedCanteenId}) async => Me.fromJson(
-    _m(
-      await client.data<Object>(
-        'POST',
-        '/auth/staff/register',
-        body: {
-          'name': name,
-          'email': email,
-          'requestedCanteenId': ?requestedCanteenId,
-        },
-      ),
-    ),
-  );
+  /// Public directory (no sign-in): every active Day and Night canteen, by area.
+  Future<List<Ref>> canteenDirectory() async => [
+    for (final area in _l(await client.data<Object>('GET', '/service-areas', anonymous: true)))
+      for (final c in _l(area['canteens'])) Ref.fromJson(c),
+  ];
 
   Future<List<Canteen>> canteens() async => _l(await client.data<Object>('GET', '/canteens')).map(Canteen.fromJson).toList();
 
-  Future<Canteen> canteen(String canteenId) async =>
-      Canteen.fromJson(_m(await client.data<Object>('GET', '/canteens/$canteenId')));
+  Future<Canteen> canteen(String canteenId) async => Canteen.fromJson(_m(await client.data<Object>('GET', '/canteens/$canteenId')));
 
-  Future<Menu> menu(String canteenId, {ServicePeriod period = ServicePeriod.night}) async => Menu.fromJson(
-    _m(await client.data<Object>('GET', '/canteens/$canteenId/menu', query: {'period': period.apiValue})),
-  );
+  /// The student's service area, its Day and Night canteens and which to show now.
+  Future<StudentService> studentService() async => StudentService.fromJson(_m(await client.data<Object>('GET', '/students/me/service')));
 
-  Future<MenuItemDetail> menuItem(String id, {ServicePeriod period = ServicePeriod.night}) async =>
-      MenuItemDetail.fromJson(_m(await client.data<Object>('GET', '/menu/items/$id', query: {'period': period.apiValue})));
+  /// A canteen's menu. A canteen serves only its own type (Day or Night); the
+  /// response's `servicePeriod` says which.
+  Future<Menu> menu(String canteenId) async => Menu.fromJson(_m(await client.data<Object>('GET', '/canteens/$canteenId/menu')));
+
+  Future<MenuItemDetail> menuItem(String id) async => MenuItemDetail.fromJson(_m(await client.data<Object>('GET', '/menu/items/$id')));
 
   Future<CanteenPaymentConfig> paymentConfig(String canteenId) async =>
       CanteenPaymentConfig.fromJson(_m(await client.data<Object>('GET', '/canteens/$canteenId/payment-config')));
 
+  /// The QR/payment details of this order's own canteen, read fresh each time
+  /// (a replaced QR shows immediately; another canteen's QR never can).
+  Future<CanteenPaymentConfig> orderPaymentConfig(String orderId) async =>
+      CanteenPaymentConfig.fromJson(_m(await client.data<Object>('GET', '/payments/$orderId/payment-config')));
+
+  /// Absolute URL of an API-relative image path such as a QR (`/api/qr-codes/:id`).
+  String assetUrl(String apiPath) => client.assetUrl(apiPath);
+
   Future<Recommendations> recommendations(String canteenId) async =>
       Recommendations.fromJson(_m(await client.data<Object>('GET', '/students/me/recommendations', query: {'canteenId': canteenId})));
 
-  Future<Quote> quote(String canteenId, List<CartLineInput> items, {ServicePeriod period = ServicePeriod.night}) => _withCartIssues(
+  /// The server prices the cart in the canteen's own period (Day or Night).
+  Future<Quote> quote(String canteenId, List<CartLineInput> items) => _withCartIssues(
     () async => Quote.fromJson(
-      _m(
-        await client.data<Object>(
-          'POST',
-          '/cart/quote',
-          body: {
-            'canteenId': canteenId,
-            'servicePeriod': period.apiValue,
-            'items': items.map((i) => i.toJson()).toList(),
-          },
-        ),
-      ),
+      _m(await client.data<Object>('POST', '/cart/quote', body: {'canteenId': canteenId, 'items': items.map((i) => i.toJson()).toList()})),
     ),
   );
 
   /// [idempotencyKey] is generated once per checkout attempt and reused on retries.
-  Future<StudentOrder> placeOrder(
-    String canteenId,
-    List<CartLineInput> items, {
-    ServicePeriod period = ServicePeriod.night,
-    required String idempotencyKey,
-  }) => _withCartIssues(
+  Future<StudentOrder> placeOrder(String canteenId, List<CartLineInput> items, {required String idempotencyKey}) => _withCartIssues(
     () async => StudentOrder.fromJson(
       _m(
         await client.data<Object>(
           'POST',
           '/orders',
-          body: {
-            'canteenId': canteenId,
-            'servicePeriod': period.apiValue,
-            'items': items.map((i) => i.toJson()).toList(),
-          },
+          body: {'canteenId': canteenId, 'items': items.map((i) => i.toJson()).toList()},
           headers: {'Idempotency-Key': idempotencyKey},
         ),
       ),
@@ -132,9 +100,8 @@ class ServeApi {
       PaymentSession.fromJson(_m(await client.data<Object>('POST', '/payments/$orderId/initiate')));
 
   /// Stores a UTR as supporting information. Does not confirm payment.
-  Future<StudentOrder> claimPayment(String orderId, {String? utr}) async => StudentOrder.fromJson(
-    _m(await client.data<Object>('POST', '/payments/$orderId/claim', body: {'utr': utr})),
-  );
+  Future<StudentOrder> claimPayment(String orderId, {String? utr}) async =>
+      StudentOrder.fromJson(_m(await client.data<Object>('POST', '/payments/$orderId/claim', body: {'utr': utr})));
 
   /// Development mock gateway used only by integration tests against PAYMENT_MODE=mock.
   Future<StudentOrder> completeMockPayment(String orderId, {bool succeed = true}) async {

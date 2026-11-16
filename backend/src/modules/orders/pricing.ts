@@ -4,7 +4,6 @@ import type { PrismaClient } from '../../lib/prisma.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import { systemClock } from '../../lib/time.js';
 import {
-  DEFAULT_SERVICE_PERIOD,
   assertServiceOpen,
   evaluateServiceAvailability,
   type ServicePeriod,
@@ -24,7 +23,7 @@ export interface PricedLine {
 }
 
 export interface PricedCart {
-  canteen: { id: string; name: string };
+  canteen: { id: string; name: string; type: ServicePeriod };
   servicePeriod: ServicePeriod;
   items: PricedLine[];
   /** Total number of units across all lines. */
@@ -67,7 +66,6 @@ export async function priceCart(
   lines: CartLineInput[],
   options: PriceCartOptions = {},
 ): Promise<PricedCart> {
-  const servicePeriod = options.servicePeriod ?? DEFAULT_SERVICE_PERIOD;
   const now = options.now ?? systemClock();
   const ids = lines.map((line) => line.menuItemId);
   if (new Set(ids).size !== ids.length) {
@@ -78,13 +76,31 @@ export async function priceCart(
     );
   }
 
+  const found = await db.canteen.findUnique({
+    where: { id: canteenId },
+    select: { type: true },
+  });
+  if (!found) throw new NotFoundError('Canteen not found.', 'CANTEEN_NOT_FOUND');
+  // The service period is the canteen's own type (DAY or NIGHT). A client may
+  // still send it for compatibility, but never to choose another period.
+  const servicePeriod: ServicePeriod = found.type;
+  if (options.servicePeriod && options.servicePeriod !== servicePeriod) {
+    throw new ValidationError(
+      `This is a ${servicePeriod === 'DAY' ? 'Day' : 'Night'} canteen.`,
+      { servicePeriod },
+      'SERVICE_PERIOD_MISMATCH',
+    );
+  }
+
   const canteen = await db.canteen.findUnique({
     where: { id: canteenId },
     select: {
       id: true,
       name: true,
+      type: true,
       isActive: true,
       isAcceptingOrders: true,
+      isPaused: true,
       services: {
         where: { period: servicePeriod },
         select: {
@@ -184,7 +200,7 @@ export async function priceCart(
     );
   }
   return {
-    canteen: { id: canteen.id, name: canteen.name },
+    canteen: { id: canteen.id, name: canteen.name, type: canteen.type },
     servicePeriod,
     items: priced,
     itemCount: priced.reduce((sum, line) => sum + line.quantity, 0),

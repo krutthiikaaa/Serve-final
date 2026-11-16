@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// Persists the Firebase refresh token so students stay signed in.
-/// Only the refresh token, uid and email are stored — never passwords.
+/// Persists the native app's SERVE session token so students stay signed in.
+/// Only the opaque session token is stored (Keychain / Android Keystore) —
+/// never a password. Flutter web keeps no token: its session is an HttpOnly
+/// cookie the page cannot read.
 abstract class SessionStore {
   Future<StoredSession?> read();
   Future<void> write(StoredSession session);
@@ -11,17 +13,21 @@ abstract class SessionStore {
 }
 
 class StoredSession {
-  const StoredSession({required this.uid, required this.email, required this.refreshToken});
-  final String uid;
-  final String? email;
-  final String refreshToken;
+  const StoredSession({required this.token});
 
-  Map<String, Object?> toJson() => {'uid': uid, 'email': email, 'refreshToken': refreshToken};
-  static StoredSession fromJson(Map<String, dynamic> j) =>
-      StoredSession(uid: j['uid'] as String, email: j['email'] as String?, refreshToken: j['refreshToken'] as String);
+  /// Better Auth session token, sent as `Authorization: Bearer`.
+  final String token;
+
+  Map<String, Object?> toJson() => {'v': 2, 'token': token};
+
+  /// Null for anything else, including a pre-Better-Auth (Firebase) session.
+  static StoredSession? fromJson(Map<String, dynamic> j) {
+    final token = j['token'];
+    return j['v'] == 2 && token is String && token.isNotEmpty ? StoredSession(token: token) : null;
+  }
 }
 
-/// Keychain (iOS) / EncryptedSharedPreferences-backed keystore (Android) / web storage.
+/// Keychain (iOS) / EncryptedSharedPreferences-backed keystore (Android).
 class SecureSessionStore implements SessionStore {
   SecureSessionStore([FlutterSecureStorage? storage]) : _storage = storage ?? const FlutterSecureStorage();
   final FlutterSecureStorage _storage;

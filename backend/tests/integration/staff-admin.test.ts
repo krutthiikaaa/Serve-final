@@ -96,7 +96,7 @@ describe('staff approval lifecycle', () => {
     expect(request_.reviewedByAdminId).toBe(admin.id);
     expect(request_.reviewedAt).toBeTruthy();
 
-    // Same Firebase token, new database-backed permissions.
+    // Same session, new database-backed permissions.
     const dash = await request(app)
       .get('/api/staff/dashboard')
       .set(bearer(staff.token))
@@ -141,8 +141,8 @@ describe('staff approval lifecycle', () => {
     );
   });
 
-  it('approved staff can request reassignment; rejection keeps their current canteen', async () => {
-    const staff = await newApprovedStaff(app, admin, kg.id);
+  it('approved staff cannot change their own canteen; only an admin moves the account', async () => {
+    const staff = await newApprovedStaff(app, admin, kg.id, { replaceExisting: true });
     const same = await request(app)
       .post('/api/staff/change-requests')
       .set(bearer(staff.token))
@@ -154,37 +154,61 @@ describe('staff approval lifecycle', () => {
       .post('/api/staff/change-requests')
       .set(bearer(staff.token))
       .send({ requestedCanteenId: yn.id })
-      .expect(201);
-    expect(move.body.data.fromCanteen).toMatchObject({ id: kg.id });
-    await request(app)
-      .post(`/api/admin/change-requests/${move.body.data.id}/reject`)
-      .set(bearer(admin.token))
-      .send({})
-      .expect(200);
+      .expect(403);
+    expect(move.body.error.code).toBe('ASSIGNMENT_LOCKED');
     expect(await prisma.staff.findUniqueOrThrow({ where: { id: staff.id } })).toMatchObject({
       status: 'APPROVED',
       canteenId: kg.id,
     });
-
-    const move2 = await request(app)
-      .post('/api/staff/change-requests')
-      .set(bearer(staff.token))
-      .send({ requestedCanteenId: yn.id })
-      .expect(201);
+    // There is no staff route that edits the assignment.
     await request(app)
-      .post(`/api/admin/change-requests/${move2.body.data.id}/approve`)
-      .set(bearer(admin.token))
-      .send({})
-      .expect(200);
-    expect((await prisma.staff.findUniqueOrThrow({ where: { id: staff.id } })).canteenId).toBe(
-      yn.id,
-    );
-
-    const history = await request(app)
-      .get('/api/staff/change-requests')
+      .patch(`/api/admin/staff/${staff.id}/assignment`)
       .set(bearer(staff.token))
+      .send({ canteenId: yn.id })
+      .expect(403);
+  });
+
+  it('gives every canteen one dedicated account; replacing it revokes the old one', async () => {
+    const first = await newApprovedStaff(app, admin, yn.id, { replaceExisting: true });
+    const second = await newPendingStaff(app);
+
+    const refused = await request(app)
+      .patch(`/api/admin/staff/${second.id}/assignment`)
+      .set(bearer(admin.token))
+      .send({ canteenId: yn.id })
+      .expect(409);
+    expect(refused.body.error.code).toBe('CANTEEN_HAS_STAFF_ACCOUNT');
+    expect(refused.body.error.details.staff.id).toBe(first.id);
+    await request(app).get('/api/staff/orders').set(bearer(first.token)).expect(200);
+
+    await request(app)
+      .patch(`/api/admin/staff/${second.id}/assignment`)
+      .set(bearer(admin.token))
+      .send({ canteenId: yn.id, replaceExisting: true })
       .expect(200);
-    expect(history.body.data).toHaveLength(3);
+    expect(await prisma.staff.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({
+      status: 'PENDING',
+      canteenId: null,
+    });
+    expect(await prisma.staffCanteenAssignment.count({ where: { staffId: first.id } })).toBe(0);
+    const lost = await request(app).get('/api/staff/orders').set(bearer(first.token)).expect(403);
+    expect(lost.body.error.code).toBe('STAFF_NOT_APPROVED');
+    await request(app).get('/api/staff/orders').set(bearer(second.token)).expect(200);
+    expect(await prisma.staff.count({ where: { canteenId: yn.id, status: 'APPROVED' } })).toBe(1);
+
+    // Moving an account releases its old canteen and drops old capabilities.
+    const kgDay = await canteenBySlug(prisma, 'krishna-godavari-day');
+    await request(app)
+      .patch(`/api/admin/staff/${second.id}/assignment`)
+      .set(bearer(admin.token))
+      .send({ canteenId: kgDay.id, replaceExisting: true })
+      .expect(200);
+    expect(
+      (await prisma.staffCanteenAssignment.findMany({ where: { staffId: second.id } })).map(
+        (row) => row.canteenId,
+      ),
+    ).toEqual([kgDay.id]);
+    expect(await prisma.staff.count({ where: { canteenId: yn.id, status: 'APPROVED' } })).toBe(0);
   });
 
   it('staff cannot review requests (including their own)', async () => {
@@ -206,7 +230,7 @@ describe('staff approval lifecycle', () => {
     const assigned = await request(app)
       .patch(`/api/admin/staff/${staff.id}/assignment`)
       .set(bearer(admin.token))
-      .send({ canteenId: kg.id })
+      .send({ canteenId: kg.id, replaceExisting: true })
       .expect(200);
     expect(assigned.body.data).toMatchObject({ status: 'APPROVED', canteen: { id: kg.id } });
     // The matching pending request is closed as approved.
@@ -265,17 +289,43 @@ describe('admin canteen and hostel management', () => {
     const created = await request(app)
       .post('/api/admin/canteens')
       .set(bearer(admin.token))
-      .send({ name: 'Saraswati Night Canteen', location: 'Block S', openingHours: '10 PM – 2 AM' })
+      .send({
+        name: 'Saraswati Night Canteen',
+        type: 'NIGHT',
+        serviceAreaName: 'Saraswati',
+        location: 'Block S',
+        openingHours: '10 PM – 2 AM',
+      })
       .expect(201);
     expect(created.body.data).toMatchObject({
+      // Generated by the server; never entered by the admin.
       slug: 'saraswati-night-canteen',
+      type: 'NIGHT',
+      serviceArea: { name: 'Saraswati' },
       status: 'ACCEPTING_ORDERS',
     });
+
+    const withSlug = await request(app)
+      .post('/api/admin/canteens')
+      .set(bearer(admin.token))
+      .send({ name: 'Slugged', type: 'DAY', serviceAreaName: 'Slug Area', slug: 'custom' })
+      .expect(422);
+    expect(withSlug.body.error.code).toBe('VALIDATION_ERROR');
+    const noType = await request(app)
+      .post('/api/admin/canteens')
+      .set(bearer(admin.token))
+      .send({ name: 'Typeless', serviceAreaName: 'Typeless Area' })
+      .expect(422);
+    expect(noType.body.error.code).toBe('VALIDATION_ERROR');
 
     const dup = await request(app)
       .post('/api/admin/canteens')
       .set(bearer(admin.token))
-      .send({ name: 'Saraswati Night Canteen' })
+      .send({
+        name: 'Saraswati Night Canteen',
+        type: 'DAY',
+        serviceAreaId: created.body.data.serviceArea.id,
+      })
       .expect(409);
     expect(dup.body.error.code).toBe('CANTEEN_NAME_TAKEN');
 
@@ -362,7 +412,10 @@ describe('admin canteen and hostel management', () => {
       )._sum.totalPaise ?? 0,
     );
     expect(res.body.data.canteens).toMatchObject({
-      paused: await prisma.canteen.count({ where: { isActive: true, isAcceptingOrders: false } }),
+      paused: await prisma.canteen.count({
+        where: { isActive: true, isAcceptingOrders: true, isPaused: true },
+      }),
+      offDuty: await prisma.canteen.count({ where: { isActive: true, isAcceptingOrders: false } }),
       inactive: await prisma.canteen.count({ where: { isActive: false } }),
     });
     expect(res.body.data.orders.active).toBe(
@@ -374,7 +427,7 @@ describe('admin canteen and hostel management', () => {
   });
 
   it('rejects non-admins on every admin route', async () => {
-    const staff = await newApprovedStaff(app, admin, kg.id);
+    const staff = await newApprovedStaff(app, admin, kg.id, { replaceExisting: true });
     for (const actor of [student, staff]) {
       for (const [method, path] of [
         ['get', '/api/admin/dashboard'],
@@ -446,7 +499,7 @@ describe('notifications', () => {
   it('works for staff and admins too, and requires registration', async () => {
     const staffRes = await request(app)
       .get('/api/notifications')
-      .set(bearer((await newApprovedStaff(app, admin, kg.id)).token))
+      .set(bearer((await newApprovedStaff(app, admin, kg.id, { replaceExisting: true })).token))
       .expect(200);
     expect(staffRes.body.data.map((n: { type: string }) => n.type)).toContain('STAFF_APPROVED');
     const adminRes = await request(app)

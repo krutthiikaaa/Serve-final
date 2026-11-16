@@ -25,6 +25,8 @@ import {
   IconRefresh,
   IconX,
   IconWifiOff,
+  IconMoon,
+  IconSun,
 } from './icons';
 
 /* ------------------------------------------------------------------ brand */
@@ -141,6 +143,67 @@ export interface Kpi {
 }
 
 /** One card split into columns: a page's key figures at a glance. */
+export type CanteenType = 'DAY' | 'NIGHT';
+
+/** Day / Night identification, used wherever a canteen is named. */
+export function CanteenTypeBadge({ type }: { type: CanteenType }) {
+  const Icon = type === 'DAY' ? IconSun : IconMoon;
+  return (
+    <span className={`type-badge type-${type.toLowerCase()}`}>
+      <Icon width={13} height={13} aria-hidden="true" />
+      {type === 'DAY' ? 'Day' : 'Night'}
+    </span>
+  );
+}
+
+export type AvailabilityState =
+  | 'OPEN'
+  | 'CLOSED'
+  | 'PAUSED'
+  | 'OFF_DUTY'
+  | 'CLOSED_BY_SCHEDULE'
+  | 'OTHER_SERVICE_ACTIVE'
+  | 'SERVICE_DISABLED'
+  | 'INACTIVE';
+
+/**
+ * The one vocabulary for a canteen's state, used by the staff and admin apps
+ * (and mirrored in the student app):
+ *   Taking orders · Paused · Off duty · Closed by schedule · Unavailable ·
+ *   Temporarily disabled. "Active" / "Temporarily disabled" name the admin's
+ *   operational switch on its own.
+ */
+export const AVAILABILITY_LABEL: Record<AvailabilityState, string> = {
+  OPEN: 'Taking orders',
+  PAUSED: 'Paused',
+  OFF_DUTY: 'Off duty',
+  OTHER_SERVICE_ACTIVE: 'Off duty',
+  CLOSED_BY_SCHEDULE: 'Closed by schedule',
+  CLOSED: 'Closed by schedule',
+  SERVICE_DISABLED: 'Unavailable',
+  INACTIVE: 'Temporarily disabled',
+};
+
+const AVAILABILITY_TONE: Record<AvailabilityState, 'success' | 'warning' | 'danger' | 'neutral'> = {
+  OPEN: 'success',
+  PAUSED: 'warning',
+  OFF_DUTY: 'neutral',
+  OTHER_SERVICE_ACTIVE: 'neutral',
+  CLOSED_BY_SCHEDULE: 'neutral',
+  CLOSED: 'neutral',
+  SERVICE_DISABLED: 'warning',
+  INACTIVE: 'danger',
+};
+
+export function AvailabilityTag({ state }: { state: AvailabilityState }) {
+  return <Tag tone={AVAILABILITY_TONE[state]}>{AVAILABILITY_LABEL[state]}</Tag>;
+}
+
+/** The admin's operational switch (isActive) on its own. */
+export function ActiveTag({ active }: { active: boolean }) {
+  return active ? <Tag tone="success">Active</Tag> : <Tag tone="danger">Temporarily disabled</Tag>;
+}
+
 export function KpiStrip({ items, label }: { items: Kpi[]; label: string }) {
   return (
     <div className="kpis" role="group" aria-label={label} aria-live="polite">

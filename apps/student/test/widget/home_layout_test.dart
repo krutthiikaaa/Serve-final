@@ -24,12 +24,13 @@ void main() {
     await h.pumpSignedIn(tester);
 
     expect(find.text('Hi, Asha'), findsOneWidget);
-    expect(find.text('What are you craving tonight?'), findsOneWidget);
+    expect(find.text('What would you like today?'), findsOneWidget);
     expect(find.text('Search for dishes, categories...'), findsOneWidget);
-    expect(find.text('PICKING UP FROM'), findsOneWidget);
+    expect(find.text('SERVING KRISHNA & GODAVARI'), findsOneWidget);
     expect(find.text('Krishna & Godavari Night Canteen'), findsOneWidget);
     expect(find.text('Between Krishna and Godavari hostels'), findsOneWidget);
-    expect(find.text('Accepting orders'), findsOneWidget);
+    expect(find.text('Taking orders'), findsWidgets);
+    expect(find.text('Night'), findsWidgets);
     expect(find.text('9:00 PM – 3:00 AM'), findsOneWidget);
     expect(find.text('Change Canteen'), findsOneWidget);
     expect(find.text('Your Most Ordered'), findsOneWidget);

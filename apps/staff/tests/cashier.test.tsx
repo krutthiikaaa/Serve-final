@@ -18,7 +18,14 @@ const cashierMe = () =>
     assignments: [
       {
         canteenId: CANTEEN_ID,
-        canteen: { id: CANTEEN_ID, name: canteen.name, isActive: true, isAcceptingOrders: true },
+        canteen: {
+          id: CANTEEN_ID,
+          name: canteen.name,
+          type: 'NIGHT',
+          isActive: true,
+          isAcceptingOrders: true,
+          isPaused: false,
+        },
         capabilities: ['CASHIER'],
       },
     ],
@@ -37,6 +44,7 @@ const demoPayConfig: CanteenPaymentConfig = {
     svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
     warning: 'DEMO ONLY — NOT PAYABLE',
   },
+  qr: null,
   warnings: ['DEMO_MODE_ACTIVE'],
   updatedAt: '2026-10-06T18:00:00.000Z',
 };
@@ -48,6 +56,7 @@ const livePayConfig = {
   merchantName: 'Test merchant',
   qrImageUrl: 'https://cdn.example.com/official-qr.png',
   demoQr: null,
+  qr: null,
   warnings: [],
   isActive: true,
 };
@@ -134,6 +143,7 @@ describe('cashier workflows', () => {
         svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
         warning: 'DEMO ONLY — NOT PAYABLE',
       },
+      qr: null,
       warnings: ['DEMO_MODE_ACTIVE'],
       updatedAt: '2026-10-06T18:00:00.000Z',
     });
@@ -164,12 +174,12 @@ describe('cashier workflows', () => {
         guestName: null,
         verifiedByName: 'Kiran Staff',
         simulated: true,
-        notice: 'DEMO TRANSACTION — NO REAL PAYMENT',
+        notice: 'SIMULATED TRANSACTION — NO REAL PAYMENT',
       },
     });
     renderStaff(<CashierPage />, { api, me: cashierMe() });
     expect(await screen.findByText(pending.orderNumber)).toBeInTheDocument();
-    expect(await screen.findAllByText(/DEMO mode/i)).not.toHaveLength(0);
+    expect(await screen.findAllByText(/Test mode/i)).not.toHaveLength(0);
     await userEvent.click(screen.getByRole('button', { name: 'Simulate' }));
     await userEvent.click(screen.getByRole('button', { name: 'Simulate payment received' }));
     await waitFor(() =>
@@ -180,7 +190,7 @@ describe('cashier workflows', () => {
     );
     expect(api.confirmPayment).not.toHaveBeenCalled();
     expect(await screen.findByText('RC1001')).toBeInTheDocument();
-    expect(screen.getByText('DEMO TRANSACTION — NO REAL PAYMENT')).toBeInTheDocument();
+    expect(screen.getByText('SIMULATED TRANSACTION — NO REAL PAYMENT')).toBeInTheDocument();
   });
 
   it('walk-in POS has no QR, updates the total, and records a DEMO cash sale', async () => {
@@ -194,7 +204,7 @@ describe('cashier workflows', () => {
         pickupToken: 'SV2001',
         channel: 'WALK_IN',
         universityName: 'Vellore Institute of Technology',
-        canteen: { id: CANTEEN_ID, name: canteen.name },
+        canteen: { id: CANTEEN_ID, name: canteen.name, type: 'NIGHT' },
         createdAt: '2026-10-06T19:00:00.000Z',
         paidAt: '2026-10-06T19:00:00.000Z',
         servicePeriod: 'NIGHT',
@@ -210,7 +220,7 @@ describe('cashier workflows', () => {
         guestName: null,
         verifiedByName: 'Kiran Staff',
         simulated: true,
-        notice: 'DEMO TRANSACTION — NO REAL PAYMENT',
+        notice: 'SIMULATED TRANSACTION — NO REAL PAYMENT',
       },
     });
     renderStaff(<CashierPage />, { api, me: cashierMe() });
@@ -222,10 +232,10 @@ describe('cashier workflows', () => {
     expect(
       screen.queryByText(/Ask the customer to scan the QR displayed separately/),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText('DEMO TRANSACTION — NO REAL PAYMENT')).not.toBeInTheDocument();
+    expect(screen.queryByText('SIMULATED TRANSACTION — NO REAL PAYMENT')).not.toBeInTheDocument();
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add Veg Sandwich' }));
-    expect(screen.getByText('DEMO TRANSACTION — NO REAL PAYMENT')).toBeInTheDocument();
+    expect(screen.getByText('SIMULATED TRANSACTION — NO REAL PAYMENT')).toBeInTheDocument();
     const total = () => screen.getByText('Estimated total').closest('.pos-bill-total');
     expect(total()).toHaveTextContent('₹60');
     await userEvent.click(screen.getByRole('button', { name: 'Increase Veg Sandwich' }));
@@ -263,7 +273,7 @@ describe('cashier workflows', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.queryByAltText('DEMO ONLY — NOT PAYABLE')).not.toBeInTheDocument();
-    expect(screen.getByText('DEMO TRANSACTION — NO REAL PAYMENT')).toBeInTheDocument();
+    expect(screen.getByText('SIMULATED TRANSACTION — NO REAL PAYMENT')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('radio', { name: 'Cash' }));
     expect(
       screen.queryByText(/Ask the customer to scan the QR displayed separately/),
@@ -281,7 +291,7 @@ describe('cashier workflows', () => {
         pickupToken: 'SV2002',
         channel: 'WALK_IN',
         universityName: 'Vellore Institute of Technology',
-        canteen: { id: CANTEEN_ID, name: canteen.name },
+        canteen: { id: CANTEEN_ID, name: canteen.name, type: 'NIGHT' },
         createdAt: '2026-10-06T19:00:00.000Z',
         paidAt: '2026-10-06T19:00:00.000Z',
         servicePeriod: 'NIGHT',
@@ -302,8 +312,8 @@ describe('cashier workflows', () => {
     });
     renderStaff(<CashierPage />, { api, me: cashierMe() });
     await userEvent.click(await screen.findByRole('tab', { name: 'Walk-in POS' }));
-    expect(await screen.findByText('LIVE')).toBeInTheDocument();
-    expect(screen.queryByText('DEMO TRANSACTION — NO REAL PAYMENT')).not.toBeInTheDocument();
+    expect(await screen.findByText('Live payments')).toBeInTheDocument();
+    expect(screen.queryByText('SIMULATED TRANSACTION — NO REAL PAYMENT')).not.toBeInTheDocument();
     await userEvent.click(await screen.findByRole('button', { name: 'Add Veg Sandwich' }));
     await userEvent.click(screen.getByRole('radio', { name: 'UPI' }));
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
@@ -327,7 +337,7 @@ describe('cashier workflows', () => {
     expect(api.completeDemoWalkIn).not.toHaveBeenCalled();
   });
 
-  it('filters the POS menu by category and service period', async () => {
+  it('filters the POS menu by category; it sells only the canteen’s own period', async () => {
     const api = fakeStaffApi();
     stubCashier(api);
     renderStaff(<CashierPage />, { api, me: cashierMe() });
@@ -357,13 +367,10 @@ describe('cashier workflows', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add Veg Sandwich' }));
     expect(screen.getByText('Estimated total').closest('.pos-bill-total')).toHaveTextContent('₹60');
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Day' }));
-    expect(await screen.findByText('Idli')).toBeInTheDocument();
-    expect(screen.queryByText('Veg Sandwich')).not.toBeInTheDocument();
-    expect(screen.queryByText('Snacks')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Breakfast' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Complete bill' })).toBeDisabled();
-    expect(api.posMenu).toHaveBeenCalledWith('DAY');
+    // No Day/Night switch: a Night canteen's POS always sells its Night menu.
+    expect(screen.queryByRole('tab', { name: 'Day' })).not.toBeInTheDocument();
+    expect(api.posMenu).toHaveBeenCalledWith('NIGHT');
+    expect(api.posMenu).not.toHaveBeenCalledWith('DAY');
   });
 
   it('lists billing history with compact filters and essential columns', async () => {
@@ -452,7 +459,8 @@ describe('cashier workflows', () => {
     expect(appRow).toHaveTextContent('App');
     expect(appRow).toHaveTextContent('Day');
     expect(appRow).toHaveTextContent('UPI');
-    expect(appRow).toHaveTextContent('DEMO');
+    expect(appRow).toHaveTextContent('Simulated');
+    expect(appRow).not.toHaveTextContent('DEMO');
 
     await userEvent.selectOptions(screen.getByLabelText('Channel'), 'WALK_IN');
     await userEvent.selectOptions(screen.getByLabelText('Payment method'), 'CASH');

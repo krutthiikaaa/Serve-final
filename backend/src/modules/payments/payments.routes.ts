@@ -51,6 +51,17 @@ export function createPaymentsRouter(ctx: AppContext, services: Services): Route
   const limiter = sensitiveLimiter(ctx.env);
   router.use(createAuthenticate(ctx), requireStudent);
 
+  /**
+   * The QR/payment details for this order's canteen, read fresh on every call
+   * (never cached), so a replaced QR is shown immediately and a QR of another
+   * canteen can never appear.
+   */
+  router.get('/:orderId/payment-config', async (req, res) => {
+    const { orderId } = parse(orderParams, req.params);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ data: await services.canteens.orderPaymentConfig(currentStudent(req), orderId) });
+  });
+
   router.post('/:orderId/initiate', limiter, async (req, res) => {
     const { orderId } = parse(orderParams, req.params);
     res.json({ data: await services.payments.initiate(currentStudent(req), orderId) });

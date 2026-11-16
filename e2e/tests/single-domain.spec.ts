@@ -55,7 +55,7 @@ async function expectApp(page: Page, app: 'student' | 'staff' | 'admin') {
     });
   } else {
     await expect(page).toHaveTitle(app === 'staff' ? 'SERVE Staff' : 'SERVE Admin');
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
   }
 }
 
@@ -160,10 +160,18 @@ test('full flow on one origin: Flutter student pays, staff works the order live,
   browser,
 }) => {
   test.setTimeout(240_000);
-  const { email: staffEmail } = await approvedStaff(
-    'Single Domain Staff',
-    'Krishna & Godavari Night Canteen',
-  );
+  const {
+    email: staffEmail,
+    staff: staffApi,
+    canteen,
+    admin: adminApi,
+  } = await approvedStaff('Single Domain Staff', 'Krishna & Godavari Night Canteen');
+  // The canteen's staff account also works the cash desk (confirms payments).
+  const me = await staffApi.data<{ id: string }>('GET', '/auth/me');
+  await adminApi.data('PUT', `/admin/staff/${me.id}/assignments`, {
+    primaryCanteenId: canteen.id,
+    assignments: [{ canteenId: canteen.id, capabilities: ['KITCHEN', 'MENU', 'PAUSE', 'CASHIER'] }],
+  });
 
   const staffContext = await browser.newContext();
   const staff = await staffContext.newPage();
@@ -193,41 +201,61 @@ test('full flow on one origin: Flutter student pays, staff works the order live,
   const name = `Domain Student ${Date.now()}`;
   let orderNumber = '';
 
-  await test.step('student registers in the Flutter app at /', async () => {
+  await test.step('student signs in (SRM) and registers in the Flutter app at /', async () => {
     await student.goto(at('/'));
     await enableFlutterSemantics(student);
     await student.getByRole('button', { name: /^Student/ }).click();
-    await student.getByRole('button', { name: 'Create an account' }).click();
+    await expect(student.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    // Google cannot run here: the test-only sign-in sets the same-origin session cookie.
+    await signIn(student, at('/'), uniqueEmail('domain.student'));
+    await enableFlutterSemantics(student);
+    await expect(student.getByText('Complete your profile')).toBeVisible({ timeout: 60_000 });
     await typeInto(student, 'Full name', name);
-    await typeInto(student, 'University email', uniqueEmail('domain.student'));
-    await typeInto(student, 'Password', E2E.password);
     await student.getByRole('button', { name: /Select your hostel/ }).click();
     await student
       .getByRole('menuitem', { name: /^Krishna\s+·/ })
       .or(student.getByRole('button', { name: /^Krishna\s+·/ }))
       .first()
       .click();
-    await student.getByRole('button', { name: 'Create account' }).click();
+    await student.getByRole('button', { name: 'Finish registration' }).click();
     await expect(student.getByText(/^Hi, Domain/)).toBeVisible({ timeout: 20_000 });
   });
 
-  await test.step('student orders and pays with the demo gateway', async () => {
+  await test.step('student orders; payment stays pending until the cashier confirms', async () => {
     await student.getByRole('tab', { name: 'Menu' }).click();
     await student.getByRole('button', { name: 'Add Veg Grilled Sandwich' }).click();
     await student.getByRole('button', { name: 'Cart, 1' }).click();
     await student.getByRole('button', { name: 'Checkout' }).click();
     await student.getByRole('button', { name: 'Place order' }).click();
-    await expect(student.getByText(/no real money is charged/)).toBeVisible();
-    await student.getByRole('button', { name: /^Pay ₹/ }).click();
-    await expect(student.getByText('Payment confirmed')).toBeVisible({ timeout: 15_000 });
-    const label = await student
-      .getByText(/^Order number SV\d+$/)
+    await expect(student.getByRole('heading', { name: 'Payment' })).toBeVisible({
+      timeout: 20_000,
+    });
+    // Test mode: the canteen's placeholder QR, clearly not payable.
+    await expect(student.getByText('DEMO ONLY — NOT PAYABLE').first()).toBeVisible();
+    await expect(student.getByText(/PAYMENT PENDING/)).toBeVisible();
+    const amountLine = await student
+      .getByText(/Order SV\d+/)
       .first()
       .textContent();
-    orderNumber = (label ?? '').replace('Order number', '').trim();
+    orderNumber = amountLine?.match(/SV\d+/)?.[0] ?? '';
     expect(orderNumber).toMatch(/^SV\d+$/);
-    await student.getByRole('button', { name: 'Track order' }).click();
-    await expect(student.getByText('Order received').first()).toBeVisible();
+    await student.getByRole('button', { name: 'Track this order' }).click();
+    await expect(student.getByText('Order placed').first()).toBeVisible({ timeout: 15_000 });
+
+    // Nothing reaches the kitchen until the cashier confirms the payment.
+    await expect(staff.getByRole('region', { name: 'New' }).getByText(orderNumber)).toHaveCount(0);
+    const pending = await staffApi.data<{ id: string; orderNumber: string }[]>(
+      'GET',
+      `/staff/payments/pending?limit=100&canteenId=${canteen.id}`,
+    );
+    const unpaid = pending.find((o) => o.orderNumber === orderNumber);
+    expect(unpaid, `pending order ${orderNumber}`).toBeTruthy();
+    await staffApi.data(
+      'POST',
+      `/staff/orders/${unpaid!.id}/confirm-demo-payment?canteenId=${canteen.id}`,
+      { simulatedPaymentReceived: true },
+    );
+    await expect(student.getByText('Order received').first()).toBeVisible({ timeout: 15_000 });
   });
 
   await test.step('the order reaches the staff board live; staff moves it, student sees it', async () => {
@@ -242,7 +270,7 @@ test('full flow on one origin: Flutter student pays, staff works the order live,
   });
 
   await test.step('the same browser session is not an admin session at /admin/', async () => {
-    // Same origin, same Firebase session: the backend account decides.
+    // Same origin, same Better Auth session: the backend account decides.
     await staff.goto(at('/admin/'));
     await expect(
       staff.getByText('You are signed in with a staff account. Use the staff dashboard instead.'),

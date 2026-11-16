@@ -55,7 +55,7 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
   const scoped = (query: Query = {}): Query => (canteenId ? { ...query, canteenId } : query);
 
   return {
-    registerStaff: (body: { name: string; email: string; requestedCanteenId?: string }) =>
+    registerStaff: (body: { name: string; requestedCanteenId?: string }) =>
       api.data<Me>('POST', '/auth/staff/register', { body }),
     canteens: () => api.get<Canteen[]>('/canteens'),
     requestAccess: (body: { requestedCanteenId: string; notes?: string }) =>

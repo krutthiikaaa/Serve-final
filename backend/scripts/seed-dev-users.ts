@@ -1,129 +1,120 @@
 /**
- * Create demo accounts in the Firebase Auth EMULATOR and link them in
- * PostgreSQL. Development only — refuses to run against a real Firebase
- * project or outside NODE_ENV=development.
+ * Pre-provision development accounts for real @srmap.edu.in Google accounts.
+ * Development only (NODE_ENV=development). Each address you set becomes that
+ * role the first time its owner signs in with Google; unset ones are skipped.
  *
- *   DEV_SEED_PASSWORD='choose-a-password' npm run db:seed:dev-users --workspace backend
+ *   DEV_ADMIN_EMAIL=a@srmap.edu.in \
+ *   DEV_STAFF_NIGHT_EMAIL=b@srmap.edu.in DEV_STAFF_DAY_EMAIL=c@srmap.edu.in \
+ *   DEV_STAFF_PENDING_EMAIL=d@srmap.edu.in DEV_STUDENT_EMAIL=e@srmap.edu.in \
+ *   npm run db:seed:dev-users --workspace backend
  *
  * Requires the base seed (npm run db:seed) for canteens and hostels.
- * Idempotent: existing users/rows are reused.
+ * Idempotent: existing rows are reused; nothing is deleted.
  */
-import type { Auth } from 'firebase-admin/auth';
 import { loadEnv } from '../src/config/env.js';
-import { closeFirebase, createFirebaseAuth } from '../src/lib/firebase.js';
 import { createPrismaClient } from '../src/lib/prisma.js';
 import { bootstrapAdmin } from '../src/modules/auth/admin-bootstrap.js';
+import { isSrmEmail, normalizeEmail } from '../src/modules/auth/srm-email.js';
 
 const env = loadEnv();
-if (env.NODE_ENV !== 'development' || !env.FIREBASE_AUTH_EMULATOR_HOST) {
+if (env.NODE_ENV !== 'development') {
+  console.error('seed-dev-users only runs with NODE_ENV=development.');
+  process.exit(1);
+}
+
+function emailFrom(variable: string): string | null {
+  const raw = process.env[variable];
+  if (!raw) return null;
+  const email = normalizeEmail(raw);
+  if (!email || !isSrmEmail(email)) {
+    console.error(`${variable} must be an @srmap.edu.in address.`);
+    process.exit(1);
+  }
+  return email;
+}
+
+const adminEmail = emailFrom('DEV_ADMIN_EMAIL');
+const nightEmail = emailFrom('DEV_STAFF_NIGHT_EMAIL');
+const dayEmail = emailFrom('DEV_STAFF_DAY_EMAIL');
+const pendingEmail = emailFrom('DEV_STAFF_PENDING_EMAIL');
+const studentEmail = emailFrom('DEV_STUDENT_EMAIL');
+if (![adminEmail, nightEmail, dayEmail, pendingEmail, studentEmail].some(Boolean)) {
   console.error(
-    'seed-dev-users only runs with NODE_ENV=development and the Firebase Auth Emulator.',
+    'Set at least one DEV_*_EMAIL variable (see the comment at the top of this script).',
   );
   process.exit(1);
 }
-const password = process.env.DEV_SEED_PASSWORD;
-if (!password || password.length < 8) {
-  console.error('Set DEV_SEED_PASSWORD (at least 8 characters) for the emulator demo accounts.');
-  process.exit(1);
-}
 
-const auth = createFirebaseAuth(env);
 const prisma = createPrismaClient(env.DATABASE_URL);
-
-async function firebaseUid(authClient: Auth, email: string, displayName: string): Promise<string> {
-  let uid: string;
-  try {
-    uid = (await authClient.getUserByEmail(email)).uid;
-    await authClient.updateUser(uid, { password, displayName });
-  } catch {
-    uid = (await authClient.createUser({ email, password, displayName })).uid;
-  }
-  // The emulator keeps accounts in memory: after a restart the demo users get
-  // new UIDs. Re-link existing demo rows (development only).
-  await Promise.all([
-    prisma.admin.updateMany({ where: { email }, data: { firebaseUid: uid } }),
-    prisma.staff.updateMany({ where: { email }, data: { firebaseUid: uid } }),
-    prisma.student.updateMany({ where: { email }, data: { firebaseUid: uid } }),
-  ]);
-  return uid;
-}
+const ready: string[] = [];
 
 try {
   const kg = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'krishna-godavari' } });
+  const kgDay = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'krishna-godavari-day' } });
   const yn = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'yamuna-narmada' } });
   const krishna = await prisma.hostel.findUniqueOrThrow({ where: { name: 'Krishna' } });
 
-  await firebaseUid(auth, 'admin@serve.dev', 'Dev Admin');
-  await bootstrapAdmin(
-    { auth, prisma },
-    { email: 'admin@serve.dev', name: 'Dev Admin', password, allowCreateFirebaseUser: true },
-  );
+  if (adminEmail) {
+    await bootstrapAdmin({ prisma }, { email: adminEmail, name: 'Dev Admin' });
+    ready.push(`${adminEmail} (admin)`);
+  }
 
-  const approvedUid = await firebaseUid(auth, 'staff.kg@serve.dev', 'Dev Staff (K&G)');
-  const approvedStaff = await prisma.staff.upsert({
-    where: { firebaseUid: approvedUid },
-    update: {
-      name: 'Dev Staff (K&G)',
-      status: 'APPROVED',
-      canteenId: kg.id,
-    },
-    create: {
-      firebaseUid: approvedUid,
-      email: 'staff.kg@serve.dev',
-      name: 'Dev Staff (K&G)',
-      status: 'APPROVED',
-      canteenId: kg.id,
-    },
-  });
-  const assignment = await prisma.staffCanteenAssignment.upsert({
-    where: {
-      staffId_canteenId: { staffId: approvedStaff.id, canteenId: kg.id },
-    },
-    update: {},
-    create: { staffId: approvedStaff.id, canteenId: kg.id },
-  });
-  for (const capability of ['KITCHEN', 'MENU', 'PAUSE'] as const) {
-    await prisma.staffAssignmentCapability.upsert({
-      where: { assignmentId_capability: { assignmentId: assignment.id, capability } },
+  // One dedicated account per canteen (Day and Night are separate canteens).
+  async function dedicatedStaff(email: string, name: string, canteenId: string) {
+    const staff = await prisma.staff.upsert({
+      where: { email },
       update: {},
-      create: { assignmentId: assignment.id, capability },
+      create: { email, name, status: 'APPROVED', canteenId },
     });
+    const assignment = await prisma.staffCanteenAssignment.upsert({
+      where: { staffId_canteenId: { staffId: staff.id, canteenId } },
+      update: {},
+      create: { staffId: staff.id, canteenId },
+    });
+    for (const capability of ['KITCHEN', 'MENU', 'PAUSE', 'CASHIER'] as const) {
+      await prisma.staffAssignmentCapability.upsert({
+        where: { assignmentId_capability: { assignmentId: assignment.id, capability } },
+        update: {},
+        create: { assignmentId: assignment.id, capability },
+      });
+    }
+  }
+  if (nightEmail) {
+    await dedicatedStaff(nightEmail, 'K&G Night Canteen', kg.id);
+    ready.push(`${nightEmail} (K&G Night staff)`);
+  }
+  if (dayEmail) {
+    await dedicatedStaff(dayEmail, 'K&G Day Canteen', kgDay.id);
+    ready.push(`${dayEmail} (K&G Day staff)`);
   }
 
-  const pendingUid = await firebaseUid(auth, 'staff.pending@serve.dev', 'Dev Staff (pending)');
-  const pending = await prisma.staff.upsert({
-    where: { firebaseUid: pendingUid },
-    update: {},
-    create: {
-      firebaseUid: pendingUid,
-      email: 'staff.pending@serve.dev',
-      name: 'Dev Staff (pending)',
-    },
-  });
-  const hasRequest = await prisma.canteenChangeRequest.count({ where: { staffId: pending.id } });
-  if (hasRequest === 0) {
-    await prisma.canteenChangeRequest.create({
-      data: { staffId: pending.id, requestedCanteenId: yn.id, notes: 'Demo access request' },
+  if (pendingEmail) {
+    const pending = await prisma.staff.upsert({
+      where: { email: pendingEmail },
+      update: {},
+      create: { email: pendingEmail, name: 'Dev Staff (pending)' },
     });
+    const hasRequest = await prisma.canteenChangeRequest.count({ where: { staffId: pending.id } });
+    if (hasRequest === 0) {
+      await prisma.canteenChangeRequest.create({
+        data: { staffId: pending.id, requestedCanteenId: yn.id, notes: 'Demo access request' },
+      });
+    }
+    ready.push(`${pendingEmail} (pending staff)`);
   }
 
-  const studentUid = await firebaseUid(auth, 'student@serve.dev', 'Dev Student');
-  await prisma.student.upsert({
-    where: { firebaseUid: studentUid },
-    update: {},
-    create: {
-      firebaseUid: studentUid,
-      email: 'student@serve.dev',
-      name: 'Dev Student',
-      hostelId: krishna.id,
-    },
-  });
+  if (studentEmail) {
+    await prisma.student.upsert({
+      where: { email: studentEmail },
+      update: {},
+      create: { email: studentEmail, name: 'Dev Student', hostelId: krishna.id },
+    });
+    ready.push(`${studentEmail} (student, Krishna)`);
+  }
 
   console.error(
-    'Emulator demo accounts ready: admin@serve.dev, staff.kg@serve.dev (approved, K&G), ' +
-      'staff.pending@serve.dev (pending), student@serve.dev (Krishna). Password: the DEV_SEED_PASSWORD you supplied',
+    `Development accounts ready (active at each owner's first Google sign-in): ${ready.join(', ')}`,
   );
 } finally {
   await prisma.$disconnect();
-  await closeFirebase();
 }

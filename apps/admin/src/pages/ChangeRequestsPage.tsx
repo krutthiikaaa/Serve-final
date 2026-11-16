@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ChangeRequest } from '@serve/contracts';
 import {
+  ApiError,
   Button,
   EmptyState,
   ErrorState,
@@ -247,6 +248,8 @@ export function ReviewModal({
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  /** Email of the canteen's current dedicated account, when approving would replace it. */
+  const [holder, setHolder] = useState<string | null>(null);
   const approve = decision === 'APPROVED';
 
   const submit = async () => {
@@ -256,11 +259,18 @@ export function ReviewModal({
       const trimmed = notes.trim() || undefined;
       onDone(
         approve
-          ? await api.approveRequest(request.id, trimmed)
+          ? await api.approveRequest(request.id, trimmed, holder !== null)
           : await api.rejectRequest(request.id, trimmed),
       );
     } catch (err) {
-      setError(err);
+      if (approve && err instanceof ApiError && err.code === 'CANTEEN_HAS_STAFF_ACCOUNT') {
+        setHolder(
+          (err.details as { staff?: { email?: string } } | undefined)?.staff?.email ??
+            'another account',
+        );
+      } else {
+        setError(err);
+      }
       setBusy(false);
     }
   };
@@ -279,13 +289,23 @@ export function ReviewModal({
             loading={busy}
             onClick={() => void submit()}
           >
-            {approve ? 'Approve and assign' : 'Reject request'}
+            {approve
+              ? holder
+                ? 'Replace account and approve'
+                : 'Approve and assign'
+              : 'Reject request'}
           </Button>
         </>
       }
     >
       <div className="form">
         <FormError error={error} />
+        {holder ? (
+          <p className="notice" role="alert">
+            {request.requestedCanteen.name} already has a dedicated staff account ({holder}).
+            Approving replaces it, and that account loses access immediately.
+          </p>
+        ) : null}
         <p>
           {approve
             ? `${request.staff.name} will be assigned to ${request.requestedCanteen.name} and can start managing its orders immediately.`

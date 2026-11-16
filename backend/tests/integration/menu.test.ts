@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { buildTestApp } from '../helpers/test-app.js';
-import { truncateAll } from '../helpers/db.js';
+import { createCanteenRecord, truncateAll } from '../helpers/db.js';
 import {
   bearer,
   canteenBySlug,
@@ -49,16 +49,20 @@ describe('hostels and canteens', () => {
   });
 
   it('shows students only active canteens; admins see all', async () => {
-    const hidden = await prisma.canteen.create({
-      data: { name: 'Closed Canteen', slug: 'closed-canteen', isActive: false },
-    });
+    const hidden = await createCanteenRecord(prisma, { name: 'Closed Canteen', isActive: false });
     const forStudent = await request(app)
       .get('/api/canteens')
       .set(bearer(student.token))
       .expect(200);
     expect(forStudent.body.data.map((c: { id: string }) => c.id)).not.toContain(hidden.id);
-    expect(forStudent.body.data).toHaveLength(5);
-    expect(forStudent.body.data[0]).toMatchObject({ status: 'ACCEPTING_ORDERS', isActive: true });
+    // Five service areas, each with a Day and a Night canteen.
+    expect(forStudent.body.data).toHaveLength(10);
+    const night = forStudent.body.data.find((c: { type: string }) => c.type === 'NIGHT');
+    const day = forStudent.body.data.find((c: { type: string }) => c.type === 'DAY');
+    expect(night).toMatchObject({ status: 'ACCEPTING_ORDERS', isActive: true });
+    // Seeded Day canteens wait while the Night canteen of their area serves.
+    expect(day).toMatchObject({ status: 'PAUSED', isActive: true });
+    expect(day.availability.state).toBe('OTHER_SERVICE_ACTIVE');
 
     const forAdmin = await request(app).get('/api/canteens').set(bearer(admin.token)).expect(200);
     expect(forAdmin.body.data.map((c: { id: string }) => c.id)).toContain(hidden.id);
@@ -92,9 +96,7 @@ describe('student menu', () => {
   });
 
   it('returns an empty menu (not fallback data) for a canteen with no items', async () => {
-    const empty = await prisma.canteen.create({
-      data: { name: 'Empty Canteen', slug: 'empty-canteen' },
-    });
+    const empty = await createCanteenRecord(prisma, { name: 'Empty Canteen' });
     const res = await request(app)
       .get(`/api/canteens/${empty.id}/menu`)
       .set(bearer(student.token))

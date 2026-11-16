@@ -12,7 +12,8 @@ String formatTime(DateTime at) => DateFormat('h:mm a').format(at.toLocal());
 
 String formatDateTime(DateTime at) => DateFormat('d MMM, h:mm a').format(at.toLocal());
 
-String formatServicePeriod(ServicePeriod? period) => period?.label ?? 'Service period not recorded';
+/// 'Day canteen' / 'Night canteen'; historical orders may not have a period.
+String formatServicePeriod(ServicePeriod? period) => period == null ? 'Service period not recorded' : '${period.label} canteen';
 
 String timeAgo(DateTime at, {DateTime? now}) {
   final diff = (now ?? DateTime.now()).difference(at);

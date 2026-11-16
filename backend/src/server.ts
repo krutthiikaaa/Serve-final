@@ -2,10 +2,13 @@ import { createServer } from 'node:http';
 import { EnvValidationError, loadEnv } from './config/env.js';
 import { createLogger } from './config/logger.js';
 import { createPrismaClient } from './lib/prisma.js';
-import { createFirebaseAuth, FirebaseIdentityVerifier } from './lib/firebase.js';
+import { createAuth } from './lib/auth.js';
+import { createSessionVerifier } from './lib/session.js';
 import { createPaymentProvider } from './modules/payments/index.js';
 import { createRealtimeServer, RealtimeBridge } from './realtime/socket-server.js';
 import { createApp } from './app.js';
+import { createAreaScheduler } from './modules/admin/area-scheduler.js';
+import { publishOrderTaking } from './modules/canteens/order-taking-events.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -24,13 +27,23 @@ function main(): void {
 
   const logger = createLogger(env);
   const prisma = createPrismaClient(env.DATABASE_URL);
-  const verifier = new FirebaseIdentityVerifier(createFirebaseAuth(env));
+  const auth = createAuth({ env, prisma, logger });
+  const sessions = createSessionVerifier(auth);
   const payments = createPaymentProvider(env);
   const events = new RealtimeBridge();
-  const app = createApp({ env, logger, prisma, verifier, payments, events });
+  const app = createApp({ env, logger, prisma, auth, sessions, payments, events });
   const server = createServer(app);
-  const realtime = createRealtimeServer(server, { env, logger, prisma, verifier });
+  const realtime = createRealtimeServer(server, { env, logger, prisma, sessions });
   events.attach(realtime.publisher);
+  // Day/Night switching runs here, on the server clock: on start-up (which
+  // restores the right state after a restart) and every 30 seconds.
+  const scheduler = createAreaScheduler({
+    prisma,
+    logger,
+    publish: (canteenIds) => publishOrderTaking(prisma, events, canteenIds),
+    clock: () => new Date(),
+  });
+  let stopScheduler: (() => void) | null = null;
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     logger.fatal(
@@ -45,6 +58,7 @@ function main(): void {
       { port: env.PORT, env: env.NODE_ENV, webApps: env.WEB_ROOT !== undefined },
       `SERVE backend listening on port ${env.PORT}`,
     );
+    stopScheduler = scheduler.start();
     if (env.DEMO_MODE) {
       logger.warn('DEMO_MODE: payments are simulated by the mock provider; no real money is taken');
     }
@@ -62,6 +76,7 @@ function main(): void {
     }, SHUTDOWN_TIMEOUT_MS);
     force.unref();
 
+    stopScheduler?.();
     void realtime.close();
     server.close((closeErr) => {
       prisma

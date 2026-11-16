@@ -17,20 +17,13 @@ export const config = {
   apiUrl: import.meta.env.DEV
     ? required('VITE_API_URL', configuredApiUrl)
     : configuredApiUrl || window.location.origin,
-  /** Where "Return to SERVE" sends a failed SSO callback. */
+  /** The student app (links from the dashboard). */
   studentAppUrl:
     (import.meta.env.VITE_STUDENT_APP_URL as string | undefined) ||
     (import.meta.env.DEV ? 'http://localhost:5555' : window.location.origin),
-  firebase: {
-    apiKey: required(
-      'VITE_FIREBASE_API_KEY',
-      import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
-    ),
-    projectId: required(
-      'VITE_FIREBASE_PROJECT_ID',
-      import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined,
-    ),
-    authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined) || undefined,
-    emulatorUrl: import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL as string | undefined,
-  },
+  /**
+   * This app's root URL: Google sign-in returns here. Same origin as the page
+   * (with the /staff/ or /admin/ base on the single domain).
+   */
+  appUrl: new URL(import.meta.env.BASE_URL, window.location.origin).toString(),
 };

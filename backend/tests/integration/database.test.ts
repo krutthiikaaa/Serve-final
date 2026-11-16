@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { SEED_CANTEENS, SEED_MENU, seedDatabase } from '../../src/db/seed.js';
-import { createTestPrisma, truncateAll } from '../helpers/db.js';
+import { SEED_CANTEENS, SEED_DAY_MENU, SEED_MENU, seedDatabase } from '../../src/db/seed.js';
+import {
+  createCanteenRecord,
+  createHostelRecord,
+  createTestPrisma,
+  truncateAll,
+} from '../helpers/db.js';
 
 /**
  * Schema-level guarantees, verified against the real PostgreSQL test database
@@ -12,9 +17,7 @@ const prisma = createTestPrisma();
 afterAll(() => prisma.$disconnect());
 
 async function makeCanteen(name = `Canteen ${randomUUID().slice(0, 8)}`) {
-  return prisma.canteen.create({
-    data: { name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-') },
-  });
+  return createCanteenRecord(prisma, { name });
 }
 
 async function makeMenu(canteenId: string, pricePaise = 9_900) {
@@ -33,9 +36,7 @@ async function makeMenu(canteenId: string, pricePaise = 9_900) {
 }
 
 async function makeStudent(canteenId: string) {
-  const hostel = await prisma.hostel.create({
-    data: { name: `Hostel ${randomUUID().slice(0, 8)}`, canteenId },
-  });
+  const hostel = await createHostelRecord(prisma, { canteenId });
   const tag = randomUUID().slice(0, 8);
   return prisma.student.create({
     data: {
@@ -81,26 +82,51 @@ describe('seed data', () => {
 
   it('creates the canteens, hostel mapping and menu', async () => {
     const first = await seedDatabase(prisma);
-    expect(first.canteens).toBe(5);
+    // One Night and one Day canteen per service area.
+    expect(first.canteens).toBe(10);
+    expect(await prisma.serviceArea.count()).toBe(5);
 
-    const hostels = await prisma.hostel.findMany({ include: { canteen: true } });
-    const mapping = Object.fromEntries(hostels.map((h) => [h.name, h.canteen.name]));
-    expect(mapping).toEqual({
-      Krishna: 'Krishna & Godavari Night Canteen',
-      Godavari: 'Krishna & Godavari Night Canteen',
-      Yamuna: 'Yamuna & Narmada Night Canteen',
-      Narmada: 'Yamuna & Narmada Night Canteen',
-      'New Hostel': 'New Hostel Night Canteen',
-      Vedavathi: 'Vedavathi Night Canteen',
-      'Ganga A': 'Ganga A & Ganga B Night Canteen',
-      'Ganga B': 'Ganga A & Ganga B Night Canteen',
+    const hostels = await prisma.hostel.findMany({
+      include: { serviceArea: { include: { canteens: { orderBy: { type: 'asc' } } } } },
     });
+    const mapping = Object.fromEntries(
+      hostels.map((h) => [
+        h.name,
+        h.serviceArea.canteens.map((c) => `${c.type}:${c.name}:${c.isAcceptingOrders}`),
+      ]),
+    );
+    expect(mapping.Krishna).toEqual([
+      'DAY:Krishna & Godavari Day Canteen:false',
+      'NIGHT:Krishna & Godavari Night Canteen:true',
+    ]);
+    expect(mapping.Godavari).toEqual(mapping.Krishna);
+    expect(mapping['Ganga B']).toEqual([
+      'DAY:Ganga A & Ganga B Day Canteen:false',
+      'NIGHT:Ganga A & Ganga B Night Canteen:true',
+    ]);
+    expect(Object.keys(mapping).sort()).toEqual([
+      'Ganga A',
+      'Ganga B',
+      'Godavari',
+      'Krishna',
+      'Narmada',
+      'New Hostel',
+      'Vedavathi',
+      'Yamuna',
+    ]);
 
-    const itemsPerCanteen = SEED_MENU.reduce((sum, section) => sum + section.items.length, 0);
-    expect(await prisma.menuItem.count()).toBe(SEED_CANTEENS.length * itemsPerCanteen);
-    expect(await prisma.menuCategory.count()).toBe(SEED_CANTEENS.length * SEED_MENU.length);
+    const count = (menu: typeof SEED_MENU) => menu.reduce((sum, s) => sum + s.items.length, 0);
+    expect(await prisma.menuItem.count()).toBe(
+      SEED_CANTEENS.length * (count(SEED_MENU) + count(SEED_DAY_MENU)),
+    );
+    expect(await prisma.menuCategory.count()).toBe(
+      SEED_CANTEENS.length * (SEED_MENU.length + SEED_DAY_MENU.length),
+    );
 
-    const coffee = await prisma.menuItem.findFirstOrThrow({ where: { name: 'Coffee' } });
+    const night = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'krishna-godavari' } });
+    const coffee = await prisma.menuItem.findFirstOrThrow({
+      where: { name: 'Coffee', canteenId: night.id },
+    });
     expect(coffee.pricePaise).toBe(3_000);
   });
 
@@ -111,7 +137,9 @@ describe('seed data', () => {
       categories: await prisma.menuCategory.count(),
       items: await prisma.menuItem.count(),
     };
-    const coffee = await prisma.menuItem.findFirstOrThrow({ where: { name: 'Coffee' } });
+    const coffee = await prisma.menuItem.findFirstOrThrow({
+      where: { name: 'Coffee', canteen: { slug: 'krishna-godavari' } },
+    });
     await prisma.menuItem.update({ where: { id: coffee.id }, data: { pricePaise: 4_200 } });
 
     await seedDatabase(prisma);
@@ -133,32 +161,77 @@ describe('canteens and hostels', () => {
   beforeEach(() => truncateAll(prisma));
 
   it('enforces unique canteen names and slugs', async () => {
-    await prisma.canteen.create({ data: { name: 'A Canteen', slug: 'a' } });
-    await expect(prisma.canteen.create({ data: { name: 'A Canteen', slug: 'b' } })).rejects.toThrow(
+    const a = await createCanteenRecord(prisma, { name: 'A Canteen', slug: 'a' });
+    await expect(createCanteenRecord(prisma, { name: 'A Canteen', slug: 'b' })).rejects.toThrow(
       /Canteen_name_key/,
     );
-    await expect(prisma.canteen.create({ data: { name: 'B Canteen', slug: 'a' } })).rejects.toThrow(
-      /Canteen_slug_key/,
-    );
+    await expect(
+      createCanteenRecord(prisma, {
+        name: 'B Canteen',
+        slug: 'a',
+        serviceAreaId: a.serviceAreaId,
+        type: 'DAY',
+      }),
+    ).rejects.toThrow(/Canteen_slug_key/);
   });
 
-  it('enforces unique hostel names and a valid canteen', async () => {
-    const canteen = await makeCanteen();
-    await prisma.hostel.create({ data: { name: 'Tower', canteenId: canteen.id } });
+  it('allows one Day and one Night canteen per service area', async () => {
+    const night = await createCanteenRecord(prisma, { name: 'X Night', type: 'NIGHT' });
+    await createCanteenRecord(prisma, {
+      name: 'X Day',
+      type: 'DAY',
+      serviceAreaId: night.serviceAreaId,
+      isAcceptingOrders: false,
+    });
     await expect(
-      prisma.hostel.create({ data: { name: 'Tower', canteenId: canteen.id } }),
+      createCanteenRecord(prisma, {
+        name: 'X Night 2',
+        type: 'NIGHT',
+        serviceAreaId: night.serviceAreaId,
+        isAcceptingOrders: false,
+      }),
+    ).rejects.toThrow(/Canteen_serviceAreaId_type_key|Unique constraint/);
+  });
+
+  it('never lets both canteens of an area take orders (database-level)', async () => {
+    const night = await createCanteenRecord(prisma, { name: 'Y Night', type: 'NIGHT' });
+    const day = await createCanteenRecord(prisma, {
+      name: 'Y Day',
+      type: 'DAY',
+      serviceAreaId: night.serviceAreaId,
+      isAcceptingOrders: false,
+    });
+    await expect(
+      prisma.canteen.update({ where: { id: day.id }, data: { isAcceptingOrders: true } }),
+    ).rejects.toThrow(/Unique constraint|one_open_per_service_area/);
+    // An inactive canteen may keep the flag; it is not taking orders.
+    await prisma.canteen.update({ where: { id: day.id }, data: { isActive: false } });
+    await prisma.canteen.update({ where: { id: day.id }, data: { isAcceptingOrders: true } });
+    await expect(
+      prisma.canteen.update({ where: { id: day.id }, data: { isActive: true } }),
+    ).rejects.toThrow(/Unique constraint|one_open_per_service_area/);
+  });
+
+  it('enforces unique hostel names and a valid service area', async () => {
+    const canteen = await makeCanteen();
+    await createHostelRecord(prisma, { name: 'Tower', canteenId: canteen.id });
+    await expect(
+      createHostelRecord(prisma, { name: 'Tower', canteenId: canteen.id }),
     ).rejects.toThrow(/Hostel_name_key/);
     await expect(
-      prisma.hostel.create({ data: { name: 'Orphan', canteenId: randomUUID() } }),
-    ).rejects.toThrow(/Hostel_canteenId_fkey/);
+      prisma.hostel.create({ data: { name: 'Orphan', serviceAreaId: randomUUID() } }),
+    ).rejects.toThrow(/Hostel_serviceAreaId_fkey/);
   });
 
-  it('prevents deleting a canteen that hostels depend on', async () => {
+  it('prevents deleting a canteen or area that hostels depend on', async () => {
     const canteen = await makeCanteen();
-    await prisma.hostel.create({ data: { name: 'Dependent', canteenId: canteen.id } });
+    await createHostelRecord(prisma, { name: 'Dependent', canteenId: canteen.id });
     await expect(prisma.canteen.delete({ where: { id: canteen.id } })).rejects.toThrow(
       /Hostel_canteenId_fkey|Foreign key/,
     );
+    await expect(
+      prisma.serviceArea.delete({ where: { id: canteen.serviceAreaId } }),
+    ).rejects.toThrow(/fkey|Foreign key/);
   });
 });
 

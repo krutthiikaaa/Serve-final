@@ -41,7 +41,11 @@ class MenuFilterPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _FilterChoice(label: 'All', selected: draft.categoryId == null, onTap: () => onDraftChanged(draft.copyWith(clearCategory: true))),
+              _FilterChoice(
+                label: 'All',
+                selected: draft.categoryId == null,
+                onTap: () => onDraftChanged(draft.copyWith(clearCategory: true)),
+              ),
               for (final category in categories)
                 _FilterChoice(
                   label: category.name,
@@ -60,12 +64,16 @@ class MenuFilterPanel extends StatelessWidget {
               children: [
                 Text('${formatRupees(min.round())} – ${formatRupees(max.round())}', style: theme.textTheme.bodySmall),
                 RangeSlider(
-                  values: RangeValues(min.clamp(bounds.min.toDouble(), bounds.max.toDouble()), max.clamp(bounds.min.toDouble(), bounds.max.toDouble())),
+                  values: RangeValues(
+                    min.clamp(bounds.min.toDouble(), bounds.max.toDouble()),
+                    max.clamp(bounds.min.toDouble(), bounds.max.toDouble()),
+                  ),
                   min: bounds.min.toDouble(),
                   max: bounds.max.toDouble(),
                   divisions: ((bounds.max - bounds.min) / 100).clamp(1, 40).round(),
                   labels: RangeLabels(formatRupees(min.round()), formatRupees(max.round())),
-                  onChanged: (value) => onDraftChanged(draft.copyWith(minPricePaise: value.start.round(), maxPricePaise: value.end.round())),
+                  onChanged: (value) =>
+                      onDraftChanged(draft.copyWith(minPricePaise: value.start.round(), maxPricePaise: value.end.round())),
                 ),
               ],
             ),

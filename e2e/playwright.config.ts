@@ -2,9 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 import { E2E } from './tests/support/constants.mjs';
 
 /**
- * End-to-end suite: real backend + PostgreSQL (`serve_test`) + Firebase Auth
- * Emulator + the staff and admin apps. Prerequisites: PostgreSQL running,
- * backend/.env.test present, and the emulator (`npm run emulators`).
+ * End-to-end suite: real backend + PostgreSQL (`serve_test`) + Better Auth
+ * (test-only sign-in; Google cannot run in automation) + the staff and admin
+ * apps. Prerequisites: PostgreSQL running and backend/.env.test present.
  * The suite shares one database, so it runs serially.
  */
 /** The Flutter web build is slow, so it runs only on request (E2E_STUDENT_WEB=1). */
@@ -12,9 +12,6 @@ const studentWeb = process.env.E2E_STUDENT_WEB === '1';
 
 const frontendEnv = {
   VITE_API_URL: E2E.apiUrl,
-  VITE_FIREBASE_API_KEY: E2E.firebaseApiKey,
-  VITE_FIREBASE_PROJECT_ID: E2E.firebaseProjectId,
-  VITE_FIREBASE_AUTH_EMULATOR_URL: E2E.emulatorUrl,
   VITE_STUDENT_APP_URL: E2E.studentUrl,
 };
 

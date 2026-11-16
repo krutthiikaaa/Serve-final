@@ -5,26 +5,62 @@ const vedId = '9703a1b2-0000-4000-8000-000000000002';
 const sandwichesId = '958c0000-0000-4000-8000-000000000001';
 const juicesId = '958c0000-0000-4000-8000-000000000002';
 
+const kgAreaId = '7a7a0000-0000-4000-8000-000000000001';
+const kgDayId = '9703a1b2-0000-4000-8000-000000000003';
+
+/// A canteen as the backend sends it. The type follows the name ("Day" →
+/// DAY) unless given; `state` is the backend availability state.
 Map<String, dynamic> canteenJson({
   String id = kgId,
   String name = 'Krishna & Godavari Night Canteen',
   String status = 'ACCEPTING_ORDERS',
-}) => {
-  'id': id,
-  'name': name,
-  'slug': name.toLowerCase().replaceAll(RegExp('[^a-z]+'), '-'),
-  'location': 'Between Krishna and Godavari hostels',
-  'openingHours': '9:00 PM – 3:00 AM',
-  'isActive': status != 'INACTIVE',
-  'isAcceptingOrders': status == 'ACCEPTING_ORDERS',
-  'status': status,
-  'supportedPeriods': ['DAY', 'NIGHT'],
-  'services': [
-    {'period': 'DAY', 'isEnabled': true, 'override': 'AUTO', 'isOpenNow': status == 'ACCEPTING_ORDERS'},
-    {'period': 'NIGHT', 'isEnabled': true, 'override': 'AUTO', 'isOpenNow': status == 'ACCEPTING_ORDERS'},
-  ],
-  'configurationWarnings': <Object>[],
-};
+  String? type,
+  String? state,
+  String areaId = kgAreaId,
+  String areaName = 'Krishna & Godavari',
+}) {
+  final t = type ?? (name.contains('Day') ? 'DAY' : 'NIGHT');
+  final open = status == 'ACCEPTING_ORDERS';
+  final s =
+      state ??
+      (status == 'INACTIVE'
+          ? 'INACTIVE'
+          : open
+          ? 'OPEN'
+          : 'PAUSED');
+  return {
+    'id': id,
+    'name': name,
+    'slug': name.toLowerCase().replaceAll(RegExp('[^a-z]+'), '-'),
+    'type': t,
+    'serviceArea': {'id': areaId, 'name': areaName},
+    'location': 'Between Krishna and Godavari hostels',
+    'openingHours': t == 'DAY' ? '8:00 AM – 8:00 PM' : '9:00 PM – 3:00 AM',
+    'isActive': status != 'INACTIVE',
+    'isAcceptingOrders': open,
+    'isPaused': s == 'PAUSED',
+    'status': status,
+    'availability': {
+      'state': s,
+      'isOpenNow': s == 'OPEN',
+      'message': s == 'OPEN' ? 'Taking orders now.' : 'Not taking orders.',
+      'override': 'FORCE_OPEN',
+      'today': null,
+      'otherServiceCanteen': s == 'OTHER_SERVICE_ACTIVE'
+          ? {
+              'id': t == 'DAY' ? kgId : kgDayId,
+              'name': t == 'DAY' ? 'Krishna & Godavari Night Canteen' : 'Krishna & Godavari Day Canteen',
+              'type': t == 'DAY' ? 'NIGHT' : 'DAY',
+            }
+          : null,
+    },
+    'supportedPeriods': [t],
+    'services': [
+      {'period': t, 'isEnabled': true, 'override': 'FORCE_OPEN', 'isOpenNow': s == 'OPEN'},
+    ],
+    'configurationWarnings': <Object>[],
+  };
+}
 
 Map<String, dynamic> itemJson(
   String id,
@@ -62,9 +98,10 @@ Menu menu({
   String name = 'Krishna & Godavari Night Canteen',
   String status = 'ACCEPTING_ORDERS',
   List<Map<String, dynamic>>? sandwiches,
+  String? state,
 }) => Menu.fromJson({
-  'canteen': canteenJson(id: canteenId, name: name, status: status),
-  'servicePeriod': 'NIGHT',
+  'canteen': canteenJson(id: canteenId, name: name, status: status, state: state),
+  'servicePeriod': name.contains('Day') ? 'DAY' : 'NIGHT',
   'categories': [
     {
       'id': sandwichesId,
@@ -94,12 +131,13 @@ StudentMe studentMe() => StudentMe.fromJson({
   'registered': true,
   'role': 'STUDENT',
   'id': 'cfef0fa5-0000-4000-8000-000000000001',
-  'firebaseUid': 'uid-asha',
+  'authUserId': 'uid-asha',
   'name': 'Asha Rao',
-  'email': 'asha@example.edu',
+  'email': 'asha@srmap.edu.in',
   'isActive': true,
   'hostel': {'id': '1c35f533-0000-4000-8000-000000000001', 'name': 'Krishna'},
-  'defaultCanteen': {'id': kgId, 'name': 'Krishna & Godavari Night Canteen', 'isActive': true, 'isAcceptingOrders': true},
+  'serviceArea': {'id': kgAreaId, 'name': 'Krishna & Godavari'},
+  'defaultCanteen': {'id': kgId, 'name': 'Krishna & Godavari Night Canteen', 'type': 'NIGHT', 'isActive': true, 'isAcceptingOrders': true},
 });
 
 Map<String, dynamic> orderJson({
@@ -178,7 +216,12 @@ Map<String, dynamic> paymentConfigJson({
   String? upiVpa,
   String? merchantName,
   String? qrImageUrl,
+  String? qrId,
+  bool withDemoQr = true,
 }) => {
+  'qr': qrId == null
+      ? null
+      : {'id': qrId, 'url': '/api/qr-codes/$qrId', 'contentType': 'image/png', 'uploadedAt': '2026-11-16T10:00:00.000Z'},
   'canteenId': canteenId,
   'mode': mode,
   'upiVpa': upiVpa,
@@ -186,12 +229,8 @@ Map<String, dynamic> paymentConfigJson({
   'qrImageUrl': qrImageUrl,
   'instructions': null,
   'isActive': mode == 'LIVE',
-  'demoQr': mode == 'DEMO'
-      ? {
-          'payload': 'SERVE-DEMO:$canteenId',
-          'svg': '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
-          'warning': 'DEMO ONLY — NOT PAYABLE',
-        }
+  'demoQr': mode == 'DEMO' && withDemoQr
+      ? {'payload': 'SERVE-DEMO:$canteenId', 'svg': '<svg xmlns="http://www.w3.org/2000/svg"></svg>', 'warning': 'DEMO ONLY — NOT PAYABLE'}
       : null,
   'warnings': [if (mode == 'DEMO') 'DEMO_MODE_ACTIVE'],
   'updatedAt': '2026-10-06T18:00:00.000Z',

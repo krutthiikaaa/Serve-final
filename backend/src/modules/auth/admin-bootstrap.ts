@@ -1,56 +1,41 @@
-import type { Auth } from 'firebase-admin/auth';
 import type { PrismaClient } from '../../lib/prisma.js';
+import { isSrmEmail, normalizeEmail } from './srm-email.js';
 
 export interface BootstrapAdminInput {
   email: string;
   name: string;
-  /** Only used to create the Firebase user when it does not exist (non-production). */
-  password?: string | undefined;
-  allowCreateFirebaseUser: boolean;
 }
 
 /**
  * Controlled admin provisioning — the ONLY way an Admin row is created.
- * There is no public admin registration endpoint.
+ * There is no public admin registration endpoint, and no Google sign-in ever
+ * creates an admin on its own.
  *
- * Links an existing Firebase user (or creates one where allowed) to an Admin
- * record. Refuses UIDs that already belong to a student or staff account.
+ * Creates (or re-activates) an Admin row for an @srmap.edu.in address. The
+ * row is linked to its Google identity when that person first signs in with
+ * exactly this verified address (modules/auth/principal.ts). Refuses an
+ * address that already belongs to a student or staff account.
  */
 export async function bootstrapAdmin(
-  deps: { auth: Auth; prisma: PrismaClient },
+  deps: { prisma: PrismaClient },
   input: BootstrapAdminInput,
-): Promise<{ adminId: string; firebaseUid: string; createdFirebaseUser: boolean }> {
-  const email = input.email.trim().toLowerCase();
-  let createdFirebaseUser = false;
-
-  let uid: string;
-  try {
-    uid = (await deps.auth.getUserByEmail(email)).uid;
-  } catch (err) {
-    if ((err as { code?: string }).code !== 'auth/user-not-found') throw err;
-    if (!input.allowCreateFirebaseUser || !input.password) {
-      throw new Error(
-        `No Firebase user exists for ${email}. Create it in Firebase Authentication first.`,
-        { cause: err },
-      );
-    }
-    uid = (await deps.auth.createUser({ email, password: input.password, displayName: input.name }))
-      .uid;
-    createdFirebaseUser = true;
+): Promise<{ adminId: string; linked: boolean; created: boolean }> {
+  const email = normalizeEmail(input.email) ?? '';
+  if (!isSrmEmail(email)) {
+    throw new Error('Admins must use an @srmap.edu.in Google account.');
   }
-
   const [student, staff] = await Promise.all([
-    deps.prisma.student.findUnique({ where: { firebaseUid: uid } }),
-    deps.prisma.staff.findUnique({ where: { firebaseUid: uid } }),
+    deps.prisma.student.findUnique({ where: { email } }),
+    deps.prisma.staff.findUnique({ where: { email } }),
   ]);
   if (student || staff) {
     throw new Error(`${email} is already registered as a ${student ? 'student' : 'staff member'}.`);
   }
-
+  const existing = await deps.prisma.admin.findUnique({ where: { email } });
   const admin = await deps.prisma.admin.upsert({
-    where: { firebaseUid: uid },
-    update: { isActive: true, name: input.name, email },
-    create: { firebaseUid: uid, email, name: input.name },
+    where: { email },
+    update: { isActive: true, name: input.name },
+    create: { email, name: input.name },
   });
-  return { adminId: admin.id, firebaseUid: uid, createdFirebaseUser };
+  return { adminId: admin.id, linked: admin.authUserId !== null, created: !existing };
 }

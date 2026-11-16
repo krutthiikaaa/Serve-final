@@ -9,6 +9,7 @@ import '../../theme/serve_layout.dart';
 import '../../theme/serve_theme.dart';
 import '../live_reload.dart';
 import '../navigation.dart';
+import '../widgets/surface.dart';
 import '../widgets/order_status.dart';
 import '../widgets/serve_header.dart';
 import '../widgets/states.dart';
@@ -262,7 +263,15 @@ class OrderCard extends StatelessWidget {
                         children: [
                           Text(order.orderNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
                           const SizedBox(height: 2),
-                          Text(order.canteen.name, style: Theme.of(context).textTheme.titleSmall),
+                          Wrap(
+                            spacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(order.canteen.name, style: Theme.of(context).textTheme.titleSmall),
+                              if ((order.canteen.type ?? order.servicePeriod) != null)
+                                CanteenTypeChip(type: (order.canteen.type ?? order.servicePeriod)!, dense: true),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -284,8 +293,7 @@ class OrderCard extends StatelessWidget {
                     _MetaChip(icon: Icons.wb_twilight_outlined, label: formatServicePeriod(order.servicePeriod)),
                     _MetaChip(icon: Icons.payments_outlined, label: formatRupees(order.totalPaise)),
                     _MetaChip(icon: Icons.schedule_rounded, label: formatDateTime(order.createdAt)),
-                    if (order.payment?.isSimulated == true)
-                      const _MetaChip(icon: Icons.science_outlined, label: 'DEMO'),
+                    if (order.payment?.isSimulated == true) const _MetaChip(icon: Icons.science_outlined, label: 'Simulated'),
                     if (order.status == OrderStatus.placed) const _MetaChip(icon: Icons.hourglass_top_rounded, label: 'PAYMENT PENDING'),
                   ],
                 ),

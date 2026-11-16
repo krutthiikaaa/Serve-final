@@ -1,11 +1,16 @@
+import { applyStaffPause } from '../canteens/service-areas.js';
+import { publishOrderTaking } from '../canteens/order-taking-events.js';
 import type { PrismaClient } from '../../lib/prisma.js';
-import { ConflictError } from '../../lib/errors.js';
-import { startOfIstDay } from '../../lib/time.js';
-import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
+import { startOfIstDay, systemClock, type Clock } from '../../lib/time.js';
+import type { EventPublisher } from '../../realtime/events.js';
 import type { ApprovedStaffPrincipal } from '../../middleware/auth.js';
-import { canteenSelect, orderTakingPayload, toCanteenDto } from '../canteens/canteen.dto.js';
+import { canteenSelect, toCanteenDto } from '../canteens/canteen.dto.js';
 
-export function createStaffService(prisma: PrismaClient, events: EventPublisher) {
+export function createStaffService(
+  prisma: PrismaClient,
+  events: EventPublisher,
+  clock: Clock = systemClock,
+) {
   return {
     /** Operational overview for one assigned canteen. */
     async dashboard(_staff: ApprovedStaffPrincipal, canteenId: string) {
@@ -59,23 +64,20 @@ export function createStaffService(prisma: PrismaClient, events: EventPublisher)
       canteenId: string,
       isAcceptingOrders: boolean,
     ) {
-      const current = await prisma.canteen.findUniqueOrThrow({ where: { id: canteenId } });
-      if (isAcceptingOrders && !current.isActive) {
-        throw new ConflictError('This canteen is inactive. Contact an admin.', 'CANTEEN_INACTIVE');
-      }
-      const canteen = await prisma.canteen.update({
+      // Staff pause/resume only their own canteen. A pause is never lifted by
+      // the Day/Night schedule; only an admin chooses which canteen of an
+      // area is on duty (see applyStaffPause).
+      const now = clock();
+      const result = await prisma.$transaction((tx) =>
+        applyStaffPause(tx, canteenId, !isAcceptingOrders, now),
+      );
+      // Always echo this canteen's state, plus any sibling that changed.
+      await publishOrderTaking(prisma, events, [canteenId, ...result.changedCanteenIds]);
+      const canteen = await prisma.canteen.findUniqueOrThrow({
         where: { id: canteenId },
-        data: { isAcceptingOrders },
         select: canteenSelect,
       });
-      const outbox = new Outbox();
-      outbox.emit(
-        'canteen.status_changed',
-        [rooms.canteenPublic(canteen.id), rooms.canteen(canteen.id), rooms.admins()],
-        orderTakingPayload(canteen),
-      );
-      outbox.flush(events);
-      return toCanteenDto(canteen);
+      return toCanteenDto(canteen, now);
     },
   };
 }

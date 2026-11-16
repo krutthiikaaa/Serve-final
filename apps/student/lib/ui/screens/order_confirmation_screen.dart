@@ -47,7 +47,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                     const SizedBox(height: 22),
                     Text(
                       order.payment?.isSimulated == true
-                          ? 'Demo order recorded'
+                          ? 'Test order recorded'
                           : order.payment?.isSuccess == true
                           ? 'Payment confirmed'
                           : 'Order placed',
@@ -89,10 +89,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              [
-                                'Collect at ${order.canteen.name}',
-                                if (order.servicePeriod != null) order.servicePeriod!.label,
-                              ].join(' · '),
+                              ['Collect at ${order.canteen.name}', if (order.servicePeriod != null) order.servicePeriod!.label].join(' · '),
                               textAlign: TextAlign.center,
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
@@ -102,7 +99,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                                 '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
                                 formatRupees(order.totalPaise),
                                 if (order.payment?.isSimulated == true)
-                                  'DEMO'
+                                  'Simulated'
                                 else if (order.payment?.isSuccess == true)
                                   'paid'
                                 else
@@ -113,7 +110,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                             if (order.payment?.isSimulated == true) ...[
                               const SizedBox(height: 10),
                               const Text(
-                                'DEMO TRANSACTION — NO REAL PAYMENT',
+                                'SIMULATED TRANSACTION — NO REAL PAYMENT',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(fontWeight: FontWeight.w800, color: ServeColors.orangeInk),
                               ),

@@ -171,7 +171,7 @@ void main() {
     expect(find.textContaining('PAYMENT PENDING'), findsWidgets);
     await tester.ensureVisible(find.byKey(const Key('utr-field')));
     await tester.enterText(find.byKey(const Key('utr-field')), 'UTRTEST1');
-    await tester.tap(find.widgetWithText(FilledButton, 'Save demo reference'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Save reference'));
     await tester.pumpAndSettle();
     expect(h.api.calls.where((c) => c.startsWith('claim:')), isNotEmpty);
     expect(h.api.calls.where((c) => c.startsWith('mockComplete:')), isEmpty);

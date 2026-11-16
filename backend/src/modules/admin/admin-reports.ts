@@ -199,7 +199,7 @@ export async function adminReports(prisma: PrismaClient, query: AdminReportQuery
       : Promise.resolve([]),
     prisma.canteen.findMany({
       where: query.canteenId ? { id: query.canteenId } : {},
-      select: { id: true, name: true },
+      select: { id: true, name: true, type: true },
       orderBy: { name: 'asc' },
     }),
   ]);
@@ -262,6 +262,7 @@ export async function adminReports(prisma: PrismaClient, query: AdminReportQuery
       return {
         id: canteen.id,
         name: canteen.name,
+        type: canteen.type,
         liveSalesPaise: row?._sum.totalPaise ?? 0,
         orderCount: row?._count._all ?? 0,
       };
@@ -299,6 +300,8 @@ export async function adminPaymentOverview(prisma: PrismaClient) {
     select: {
       id: true,
       name: true,
+      type: true,
+      qrCodes: { where: { isActive: true }, select: { createdAt: true } },
       paymentConfig: {
         select: {
           mode: true,
@@ -318,10 +321,12 @@ export async function adminPaymentOverview(prisma: PrismaClient) {
     return {
       id: row.id,
       name: row.name,
+      type: row.type,
       mode: config?.mode ?? null,
       merchantName: config?.merchantName ?? null,
       upiConfigured: Boolean(config?.upiVpa),
       qrConfigured: Boolean(config?.qrImageUrl || config?.qrStorageKey),
+      qrUploadedAt: row.qrCodes[0]?.createdAt ?? null,
       incomplete,
       updatedAt: config?.updatedAt ?? null,
     };

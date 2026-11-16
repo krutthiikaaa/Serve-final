@@ -4,6 +4,13 @@ import { pinoHttp } from 'pino-http';
 import type { Logger } from 'pino';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+/** Query parameters that carry one-time sign-in secrets (Google OAuth callback, native hand-off). */
+const SECRET_QUERY = /([?&](?:code|state|token|code_verifier)=)[^&#]*/gi;
+
+/** The request URL as logged: one-time sign-in codes are replaced. */
+export function loggableUrl(url: string): string {
+  return url.replace(SECRET_QUERY, '$1[REDACTED]');
+}
 
 /**
  * Structured request logging with a per-request id.
@@ -32,7 +39,7 @@ export function requestLogger(logger: Logger) {
     },
     serializers: {
       req(req: { id: unknown; method: string; url: string }) {
-        return { id: req.id, method: req.method, url: req.url };
+        return { id: req.id, method: req.method, url: loggableUrl(req.url) };
       },
     },
   });

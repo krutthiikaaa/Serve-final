@@ -40,12 +40,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _error = null;
     });
     try {
-      final order = await api.placeOrder(
-        canteenId,
-        cart.toInputs(),
-        period: cart.period ?? widget.quote.servicePeriod,
-        idempotencyKey: _idempotencyKey,
-      );
+      final order = await api.placeOrder(canteenId, cart.toInputs(), idempotencyKey: _idempotencyKey);
       cart.clear();
       if (!mounted) return;
       // The cart flow is finished: Back from payment/tracking returns to the tabs.

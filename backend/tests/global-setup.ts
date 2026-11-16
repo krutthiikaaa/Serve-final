@@ -9,6 +9,8 @@ import { createPrismaClient } from '../src/lib/prisma.js';
  *  1. Recreates the PostgreSQL *test* database schema from scratch and applies
  *     every migration with `prisma migrate deploy` — this proves the migration
  *     history works on a clean database on every run.
+ * Authentication needs no external service: Better Auth runs in-process
+ * against this database (see helpers/identity.ts).
  *
  * Guard: only ever touches a database whose name ends in `_test`.
  */
@@ -40,17 +42,4 @@ export default async function setup(): Promise<void> {
     env: { ...process.env, NODE_ENV: 'test' },
     stdio: 'pipe',
   });
-
-  const host = env.FIREBASE_AUTH_EMULATOR_HOST;
-  if (!host) throw new Error('Tests require FIREBASE_AUTH_EMULATOR_HOST (Firebase Auth Emulator)');
-  const reachable = await fetch(`http://${host}/`).then(
-    (res) => res.ok,
-    () => false,
-  );
-  if (!reachable) {
-    throw new Error(
-      `Firebase Auth Emulator is not reachable at ${host}. Start it with \`npm run emulators\` ` +
-        'or run the suite with `npm run test:emulator` from the repository root.',
-    );
-  }
 }

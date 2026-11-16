@@ -10,7 +10,7 @@ test('staff menu changes reach browsing students live, with rupees stored as pai
   const { email } = await approvedStaff('Menu Staff', 'Yamuna & Narmada Night Canteen');
   const student = await StudentActor.register('Menu Browser', 'Yamuna');
   const socket = await student.socket();
-  expect((await socket.subscribeMenu(student.me.defaultCanteen.id)).ok).toBe(true);
+  expect((await socket.subscribeMenu(student.me.defaultCanteen!.id)).ok).toBe(true);
 
   await signIn(page, E2E.staffUrl, email, E2E.password);
   await page.getByRole('link', { name: 'Menu' }).click();
@@ -31,7 +31,7 @@ test('staff menu changes reach browsing students live, with rupees stored as pai
     const item = await student.data<MenuItem>('GET', `/menu/items/${event.itemId}`);
     expect(item.isOrderable).toBe(false);
     // An unavailable item cannot be ordered, whatever the client sends.
-    const attempt = await student.placeOrder(student.me.defaultCanteen.id, [
+    const attempt = await student.placeOrder(student.me.defaultCanteen!.id, [
       { menuItemId: event.itemId, quantity: 1 },
     ]);
     expect(attempt.status).toBeGreaterThanOrEqual(400);
@@ -51,7 +51,7 @@ test('staff menu changes reach browsing students live, with rupees stored as pai
       'menu.item_price_changed',
     );
     expect(event.pricePaise).toBe(7_750);
-    const quote = await student.quote(student.me.defaultCanteen.id, [
+    const quote = await student.quote(student.me.defaultCanteen!.id, [
       { menuItemId: event.itemId, quantity: 2 },
     ]);
     expect(quote.totalPaise).toBe(15_500);
@@ -64,7 +64,7 @@ test('admin pauses and resumes a canteen; students are told live and orders are 
   page,
 }) => {
   const student = await StudentActor.register('Paused Canteen Student', 'New Hostel');
-  const canteenId = student.me.defaultCanteen.id;
+  const canteenId = student.me.defaultCanteen!.id;
   const socket = await student.socket();
   await socket.subscribeMenu(canteenId);
   const menu = await student.menu();
@@ -87,7 +87,7 @@ test('admin pauses and resumes a canteen; students are told live and orders are 
   expect(refused.body.error?.code).toBe('CANTEEN_NOT_ACCEPTING_ORDERS');
 
   await row.getByRole('button', { name: 'Resume' }).click();
-  await expect(row.getByText('Accepting orders')).toBeVisible();
+  await expect(row.getByText('Taking orders')).toBeVisible();
   const accepted = await student.placeOrder(canteenId, [{ menuItemId: item.id, quantity: 1 }]);
   expect(accepted.status).toBe(201);
   socket.close();

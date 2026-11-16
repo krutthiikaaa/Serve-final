@@ -32,7 +32,10 @@ class SecureFavouritesStore implements FavouritesStore {
       if (raw == null || raw.isEmpty) return {};
       final parsed = jsonDecode(raw);
       if (parsed is! List) return {};
-      return {for (final id in parsed) if (id is String && id.isNotEmpty) id};
+      return {
+        for (final id in parsed)
+          if (id is String && id.isNotEmpty) id,
+      };
     } catch (_) {
       return {};
     }

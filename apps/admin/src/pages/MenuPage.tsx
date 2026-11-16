@@ -27,10 +27,9 @@ import {
   useResource,
   useServerEvents,
   useToast,
+  CanteenTypeBadge,
 } from '@serve/web-shared';
 import { useAdminApi } from '../useAdminApi';
-
-type PeriodFilter = 'ALL' | ServicePeriod;
 
 function periodPrice(item: AdminMenuItem, period: ServicePeriod) {
   return item.services.find((service) => service.period === period);
@@ -54,7 +53,6 @@ export function MenuPage() {
   const { connectionEpoch } = useRealtime();
   const canteens = useResource(() => api.canteens(), [api]);
   const [canteenId, setCanteenId] = useState('');
-  const [period, setPeriod] = useState<PeriodFilter>('ALL');
   const [categoryId, setCategoryId] = useState('');
   const [search, setSearch] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
@@ -82,30 +80,31 @@ export function MenuPage() {
     },
   );
 
-  const categories = catalogue.data ?? [];
+  const categories = useMemo(() => catalogue.data ?? [], [catalogue.data]);
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
     return categories.flatMap((category) =>
       category.items
         .filter((item) => {
           if (categoryId && category.id !== categoryId) return false;
-          if (period !== 'ALL' && !periodPrice(item, period)) return false;
           if (query && !item.name.toLowerCase().includes(query)) return false;
           return true;
         })
         .map((item) => ({ item, category })),
     );
-  }, [categories, categoryId, period, search]);
+  }, [categories, categoryId, search]);
 
   const selectedCategory = categories.find((category) => category.id === categoryId);
-  const canteenName = canteens.data?.find((canteen) => canteen.id === canteenId)?.name;
+  const selectedCanteen = canteens.data?.find((canteen) => canteen.id === canteenId);
+  /** Each canteen sells in exactly its own period (Day or Night). */
+  const period: ServicePeriod = selectedCanteen?.type ?? 'NIGHT';
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1>Menu Management</h1>
-          <p>One catalogue per canteen. Day and Night prices stay on the same item.</p>
+          <p>Every canteen, Day or Night, has its own independent menu and prices.</p>
         </div>
         <Button
           icon={<IconPlus width={16} height={16} />}
@@ -129,25 +128,12 @@ export function MenuPage() {
           >
             {(canteens.data ?? []).map((canteen) => (
               <option key={canteen.id} value={canteen.id}>
-                {canteen.name}
+                {canteen.name} · {canteen.type === 'DAY' ? 'Day' : 'Night'}
               </option>
             ))}
           </Select>
         </label>
-        <div className="segmented" role="tablist" aria-label="Service period">
-          {(['ALL', 'DAY', 'NIGHT'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={period === value}
-              className={period === value ? 'active' : ''}
-              onClick={() => setPeriod(value)}
-            >
-              {value === 'ALL' ? 'All' : value === 'DAY' ? 'Day' : 'Night'}
-            </button>
-          ))}
-        </div>
+        {selectedCanteen ? <CanteenTypeBadge type={selectedCanteen.type} /> : null}
         <label className="inline-select">
           <span>Category</span>
           <Select
@@ -209,7 +195,7 @@ export function MenuPage() {
             }
           />
         ) : rows.length === 0 ? (
-          <EmptyState title="No matching items" body="Try another period, category, or search." />
+          <EmptyState title="No matching items" body="Try another category or search." />
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -217,11 +203,8 @@ export function MenuPage() {
                 <tr>
                   <th>Item</th>
                   <th>Category</th>
-                  <th>Canteen</th>
-                  <th>Day price</th>
-                  <th>Night price</th>
-                  <th>Day</th>
-                  <th>Night</th>
+                  <th className="num">Price</th>
+                  <th>Available</th>
                   <th>
                     <span className="sr-only">Actions</span>
                   </th>
@@ -238,11 +221,8 @@ export function MenuPage() {
                       {!item.isActive ? <Tag>Inactive</Tag> : null}
                     </td>
                     <td>{category.name}</td>
-                    <td>{canteenName}</td>
-                    <td className="num">{priceCell(item, 'DAY')}</td>
-                    <td className="num">{priceCell(item, 'NIGHT')}</td>
-                    <td>{availabilityCell(item, 'DAY')}</td>
-                    <td>{availabilityCell(item, 'NIGHT')}</td>
+                    <td className="num">{priceCell(item, period)}</td>
+                    <td>{availabilityCell(item, period)}</td>
                     <td>
                       <div className="row-actions">
                         <Button size="sm" variant="secondary" onClick={() => setEditing(item)}>
@@ -305,6 +285,7 @@ export function MenuPage() {
       {editing && canteenId ? (
         <ItemModal
           canteenId={canteenId}
+          period={period}
           categories={categories}
           item={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
@@ -381,27 +362,26 @@ function CategoryModal({
 
 function ItemModal({
   canteenId,
+  period,
   categories,
   item,
   onClose,
   onSaved,
 }: {
   canteenId: string;
+  period: ServicePeriod;
   categories: AdminMenuCategory[];
   item: AdminMenuItem | null;
   onClose: () => void;
   onSaved: (message: string) => Promise<void>;
 }) {
   const api = useAdminApi();
-  const day = item ? periodPrice(item, 'DAY') : undefined;
-  const night = item ? periodPrice(item, 'NIGHT') : undefined;
+  const current = item ? periodPrice(item, period) : undefined;
   const [categoryId, setCategoryId] = useState(item?.categoryId ?? categories[0]?.id ?? '');
   const [name, setName] = useState(item?.name ?? '');
   const [description, setDescription] = useState(item?.description ?? '');
-  const [dayPrice, setDayPrice] = useState(day ? paiseToRupeesInput(day.pricePaise) : '');
-  const [nightPrice, setNightPrice] = useState(night ? paiseToRupeesInput(night.pricePaise) : '');
-  const [dayAvailable, setDayAvailable] = useState(day?.isAvailable ?? true);
-  const [nightAvailable, setNightAvailable] = useState(night?.isAvailable ?? true);
+  const [price, setPrice] = useState(current ? paiseToRupeesInput(current.pricePaise) : '');
+  const [available, setAvailable] = useState(current?.isAvailable ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -409,39 +389,24 @@ function ItemModal({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const local: Record<string, string> = {};
-    const services: MenuItemServiceConfig[] = [];
-    const dayPaise = dayPrice.trim() ? rupeesToPaise(dayPrice) : null;
-    const nightPaise = nightPrice.trim() ? rupeesToPaise(nightPrice) : null;
+    const paise = rupeesToPaise(price);
     if (!name.trim()) local.name = 'Enter an item name';
     if (!categoryId) local.categoryId = 'Choose a category';
-    if (dayPrice.trim()) {
-      if (dayPaise === null || dayPaise <= 0) local.dayPrice = 'Enter a price greater than ₹0';
-      else services.push({ period: 'DAY', pricePaise: dayPaise, isAvailable: dayAvailable });
-    }
-    if (nightPrice.trim()) {
-      if (nightPaise === null || nightPaise <= 0)
-        local.nightPrice = 'Enter a price greater than ₹0';
-      else services.push({ period: 'NIGHT', pricePaise: nightPaise, isAvailable: nightAvailable });
-    }
-    if (!item && (nightPaise === null || nightPaise <= 0)) {
-      local.nightPrice = 'Night price is required. It is the catalogue price for a new item.';
-    }
+    if (paise === null || paise <= 0) local.price = 'Enter a price greater than ₹0';
     setErrors(local);
-    if (Object.keys(local).length > 0) return;
+    if (Object.keys(local).length > 0 || paise === null) return;
     setBusy(true);
     setError(null);
     try {
       if (!item) {
+        // The backend prices a new item for its canteen's own period.
         const created = await api.createMenuItem(canteenId, {
           categoryId,
           name: name.trim(),
           description: description.trim() || null,
-          pricePaise: nightPaise ?? 0,
-          isAvailable: nightAvailable,
+          pricePaise: paise,
+          isAvailable: available,
         });
-        if (services.some((service) => service.period === 'DAY')) {
-          await api.updateMenuItemServices(created.id, services);
-        }
         await onSaved(`${created.name} added`);
         return;
       }
@@ -449,9 +414,11 @@ function ItemModal({
         categoryId,
         name: name.trim(),
         description: description.trim() || null,
-        isAvailable: nightAvailable,
       });
-      if (services.length > 0) await api.updateMenuItemServices(item.id, services);
+      const services: MenuItemServiceConfig[] = [
+        { period, pricePaise: paise, isAvailable: available },
+      ];
+      await api.updateMenuItemServices(item.id, services);
       await onSaved(`${name.trim()} updated`);
     } catch (err) {
       setErrors(fieldErrors(err));
@@ -511,54 +478,25 @@ function ItemModal({
             />
           )}
         </Field>
-        <div className="form-row">
-          <Field
-            label="Day price (₹)"
-            error={errors.dayPrice}
-            hint={day ? undefined : 'Not configured'}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                inputMode="decimal"
-                value={dayPrice}
-                onChange={(event) => setDayPrice(event.target.value)}
-                placeholder="Not set"
-              />
-            )}
-          </Field>
-          <Field label="Night price (₹)" error={errors.nightPrice}>
-            {(props) => (
-              <Input
-                {...props}
-                inputMode="decimal"
-                value={nightPrice}
-                onChange={(event) => setNightPrice(event.target.value)}
-                placeholder="Not set"
-              />
-            )}
-          </Field>
-        </div>
+        <Field label="Price (₹)" error={errors.price}>
+          {(props) => (
+            <Input
+              {...props}
+              inputMode="decimal"
+              value={price}
+              onChange={(event) => setPrice(event.target.value)}
+              placeholder="0"
+            />
+          )}
+        </Field>
         <label className="checkbox">
           <input
             type="checkbox"
-            checked={dayAvailable}
-            onChange={(event) => setDayAvailable(event.target.checked)}
+            checked={available}
+            onChange={(event) => setAvailable(event.target.checked)}
           />
-          Available during Day
+          Available to order
         </label>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={nightAvailable}
-            onChange={(event) => setNightAvailable(event.target.checked)}
-          />
-          Available during Night
-        </label>
-        <p className="muted small">
-          Leave a price blank to keep that period unchanged. A blank price does not copy the other
-          period.
-        </p>
       </form>
     </Modal>
   );
