@@ -40,7 +40,10 @@ export function DashboardPage() {
   const canCashier = hasCapability('CASHIER');
   const dashboard = useResource(() => api.dashboard(), [api, connectionEpoch, canteenId]);
   const recent = useResource(
-    () => (canKitchen ? api.orders('active', { limit: 8 }) : Promise.resolve({ data: [], nextCursor: null })),
+    () =>
+      canKitchen
+        ? api.orders('active', { limit: 8 })
+        : Promise.resolve({ data: [], nextCursor: null }),
     [api, connectionEpoch, canteenId, canKitchen],
   );
   const [toggling, setToggling] = useState(false);
@@ -175,56 +178,56 @@ export function DashboardPage() {
       )}
 
       {canKitchen ? (
-      <section className="section">
-        <div className="section-header">
-          <h2>Active orders</h2>
-          <Link to="/orders" className="btn btn-secondary btn-sm">
-            Open order board
-          </Link>
-        </div>
-        {recent.loading && !recent.data ? (
-          <SkeletonRows />
-        ) : recent.error && !recent.data ? (
-          <ErrorState error={recent.error} onRetry={() => void recent.reload()} />
-        ) : recent.data && recent.data.data.length > 0 ? (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>Student</th>
-                  <th>Items</th>
-                  <th>Total</th>
-                  <th>Paid at</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.data.data.map((order) => (
-                  <tr key={order.id}>
-                    <td>
-                      <strong className="order-number">{order.orderNumber}</strong>
-                    </td>
-                    <td>{order.student?.name ?? order.guestName ?? 'Walk-in'}</td>
-                    <td className="muted">{itemCount(order.items)}</td>
-                    <td className="num">{formatRupees(order.totalPaise)}</td>
-                    <td className="muted">{order.paidAt ? formatTime(order.paidAt) : '—'}</td>
-                    <td>
-                      <StatusPill status={order.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <section className="section">
+          <div className="section-header">
+            <h2>Active orders</h2>
+            <Link to="/orders" className="btn btn-secondary btn-sm">
+              Open order board
+            </Link>
           </div>
-        ) : (
-          <EmptyState
-            icon={<IconReceipt />}
-            title="No active orders"
-            body="Paid orders appear here the moment students check out."
-          />
-        )}
-      </section>
+          {recent.loading && !recent.data ? (
+            <SkeletonRows />
+          ) : recent.error && !recent.data ? (
+            <ErrorState error={recent.error} onRetry={() => void recent.reload()} />
+          ) : recent.data && recent.data.data.length > 0 ? (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Student</th>
+                    <th>Items</th>
+                    <th>Total</th>
+                    <th>Paid at</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent.data.data.map((order) => (
+                    <tr key={order.id}>
+                      <td>
+                        <strong className="order-number">{order.orderNumber}</strong>
+                      </td>
+                      <td>{order.student?.name ?? order.guestName ?? 'Walk-in'}</td>
+                      <td className="muted">{itemCount(order.items)}</td>
+                      <td className="num">{formatRupees(order.totalPaise)}</td>
+                      <td className="muted">{order.paidAt ? formatTime(order.paidAt) : '—'}</td>
+                      <td>
+                        <StatusPill status={order.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              icon={<IconReceipt />}
+              title="No active orders"
+              body="Paid orders appear here the moment students check out."
+            />
+          )}
+        </section>
       ) : null}
     </>
   );

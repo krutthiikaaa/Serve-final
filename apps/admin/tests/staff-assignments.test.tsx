@@ -15,7 +15,11 @@ describe('staff assignments and capabilities', () => {
     api.staffMember.mockResolvedValue(
       staffDetail(s, [], {
         assignments: [
-          { canteenId: kg.id, canteen: { id: kg.id, name: kg.name }, capabilities: ['KITCHEN', 'MENU', 'PAUSE'] },
+          {
+            canteenId: kg.id,
+            canteen: { id: kg.id, name: kg.name },
+            capabilities: ['KITCHEN', 'MENU', 'PAUSE'],
+          },
         ],
       }),
     );

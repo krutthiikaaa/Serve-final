@@ -48,7 +48,9 @@ describe('admin canteen service configuration', () => {
 
     const periods = created.body.data.services.map((row: { period: string }) => row.period).sort();
     expect(periods).toEqual(['DAY', 'NIGHT']);
-    expect(created.body.data.services.find((row: { period: string }) => row.period === 'NIGHT')).toMatchObject({
+    expect(
+      created.body.data.services.find((row: { period: string }) => row.period === 'NIGHT'),
+    ).toMatchObject({
       isEnabled: true,
       override: 'FORCE_OPEN',
     });
@@ -140,12 +142,12 @@ describe('admin canteen service configuration', () => {
     expect(night.body.data.configurationWarnings).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'PERIOD_SCHEDULE_OVERLAP' })]),
     );
-    expect(night.body.data.services.find((row: { period: string }) => row.period === 'DAY').schedules).toEqual([
-      dayWindow,
-    ]);
-    expect(night.body.data.services.find((row: { period: string }) => row.period === 'NIGHT').schedules).toEqual([
-      overlappingNight,
-    ]);
+    expect(
+      night.body.data.services.find((row: { period: string }) => row.period === 'DAY').schedules,
+    ).toEqual([dayWindow]);
+    expect(
+      night.body.data.services.find((row: { period: string }) => row.period === 'NIGHT').schedules,
+    ).toEqual([overlappingNight]);
 
     await request(app)
       .put(`/api/admin/canteens/${kg.id}/services/NIGHT/schedule`)
@@ -188,12 +190,12 @@ describe('admin menu service pricing', () => {
         services: [{ period: 'NIGHT', pricePaise: 6_100, isAvailable: true }],
       })
       .expect(200);
-    expect(night.body.data.services.find((row: { period: string }) => row.period === 'DAY').pricePaise).toBe(
-      5_500,
-    );
-    expect(night.body.data.services.find((row: { period: string }) => row.period === 'NIGHT').pricePaise).toBe(
-      6_100,
-    );
+    expect(
+      night.body.data.services.find((row: { period: string }) => row.period === 'DAY').pricePaise,
+    ).toBe(5_500);
+    expect(
+      night.body.data.services.find((row: { period: string }) => row.period === 'NIGHT').pricePaise,
+    ).toBe(6_100);
 
     const invalid = await request(app)
       .put(`/api/admin/menu/items/${item.id}/services`)

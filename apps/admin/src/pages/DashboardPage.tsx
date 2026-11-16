@@ -107,8 +107,8 @@ export function DashboardPage() {
             ]}
           />
           <p className="muted small revenue-note">
-            Today’s revenue counts successful LIVE payments only. DEMO, pending, rejected, cancelled,
-            and refunded payments are excluded.
+            Today’s revenue counts successful LIVE payments only. DEMO, pending, rejected,
+            cancelled, and refunded payments are excluded.
           </p>
 
           <div className="dashboard-columns three">
@@ -169,9 +169,9 @@ export function DashboardPage() {
 
           {d.payments.demo > 0 ? (
             <p className="notice notice-info" role="status">
-              {d.payments.demo} {d.payments.demo === 1 ? 'canteen is' : 'canteens are'} in DEMO mode.
-              That is expected while a canteen is used for testing, and those payments are not real
-              revenue.
+              {d.payments.demo} {d.payments.demo === 1 ? 'canteen is' : 'canteens are'} in DEMO
+              mode. That is expected while a canteen is used for testing, and those payments are not
+              real revenue.
             </p>
           ) : null}
           {d.payments.incompleteLive > 0 ? (
@@ -188,7 +188,10 @@ export function DashboardPage() {
               <h2>Canteen overview</h2>
             </div>
             {d.canteenOverview.length === 0 ? (
-              <EmptyState title="No canteens yet" body="Create a canteen to see its services here." />
+              <EmptyState
+                title="No canteens yet"
+                body="Create a canteen to see its services here."
+              />
             ) : (
               <div className="table-wrap">
                 <table className="table">
@@ -212,7 +215,9 @@ export function DashboardPage() {
                         <td>{serviceTag(row.dayConfigured, row.dayEnabled, row.dayOpen)}</td>
                         <td>{serviceTag(row.nightConfigured, row.nightEnabled, row.nightOpen)}</td>
                         <td>{acceptanceTag(row)}</td>
-                        <td>{row.isActive ? <Tag tone="success">Active</Tag> : <Tag>Inactive</Tag>}</td>
+                        <td>
+                          {row.isActive ? <Tag tone="success">Active</Tag> : <Tag>Inactive</Tag>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

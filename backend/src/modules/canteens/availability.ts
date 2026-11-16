@@ -42,7 +42,10 @@ const MESSAGES: Record<Exclude<AvailabilityCode, 'OPEN'>, string> = {
   SERVICE_SCHEDULE_NOT_CONFIGURED: 'The service schedule has not been configured.',
 };
 
-function closed(code: Exclude<AvailabilityCode, 'OPEN'>, warnings: ConfigurationWarning[] = []): AvailabilityResult {
+function closed(
+  code: Exclude<AvailabilityCode, 'OPEN'>,
+  warnings: ConfigurationWarning[] = [],
+): AvailabilityResult {
   return { open: false, code, message: MESSAGES[code], warnings };
 }
 

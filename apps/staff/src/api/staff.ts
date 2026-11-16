@@ -111,11 +111,18 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
         })
       ).body,
     confirmPayment: (id: string, body: { paymentReceived: true; utr?: string | null }) =>
-      api.data<{ order: StaffOrder; receipt: Receipt }>('POST', `/staff/orders/${id}/confirm-payment`, {
-        body,
-        query: scoped(),
-      }),
-    confirmDemoPayment: (id: string, body: { simulatedPaymentReceived: true; utr?: string | null }) =>
+      api.data<{ order: StaffOrder; receipt: Receipt }>(
+        'POST',
+        `/staff/orders/${id}/confirm-payment`,
+        {
+          body,
+          query: scoped(),
+        },
+      ),
+    confirmDemoPayment: (
+      id: string,
+      body: { simulatedPaymentReceived: true; utr?: string | null },
+    ) =>
       api.data<{ order: StaffOrder; receipt: Receipt }>(
         'POST',
         `/staff/orders/${id}/confirm-demo-payment`,
@@ -126,8 +133,7 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
         body: reason ? { reason } : {},
         query: scoped(),
       }),
-    posMenu: (period: ServicePeriod) =>
-      api.get<Menu>('/staff/pos/menu', scoped({ period })),
+    posMenu: (period: ServicePeriod) => api.get<Menu>('/staff/pos/menu', scoped({ period })),
     paymentConfig: () =>
       api.get<CanteenPaymentConfig | null>('/staff/canteen/payment-config', scoped()),
     completeWalkIn: (body: WalkInSaleInput) =>
@@ -135,7 +141,9 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
         body,
         query: scoped(),
       }),
-    completeDemoWalkIn: (body: Omit<WalkInSaleInput, 'paymentReceived'> & { simulatedPaymentReceived: true }) =>
+    completeDemoWalkIn: (
+      body: Omit<WalkInSaleInput, 'paymentReceived'> & { simulatedPaymentReceived: true },
+    ) =>
       api.data<{ order: StaffOrder; receipt: Receipt }>('POST', '/staff/pos/demo-sales', {
         body,
         query: scoped(),

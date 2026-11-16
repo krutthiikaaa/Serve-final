@@ -20,9 +20,11 @@ async function completeStaffSso(page: Page, staff: ApiActor) {
   const { redirectUrl } = await staff.initiateSso('STAFF');
   expect(redirectUrl).toContain(`${E2E.staffUrl}/sso/callback?code=`);
   await page.goto(redirectUrl);
-  await expect(page.getByRole('complementary', { name: 'Staff dashboard navigation' })).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(page.getByRole('complementary', { name: 'Staff dashboard navigation' })).toBeVisible(
+    {
+      timeout: 20_000,
+    },
+  );
   await expect(page.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
 }
 
@@ -51,7 +53,9 @@ test.describe('Staff SSO', () => {
     const { staff } = await approvedStaff('SSO Persist Staff', 'Krishna & Godavari Night Canteen');
     await completeStaffSso(page, staff);
     await page.reload();
-    await expect(page.getByRole('complementary', { name: 'Staff dashboard navigation' })).toBeVisible();
+    await expect(
+      page.getByRole('complementary', { name: 'Staff dashboard navigation' }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
   });
 
@@ -69,7 +73,9 @@ test.describe('Staff SSO', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     const { staff } = await approvedStaff('SSO Mobile Staff', 'Krishna & Godavari Night Canteen');
     await completeStaffSso(page, staff);
-    await expect(page.getByRole('complementary', { name: 'Staff dashboard navigation' })).toBeVisible();
+    await expect(
+      page.getByRole('complementary', { name: 'Staff dashboard navigation' }),
+    ).toBeVisible();
   });
 });
 
@@ -88,7 +94,9 @@ test.describe('Admin SSO', () => {
     const admin = await adminActor();
     await completeAdminSso(page, admin);
     await page.reload();
-    await expect(page.getByRole('complementary', { name: 'Admin portal navigation' })).toBeVisible();
+    await expect(
+      page.getByRole('complementary', { name: 'Admin portal navigation' }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Log out' }).click();
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     await page.reload();
@@ -111,7 +119,9 @@ test.describe('SSO callback failures', () => {
     const code = codeFrom(redirectUrl);
     await page.goto(`${E2E.adminUrl}/sso/callback?code=${encodeURIComponent(code)}`);
     await expect(page.getByRole('button', { name: 'Return to SERVE' })).toBeVisible();
-    await expect(page.getByRole('complementary', { name: 'Admin portal navigation' })).toHaveCount(0);
+    await expect(page.getByRole('complementary', { name: 'Admin portal navigation' })).toHaveCount(
+      0,
+    );
   });
 
   test('a reused code is rejected', async () => {

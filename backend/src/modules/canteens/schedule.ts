@@ -147,10 +147,7 @@ export function operatingSchedulesOverlap(
  *
  * Callers must fail closed themselves when `inspectOperatingSchedules` is not ok.
  */
-export function isWithinOperatingWindow(
-  rows: readonly OperatingScheduleRow[],
-  now: Date,
-): boolean {
+export function isWithinOperatingWindow(rows: readonly OperatingScheduleRow[], now: Date): boolean {
   const { weekday, minutes } = istParts(now);
   const byWeekday = new Map(rows.map((row) => [row.weekday, row]));
   const today = byWeekday.get(weekday);

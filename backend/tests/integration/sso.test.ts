@@ -71,9 +71,9 @@ describe('SSO initiate', () => {
   });
 
   it('rejects a missing or invalid Firebase token', async () => {
-    expect((await request(app).post('/api/auth/sso/initiate').send({ audience: 'STAFF' })).status).toBe(
-      401,
-    );
+    expect(
+      (await request(app).post('/api/auth/sso/initiate').send({ audience: 'STAFF' })).status,
+    ).toBe(401);
     const res = await request(app)
       .post('/api/auth/sso/initiate')
       .set(bearer('not-a-jwt'))

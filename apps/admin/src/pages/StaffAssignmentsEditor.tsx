@@ -111,7 +111,9 @@ export function StaffAssignmentsEditor({
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    setRows((current) => current.filter((entry) => entry.canteenId !== row.canteenId));
+                    setRows((current) =>
+                      current.filter((entry) => entry.canteenId !== row.canteenId),
+                    );
                     if (primaryCanteenId === row.canteenId) {
                       const next = rows.find((entry) => entry.canteenId !== row.canteenId);
                       setPrimaryCanteenId(next?.canteenId ?? '');

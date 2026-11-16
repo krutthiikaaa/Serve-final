@@ -182,7 +182,8 @@ function ItemServicesModal({
       else services.push({ period: 'DAY', pricePaise: dayPaise, isAvailable: dayAvailable });
     }
     if (nightPrice.trim()) {
-      if (nightPaise === null || nightPaise <= 0) local.nightPrice = 'Enter a price greater than ₹0';
+      if (nightPaise === null || nightPaise <= 0)
+        local.nightPrice = 'Enter a price greater than ₹0';
       else services.push({ period: 'NIGHT', pricePaise: nightPaise, isAvailable: nightAvailable });
     }
     if (services.length === 0) local.dayPrice = 'Set at least one period price';

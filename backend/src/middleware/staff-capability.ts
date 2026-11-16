@@ -25,10 +25,7 @@ export function resolveStaffCanteen(prisma: PrismaClient): RequestHandler {
       select: { id: true },
     });
     if (!assignment) {
-      throw new ForbiddenError(
-        'You are not assigned to this canteen.',
-        'CANTEEN_NOT_ASSIGNED',
-      );
+      throw new ForbiddenError('You are not assigned to this canteen.', 'CANTEEN_NOT_ASSIGNED');
     }
     req.staffCanteenId = canteenId;
     next();

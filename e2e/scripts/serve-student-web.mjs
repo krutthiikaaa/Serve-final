@@ -40,7 +40,8 @@ function resolveFlutterBin() {
   return 'flutter';
 }
 
-const skipBuild = process.env.E2E_SKIP_FLUTTER_BUILD === '1' && existsSync(path.join(out, 'index.html'));
+const skipBuild =
+  process.env.E2E_SKIP_FLUTTER_BUILD === '1' && existsSync(path.join(out, 'index.html'));
 if (skipBuild) {
   console.log(`Reusing existing Flutter web build at ${out}`);
 } else {

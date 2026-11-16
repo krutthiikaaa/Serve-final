@@ -516,9 +516,7 @@ export const adminReportSchema = z.strictObject({
     demoSalesPaise: paise,
     rejected: count,
   }),
-  series: z.array(
-    z.strictObject({ date: reportDay, liveSalesPaise: paise, orderCount: count }),
-  ),
+  series: z.array(z.strictObject({ date: reportDay, liveSalesPaise: paise, orderCount: count })),
   byCanteen: z.array(
     z.strictObject({
       id: uuid,
@@ -547,9 +545,7 @@ export const adminReportSchema = z.strictObject({
       liveSalesPaise: paise,
     }),
   ),
-  topItems: z.array(
-    z.strictObject({ name: z.string(), quantity: count, liveSalesPaise: paise }),
-  ),
+  topItems: z.array(z.strictObject({ name: z.string(), quantity: count, liveSalesPaise: paise })),
 });
 
 export const adminPaymentOverviewSchema = z.strictObject({

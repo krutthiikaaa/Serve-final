@@ -58,10 +58,7 @@ export function createPaymentsRouter(ctx: AppContext, services: Services): Route
 
   router.post('/:orderId/claim', limiter, async (req, res) => {
     const { orderId } = parse(orderParams, req.params);
-    const { utr } = parse(
-      z.strictObject({ utr: optionalText(64) }),
-      req.body ?? {},
-    );
+    const { utr } = parse(z.strictObject({ utr: optionalText(64) }), req.body ?? {});
     res.json({ data: await services.payments.claim(currentStudent(req), orderId, utr ?? null) });
   });
 

@@ -110,10 +110,7 @@ export function createStaffRouter(ctx: AppContext, services: Services): Router {
 
   router.get('/dashboard', async (req, res) => {
     res.json({
-      data: await services.staff.dashboard(
-        currentApprovedStaff(req),
-        staffOperatingCanteenId(req),
-      ),
+      data: await services.staff.dashboard(currentApprovedStaff(req), staffOperatingCanteenId(req)),
     });
   });
   router.patch('/canteen/status', pause, async (req, res) => {

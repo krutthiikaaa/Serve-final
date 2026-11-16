@@ -34,7 +34,13 @@ export function ReceiptTicket({ receipt }: { receipt: Receipt }) {
         </div>
         <div>
           <dt>Service</dt>
-          <dd>{receipt.servicePeriod === 'DAY' ? 'Day' : receipt.servicePeriod === 'NIGHT' ? 'Night' : '—'}</dd>
+          <dd>
+            {receipt.servicePeriod === 'DAY'
+              ? 'Day'
+              : receipt.servicePeriod === 'NIGHT'
+                ? 'Night'
+                : '—'}
+          </dd>
         </div>
       </dl>
       <table className="receipt-lines">

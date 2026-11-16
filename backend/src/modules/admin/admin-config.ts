@@ -1,10 +1,18 @@
 import type { Logger } from 'pino';
-import type { PaymentMode, ScheduleOverride, ServicePeriod } from '../../generated/prisma/client.js';
+import type {
+  PaymentMode,
+  ScheduleOverride,
+  ServicePeriod,
+} from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../lib/prisma.js';
 import { writeAudit } from '../../lib/audit.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import { canteenSelect, toCanteenDto, type CanteenRow } from '../canteens/canteen.dto.js';
-import { inspectOperatingSchedules, operatingSchedulesOverlap, validateOperatingSchedules } from '../canteens/schedule.js';
+import {
+  inspectOperatingSchedules,
+  operatingSchedulesOverlap,
+  validateOperatingSchedules,
+} from '../canteens/schedule.js';
 import type { AdminPrincipal } from '../auth/principal.js';
 import {
   listStaffAssignments,
@@ -78,15 +86,17 @@ export function toPaymentConfigDto(
   return toAdminPaymentConfigDto(row);
 }
 
-function paymentAuditSnapshot(row: {
-  mode: PaymentMode;
-  merchantName: string | null;
-  instructions: string | null;
-  isActive: boolean;
-  upiVpa: string | null;
-  qrImageUrl: string | null;
-  qrStorageKey: string | null;
-} | null) {
+function paymentAuditSnapshot(
+  row: {
+    mode: PaymentMode;
+    merchantName: string | null;
+    instructions: string | null;
+    isActive: boolean;
+    upiVpa: string | null;
+    qrImageUrl: string | null;
+    qrStorageKey: string | null;
+  } | null,
+) {
   if (!row) return null;
   return {
     mode: row.mode,
@@ -233,7 +243,10 @@ export function createAdminConfigService(prisma: PrismaClient, logger: Logger) {
         include: { schedules: true },
       });
       if (!service) {
-        throw new NotFoundError('Service is not configured for this canteen.', 'SERVICE_NOT_CONFIGURED');
+        throw new NotFoundError(
+          'Service is not configured for this canteen.',
+          'SERVICE_NOT_CONFIGURED',
+        );
       }
 
       if (schedules.length === 0) {
@@ -376,13 +389,10 @@ export function createAdminConfigService(prisma: PrismaClient, logger: Logger) {
       const data = {
         mode: input.mode === undefined ? existing.mode : input.mode,
         upiVpa: input.upiVpa === undefined ? existing.upiVpa : input.upiVpa,
-        merchantName:
-          input.merchantName === undefined ? existing.merchantName : input.merchantName,
+        merchantName: input.merchantName === undefined ? existing.merchantName : input.merchantName,
         qrImageUrl: input.qrImageUrl === undefined ? existing.qrImageUrl : input.qrImageUrl,
-        qrStorageKey:
-          input.qrStorageKey === undefined ? existing.qrStorageKey : input.qrStorageKey,
-        instructions:
-          input.instructions === undefined ? existing.instructions : input.instructions,
+        qrStorageKey: input.qrStorageKey === undefined ? existing.qrStorageKey : input.qrStorageKey,
+        instructions: input.instructions === undefined ? existing.instructions : input.instructions,
         isActive: input.isActive === undefined ? existing.isActive : input.isActive,
       };
       if (data.mode === 'LIVE') {

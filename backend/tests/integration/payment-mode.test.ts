@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { DEMO_QR_WARNING, containsPaymentUri } from '../../src/modules/canteens/demo-qr.js';
-import { canteenPaymentConfigSchema, receiptSchema } from '../helpers/contract.js';
+import { canteenPaymentConfigSchema } from '../helpers/contract.js';
 import { buildTestApp } from '../helpers/test-app.js';
 import { truncateAll } from '../helpers/db.js';
 import {
@@ -159,7 +159,9 @@ describe('per-canteen DEMO/LIVE payment configuration', () => {
     expect(confirmed.body.data.receipt.simulated).toBe(false);
     expect(confirmed.body.data.receipt.notice).toBeNull();
 
-    const concurrent = await placeOrder(app, student, kg.id, [{ menuItemId: coffee.id, quantity: 1 }]);
+    const concurrent = await placeOrder(app, student, kg.id, [
+      { menuItemId: coffee.id, quantity: 1 },
+    ]);
     const [first, second] = await Promise.all([
       request(app)
         .post(`/api/staff/orders/${concurrent.id}/confirm-payment`)

@@ -12,7 +12,11 @@ describe('canteens', () => {
     api.browseCanteens.mockResolvedValue([]);
     api.canteens.mockResolvedValue([
       adminCanteen('Vedavathi Night Canteen'),
-      adminCanteen('Old Canteen', { isActive: false, isAcceptingOrders: false, status: 'INACTIVE' }),
+      adminCanteen('Old Canteen', {
+        isActive: false,
+        isAcceptingOrders: false,
+        status: 'INACTIVE',
+      }),
     ]);
     renderAdmin(<CanteensPage />, { api });
     await screen.findByText('Vedavathi Night Canteen');

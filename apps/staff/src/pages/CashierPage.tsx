@@ -174,7 +174,10 @@ function PendingQueue({
   return (
     <section className="section">
       {rows.length === 0 ? (
-        <EmptyState title="No payments waiting" body="New app orders stay here until you confirm actual UPI credit." />
+        <EmptyState
+          title="No payments waiting"
+          body="New app orders stay here until you confirm actual UPI credit."
+        />
       ) : (
         <div className="table-wrap">
           <table className="table">
@@ -199,7 +202,8 @@ function PendingQueue({
                   <td>
                     <strong className="order-number">{order.orderNumber}</strong>
                     <div className="muted small">
-                      Token {order.orderNumber} · {order.canteen.name} · {order.servicePeriod ?? '—'}
+                      Token {order.orderNumber} · {order.canteen.name} ·{' '}
+                      {order.servicePeriod ?? '—'}
                     </div>
                   </td>
                   <td>{order.student?.name ?? '—'}</td>
@@ -235,7 +239,9 @@ function PendingQueue({
 
       {acting && mode === 'view' ? (
         <Modal title={`Order ${acting.orderNumber}`} onClose={close}>
-          <p className="muted small">{acting.canteen.name} · {acting.servicePeriod ?? '—'}</p>
+          <p className="muted small">
+            {acting.canteen.name} · {acting.servicePeriod ?? '—'}
+          </p>
           <ul>
             {acting.items.map((item) => (
               <li key={item.id}>
@@ -247,7 +253,9 @@ function PendingQueue({
             <strong>{formatRupees(acting.totalPaise)}</strong>
             {acting.payment?.utr ? ` · UTR ${acting.payment.utr}` : ''}
           </p>
-          <p className="muted small">A submitted UTR is supporting information, not proof of payment.</p>
+          <p className="muted small">
+            A submitted UTR is supporting information, not proof of payment.
+          </p>
         </Modal>
       ) : null}
 
@@ -346,7 +354,8 @@ function WalkInPos({
   }, [categories, categoryId]);
 
   const items = useMemo(() => {
-    const visible = categoryId === 'all' ? categories : categories.filter((c) => c.id === categoryId);
+    const visible =
+      categoryId === 'all' ? categories : categories.filter((c) => c.id === categoryId);
     return visible.flatMap((category) => category.items);
   }, [categories, categoryId]);
   const hasItems = lines.length > 0;
@@ -457,7 +466,9 @@ function WalkInPos({
             </div>
             {items.length === 0 ? (
               <EmptyState
-                title={categories.length === 0 ? 'No items on this menu' : 'No items in this category'}
+                title={
+                  categories.length === 0 ? 'No items on this menu' : 'No items in this category'
+                }
                 body="Switch category or service period to see available dishes."
               />
             ) : (
@@ -573,11 +584,7 @@ function WalkInPos({
                 <p className="pos-method-label" id="pos-payment-method">
                   Payment method
                 </p>
-                <div
-                  className="pos-method"
-                  role="radiogroup"
-                  aria-labelledby="pos-payment-method"
-                >
+                <div className="pos-method" role="radiogroup" aria-labelledby="pos-payment-method">
                   {(['CASH', 'UPI'] as const).map((value) => (
                     <button
                       key={value}
@@ -610,11 +617,7 @@ function WalkInPos({
               ) : null}
             </>
           ) : null}
-          <Button
-            className="pos-complete"
-            disabled={!hasItems}
-            onClick={() => setConfirming(true)}
-          >
+          <Button className="pos-complete" disabled={!hasItems} onClick={() => setConfirming(true)}>
             Complete bill
           </Button>
         </div>
@@ -644,7 +647,9 @@ function WalkInPos({
             {isDemo
               ? 'This is a simulated DEMO sale. It must not be treated as real collected money.'
               : `Selecting ${method} is not proof of payment. Confirm only after ${
-                  method === 'CASH' ? 'the cash is in the till' : 'the credit appears on the merchant account'
+                  method === 'CASH'
+                    ? 'the cash is in the till'
+                    : 'the credit appears on the merchant account'
                 }.`}
           </p>
         </Modal>
@@ -710,7 +715,11 @@ function SalesHistory({
       <div className="history-filters">
         <Field label="Channel">
           {(p) => (
-            <Select {...p} value={channel} onChange={(e) => setChannel(e.target.value as typeof channel)}>
+            <Select
+              {...p}
+              value={channel}
+              onChange={(e) => setChannel(e.target.value as typeof channel)}
+            >
               <option value="">All channels</option>
               <option value="APP">App</option>
               <option value="WALK_IN">Walk-in</option>
@@ -719,7 +728,11 @@ function SalesHistory({
         </Field>
         <Field label="Payment method">
           {(p) => (
-            <Select {...p} value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
+            <Select
+              {...p}
+              value={method}
+              onChange={(e) => setMethod(e.target.value as typeof method)}
+            >
               <option value="">All methods</option>
               <option value="CASH">Cash</option>
               <option value="UPI">UPI</option>
@@ -728,7 +741,11 @@ function SalesHistory({
         </Field>
         <Field label="Service period">
           {(p) => (
-            <Select {...p} value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}>
+            <Select
+              {...p}
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as typeof period)}
+            >
               <option value="">All periods</option>
               <option value="DAY">Day</option>
               <option value="NIGHT">Night</option>
@@ -748,8 +765,13 @@ function SalesHistory({
             </Select>
           )}
         </Field>
-        <Field label="From date" error={dateRangeInvalid ? 'Start date cannot be after end date.' : undefined}>
-          {(p) => <Input {...p} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />}
+        <Field
+          label="From date"
+          error={dateRangeInvalid ? 'Start date cannot be after end date.' : undefined}
+        >
+          {(p) => (
+            <Input {...p} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          )}
         </Field>
         <Field label="To date">
           {(p) => <Input {...p} type="date" value={to} onChange={(e) => setTo(e.target.value)} />}
@@ -799,7 +821,9 @@ function SalesHistory({
               {sales.data!.data.map((order) => (
                 <tr key={order.id}>
                   <td>
-                    <strong className="order-number">{order.receiptNumber ?? order.orderNumber}</strong>
+                    <strong className="order-number">
+                      {order.receiptNumber ?? order.orderNumber}
+                    </strong>
                   </td>
                   <td>{order.channel === 'WALK_IN' ? 'Walk-in' : 'App'}</td>
                   <td className="nowrap">{formatDateTime(order.paidAt ?? order.createdAt)}</td>
@@ -807,10 +831,18 @@ function SalesHistory({
                   <td>{formatPaymentMethod(order.payment?.provider)}</td>
                   <td className="num">{formatRupees(order.totalPaise)}</td>
                   <td>
-                    {order.payment?.isSimulated ? <Tag tone="warning">DEMO</Tag> : <Tag tone="success">LIVE</Tag>}
+                    {order.payment?.isSimulated ? (
+                      <Tag tone="warning">DEMO</Tag>
+                    ) : (
+                      <Tag tone="success">LIVE</Tag>
+                    )}
                   </td>
                   <td>
-                    <Button size="sm" variant="secondary" onClick={() => void openReceipt(order.id)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void openReceipt(order.id)}
+                    >
                       Receipt
                     </Button>
                   </td>

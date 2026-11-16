@@ -16,7 +16,9 @@ export function TimeSelect({
   'aria-label': string;
 }) {
   const parts = minutesToParts(value);
-  const minuteOptions = MINUTES.includes(parts.minute) ? MINUTES : [...MINUTES, parts.minute].sort((a, b) => a - b);
+  const minuteOptions = MINUTES.includes(parts.minute)
+    ? MINUTES
+    : [...MINUTES, parts.minute].sort((a, b) => a - b);
 
   return (
     <span className="time-select" role="group" aria-label={ariaLabel}>
@@ -24,7 +26,9 @@ export function TimeSelect({
         id={id}
         aria-label={`${ariaLabel} hour`}
         value={parts.hour12}
-        onChange={(e) => onChange(partsToMinutes(Number(e.target.value), parts.minute, parts.period))}
+        onChange={(e) =>
+          onChange(partsToMinutes(Number(e.target.value), parts.minute, parts.period))
+        }
       >
         {HOURS.map((hour) => (
           <option key={hour} value={hour}>
@@ -35,7 +39,9 @@ export function TimeSelect({
       <Select
         aria-label={`${ariaLabel} minutes`}
         value={parts.minute}
-        onChange={(e) => onChange(partsToMinutes(parts.hour12, Number(e.target.value), parts.period))}
+        onChange={(e) =>
+          onChange(partsToMinutes(parts.hour12, Number(e.target.value), parts.period))
+        }
       >
         {minuteOptions.map((minute) => (
           <option key={minute} value={minute}>

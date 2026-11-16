@@ -76,10 +76,7 @@ function loadBackfillSql(): string {
   if (!match) {
     throw new Error('Migration is missing -- BEGIN BACKFILL / -- END BACKFILL markers');
   }
-  return match[0]
-    .replace('-- BEGIN BACKFILL', '')
-    .replace('-- END BACKFILL', '')
-    .trim();
+  return match[0].replace('-- BEGIN BACKFILL', '').replace('-- END BACKFILL', '').trim();
 }
 
 async function runBackfill(): Promise<void> {
@@ -432,12 +429,10 @@ describe('migration backfill of existing rows', () => {
       'PAUSE',
     ]);
     expect(assignment.capabilities.some((row) => row.capability === 'CASHIER')).toBe(false);
-    expect(
-      await prisma.staffCanteenAssignment.count({ where: { staffId: pending.id } }),
-    ).toBe(0);
-    expect(
-      await prisma.staffAssignmentCapability.count({ where: { capability: 'CASHIER' } }),
-    ).toBe(0);
+    expect(await prisma.staffCanteenAssignment.count({ where: { staffId: pending.id } })).toBe(0);
+    expect(await prisma.staffAssignmentCapability.count({ where: { capability: 'CASHIER' } })).toBe(
+      0,
+    );
 
     expect(
       (await prisma.canteen.findMany({ select: { id: true } })).map((row) => row.id).sort(),

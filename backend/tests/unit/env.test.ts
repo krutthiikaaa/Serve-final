@@ -189,9 +189,9 @@ describe('parseEnv', () => {
     it('requires https dashboard URLs in production', () => {
       const { STAFF_DASHBOARD_URL: _omit, ...raw } = validProd;
       expect(issuesOf(raw)).toEqual([expect.stringContaining('STAFF_DASHBOARD_URL')]);
-      expect(
-        issuesOf({ ...validProd, ADMIN_PORTAL_URL: 'http://admin.serve.example' }),
-      ).toEqual([expect.stringContaining('ADMIN_PORTAL_URL')]);
+      expect(issuesOf({ ...validProd, ADMIN_PORTAL_URL: 'http://admin.serve.example' })).toEqual([
+        expect.stringContaining('ADMIN_PORTAL_URL'),
+      ]);
       expect(issuesOf({ ...validProd, STUDENT_APP_URL: 'https://localhost:5555' })).toEqual([
         expect.stringContaining('STUDENT_APP_URL'),
       ]);
