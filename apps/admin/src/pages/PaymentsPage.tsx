@@ -11,7 +11,7 @@ import {
 import { useAdminApi } from '../useAdminApi';
 import { PaymentSection } from './canteen/PaymentSection';
 
-/** University view of each canteen's own DEMO/LIVE configuration. */
+/** University view of each canteen's own test/live payment configuration. */
 export function PaymentsPage() {
   const api = useAdminApi();
   const overview = useResource(() => api.paymentOverview(), [api]);
@@ -21,7 +21,7 @@ export function PaymentsPage() {
       <div className="page-header">
         <div>
           <h1>Payments & QR</h1>
-          <p>Each canteen keeps its own UPI details. DEMO payments are not payable.</p>
+          <p>Each canteen keeps its own UPI details and QR. Test-mode payments are not real.</p>
         </div>
       </div>
       {overview.loading && !overview.data ? (
@@ -69,7 +69,7 @@ export function PaymentsPage() {
                           {canteen.mode === 'LIVE' ? (
                             <Tag tone="success">LIVE</Tag>
                           ) : canteen.mode === 'DEMO' ? (
-                            <Tag>DEMO</Tag>
+                            <Tag>Test mode</Tag>
                           ) : (
                             <Tag tone="warning">Not configured</Tag>
                           )}

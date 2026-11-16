@@ -52,12 +52,12 @@ class _StaffRegisterFormState extends State<StaffRegisterForm> {
   Future<void> _loadCanteens() async {
     setState(() => _canteensError = null);
     try {
-      final hostels = await context.read<ServeApi>().hostels();
-      final seen = <String>{};
-      final canteens = <Ref>[];
-      for (final h in hostels) {
-        if (seen.add(h.canteen.id)) canteens.add(h.canteen);
-      }
+      // Day and Night canteens are separate, each with its own staff login.
+      // Loaded before the account exists, so this uses the public directory.
+      final canteens = [
+        for (final c in await context.read<ServeApi>().canteenDirectory())
+          Ref(c.id, c.type == null ? c.name : '${c.name} · ${c.type!.label}', c.type),
+      ];
       if (mounted) setState(() => _canteens = canteens);
     } catch (e) {
       if (mounted) setState(() => _canteensError = e);
@@ -77,11 +77,7 @@ class _StaffRegisterFormState extends State<StaffRegisterForm> {
         await auth.createAccount(_email.text.trim(), _password.text);
         _accountCreated = true;
       }
-      await api.registerStaff(
-        name: _name.text.trim(),
-        email: _email.text.trim().toLowerCase(),
-        requestedCanteenId: _canteenId,
-      );
+      await api.registerStaff(name: _name.text.trim(), email: _email.text.trim().toLowerCase(), requestedCanteenId: _canteenId);
       await auth.signOut();
       widget.onSubmitted();
     } on ApiException catch (e) {
@@ -167,7 +163,9 @@ class _StaffRegisterFormState extends State<StaffRegisterForm> {
             if (_canteensError != null)
               Row(
                 children: [
-                  Expanded(child: Text(errorMessage(_canteensError!), style: const TextStyle(color: ServeColors.danger))),
+                  Expanded(
+                    child: Text(errorMessage(_canteensError!), style: const TextStyle(color: ServeColors.danger)),
+                  ),
                   TextButton(onPressed: _loadCanteens, child: const Text('Retry')),
                 ],
               )
@@ -179,7 +177,10 @@ class _StaffRegisterFormState extends State<StaffRegisterForm> {
                 hint: Text(_canteens == null ? 'Loading canteens…' : 'Select a canteen'),
                 items: [
                   for (final c in _canteens ?? const <Ref>[])
-                    DropdownMenuItem(value: c.id, child: Text(c.name, overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(
+                      value: c.id,
+                      child: Text(c.name, overflow: TextOverflow.ellipsis),
+                    ),
                 ],
                 onChanged: _canteens == null || _busy ? null : (v) => setState(() => _canteenId = v),
                 validator: (v) => v == null ? 'Select a canteen' : null,

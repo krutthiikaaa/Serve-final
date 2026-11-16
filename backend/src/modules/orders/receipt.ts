@@ -48,6 +48,6 @@ export function toReceiptDto(order: OrderWithDetails) {
     guestName: order.guestName,
     verifiedByName: order.payment.verifiedBy?.name ?? null,
     simulated: order.payment.isSimulated,
-    notice: order.payment.isSimulated ? 'DEMO TRANSACTION — NO REAL PAYMENT' : null,
+    notice: order.payment.isSimulated ? 'SIMULATED TRANSACTION — NO REAL PAYMENT' : null,
   };
 }

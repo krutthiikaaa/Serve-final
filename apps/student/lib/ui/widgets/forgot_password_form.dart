@@ -95,10 +95,7 @@ class _ForgotPasswordFormState extends State<ForgotPasswordForm> {
           ],
           if (widget.onBackToLogin != null) ...[
             const SizedBox(height: 12),
-            TextButton(
-              onPressed: _busy ? null : widget.onBackToLogin,
-              child: const Text('Back to login'),
-            ),
+            TextButton(onPressed: _busy ? null : widget.onBackToLogin, child: const Text('Back to login')),
           ],
         ],
       ),

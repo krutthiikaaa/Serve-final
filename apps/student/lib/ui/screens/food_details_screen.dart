@@ -5,7 +5,6 @@ import '../../core/format.dart';
 import '../../services/api/models.dart';
 import '../../services/api/serve_api.dart';
 import '../../services/realtime/realtime_service.dart';
-import '../../state/canteen_selection.dart';
 import '../../state/cart_controller.dart';
 import '../../theme/serve_theme.dart';
 import '../cart_actions.dart';
@@ -41,8 +40,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> with WidgetsBindi
 
   Future<void> _load() async {
     try {
-      final period = context.read<CanteenSelection>().period;
-      final detail = await context.read<ServeApi>().menuItem(widget.item.id, period: period);
+      final detail = await context.read<ServeApi>().menuItem(widget.item.id);
       if (!mounted) return;
       context.read<CartController>().updateItem(detail.item);
       setState(() {

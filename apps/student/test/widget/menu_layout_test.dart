@@ -106,9 +106,7 @@ void main() {
       if (wide) {
         await tester.tap(find.widgetWithText(TextButton, 'Menu'));
       } else {
-        await tester.tap(
-          find.descendant(of: find.byType(NavigationBar), matching: find.byIcon(Icons.restaurant_menu_outlined)),
-        );
+        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.byIcon(Icons.restaurant_menu_outlined)));
       }
       await tester.pumpAndSettle();
 

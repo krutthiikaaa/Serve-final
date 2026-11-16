@@ -1,3 +1,5 @@
+import { areaCanteenSelect, defaultCanteenOf } from '../canteens/service-areas.js';
+import { canteenAvailability, canteenSelect } from '../canteens/canteen.dto.js';
 import type { Env } from '../../config/env.js';
 import type { PrismaClient } from '../../lib/prisma.js';
 import type { VerifiedIdentity } from '../../lib/firebase.js';
@@ -177,17 +179,29 @@ export function createAuthService({ prisma, env, events }: Deps) {
               select: {
                 id: true,
                 name: true,
-                canteen: {
-                  select: { id: true, name: true, isActive: true, isAcceptingOrders: true },
+                serviceArea: {
+                  select: { id: true, name: true, canteens: { select: areaCanteenSelect } },
                 },
               },
             },
           },
         });
+        // The area's canteen taking orders now, else its default (see defaultCanteenOf).
+        const current = defaultCanteenOf(student.hostel.serviceArea.canteens);
         return {
           ...base,
           hostel: { id: student.hostel.id, name: student.hostel.name },
-          defaultCanteen: student.hostel.canteen,
+          serviceArea: { id: student.hostel.serviceArea.id, name: student.hostel.serviceArea.name },
+          defaultCanteen: current
+            ? {
+                id: current.id,
+                name: current.name,
+                type: current.type,
+                isActive: current.isActive,
+                isAcceptingOrders: current.isAcceptingOrders,
+                isPaused: current.isPaused,
+              }
+            : null,
         };
       }
       if (principal.role === 'STAFF') {
@@ -195,12 +209,19 @@ export function createAuthService({ prisma, env, events }: Deps) {
           where: { id: principal.id },
           select: {
             status: true,
-            canteen: { select: { id: true, name: true, isActive: true, isAcceptingOrders: true } },
+            canteen: { select: canteenSelect },
             assignments: {
               select: {
                 canteenId: true,
                 canteen: {
-                  select: { id: true, name: true, isActive: true, isAcceptingOrders: true },
+                  select: {
+                    id: true,
+                    name: true,
+                    type: true,
+                    isActive: true,
+                    isAcceptingOrders: true,
+                    isPaused: true,
+                  },
                 },
                 capabilities: { select: { capability: true }, orderBy: { capability: 'asc' } },
               },
@@ -220,7 +241,19 @@ export function createAuthService({ prisma, env, events }: Deps) {
         return {
           ...base,
           status: staff.status,
-          canteen: staff.canteen,
+          // Same computed availability as the dashboard, so every staff screen
+          // names the canteen's state the same way.
+          canteen: staff.canteen
+            ? {
+                id: staff.canteen.id,
+                name: staff.canteen.name,
+                type: staff.canteen.type,
+                isActive: staff.canteen.isActive,
+                isAcceptingOrders: staff.canteen.isAcceptingOrders,
+                isPaused: staff.canteen.isPaused,
+                availability: canteenAvailability(staff.canteen),
+              }
+            : null,
           assignments: staff.assignments.map((row) => ({
             canteenId: row.canteenId,
             canteen: row.canteen,

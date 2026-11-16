@@ -8,6 +8,8 @@ import {
   IconBag,
   IconCheck,
   IconFlame,
+  AvailabilityTag,
+  CanteenTypeBadge,
   IconPause,
   IconPlay,
   IconReceipt,
@@ -26,7 +28,6 @@ import {
 } from '@serve/web-shared';
 import { useStaffApi } from '../useStaffApi';
 import { useStaffCanteen } from '../staffCanteen';
-import { CanteenStatusTag } from '../components/StaffLayout';
 
 /** Live overview of the assigned canteen. Every number comes from `/api/staff/dashboard`. */
 export function DashboardPage() {
@@ -60,7 +61,7 @@ export function DashboardPage() {
     try {
       await api.setAcceptingOrders(accepting);
       await Promise.all([dashboard.reload(), refreshMe()]);
-      toast(accepting ? 'Now accepting orders' : 'Order-taking paused');
+      toast(accepting ? 'Pause lifted' : 'Order-taking paused');
     } catch (err) {
       toast(errorMessage(err), 'error');
     } finally {
@@ -72,18 +73,28 @@ export function DashboardPage() {
     return <ErrorState error={dashboard.error} onRetry={() => void dashboard.reload()} />;
   const data = dashboard.data?.canteen ? dashboard.data : undefined;
 
-  const accepting = data ? data.canteen.isActive && data.canteen.isAcceptingOrders : false;
+  const canteen = data?.canteen;
+  const state = canteen?.availability.state;
+  const accepting = state === 'OPEN';
+  // On duty and not paused: staff may pause. Paused, or off duty with no
+  // canteen serving the area: staff may resume. Which canteen of the area is
+  // on duty is decided by the schedule or an admin, never here.
+  const canPauseNow = Boolean(canteen?.isActive && canteen.isAcceptingOrders && !canteen.isPaused);
+  const canResumeNow = Boolean(canteen?.isActive && (canteen.isPaused || state === 'OFF_DUTY'));
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1>Dashboard</h1>
-          <p>Tonight at {data ? data.canteen.name : 'your canteen'}</p>
+          <p>
+            Today at {data ? data.canteen.name : 'your canteen'}
+            {data ? ` · ${data.canteen.serviceArea.name}` : ''}
+          </p>
         </div>
       </div>
 
-      {data ? (
+      {data && canteen && state ? (
         <section
           className={`section status-banner ${accepting ? 'status-on' : 'status-off'}`}
           aria-label="Canteen status"
@@ -93,43 +104,36 @@ export function DashboardPage() {
           </span>
           <div className="status-banner-text">
             <div className="section-title">
-              <h2>{data.canteen.name}</h2>
-              <CanteenStatusTag canteen={data.canteen} />
+              <h2>{canteen.name}</h2>
+              <CanteenTypeBadge type={canteen.type} />
+              <AvailabilityTag state={state} />
             </div>
-            <p className="muted">
-              {!data.canteen.isActive
-                ? 'This canteen has been deactivated by an admin. Students cannot place orders until it is reactivated.'
-                : data.canteen.isAcceptingOrders
-                  ? 'Students can place orders now. New paid orders appear on the order board instantly.'
-                  : 'Order-taking is paused. Students can browse the menu but cannot place new orders.'}
-            </p>
+            <p className="muted">{statusExplanation(canteen)}</p>
           </div>
-          {data.canteen.isActive && canPause ? (
-            data.canteen.isAcceptingOrders ? (
-              <Button
-                variant="secondary"
-                icon={<IconPause width={16} height={16} />}
-                loading={toggling}
-                onClick={() => void toggle(false)}
-              >
-                Pause orders
-              </Button>
-            ) : (
-              <Button
-                icon={<IconPlay width={16} height={16} />}
-                loading={toggling}
-                onClick={() => void toggle(true)}
-              >
-                Resume orders
-              </Button>
-            )
+          {canPause && canPauseNow ? (
+            <Button
+              variant="secondary"
+              icon={<IconPause width={16} height={16} />}
+              loading={toggling}
+              onClick={() => void toggle(false)}
+            >
+              Pause orders
+            </Button>
+          ) : canPause && canResumeNow ? (
+            <Button
+              icon={<IconPlay width={16} height={16} />}
+              loading={toggling}
+              onClick={() => void toggle(true)}
+            >
+              Resume orders
+            </Button>
           ) : null}
         </section>
       ) : null}
 
       {data ? (
         <KpiStrip
-          label="Tonight's orders"
+          label="Today's orders"
           items={[
             ...(canKitchen
               ? [
@@ -236,4 +240,31 @@ export function DashboardPage() {
 function itemCount(items: { quantity: number }[]): string {
   const n = items.reduce((sum, item) => sum + item.quantity, 0);
   return `${n} ${n === 1 ? 'item' : 'items'}`;
+}
+
+type DashboardCanteen = NonNullable<
+  Awaited<ReturnType<ReturnType<typeof useStaffApi>['dashboard']>>
+>['canteen'];
+
+/** One plain sentence per state; the tag above names the state itself. */
+function statusExplanation(canteen: DashboardCanteen): string {
+  const { availability } = canteen;
+  switch (availability.state) {
+    case 'INACTIVE':
+      return 'An admin has temporarily disabled this canteen. Students cannot place orders until it is reactivated.';
+    case 'OTHER_SERVICE_ACTIVE':
+      return `${availability.otherServiceCanteen?.name ?? 'The other canteen'} is serving this area now. Only one of the Day and Night canteens takes orders at a time; the schedule or an admin switches between them.${canteen.isPaused ? ' Your pause stays in place until you lift it.' : ''}`;
+    case 'CLOSED_BY_SCHEDULE':
+      return `${availability.message} The area’s Day/Night schedule decides when this canteen serves.${canteen.isPaused ? ' Your pause stays in place until you lift it.' : ''}`;
+    case 'OFF_DUTY':
+      return 'No canteen is serving this area right now. Resume to start taking orders, or ask an admin.';
+    case 'PAUSED':
+      return 'Order-taking is paused. Students can browse the menu but cannot place new orders. The schedule never lifts a pause.';
+    case 'OPEN':
+      return 'Students can place orders now. New paid orders appear on the order board instantly.';
+    case 'SERVICE_DISABLED':
+      return 'This canteen’s service is switched off. An admin can turn it back on.';
+    case 'CLOSED':
+      return 'Outside today’s opening hours. Orders open automatically at the scheduled time.';
+  }
 }

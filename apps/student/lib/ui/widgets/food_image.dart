@@ -8,15 +8,7 @@ import '../../theme/serve_theme.dart';
 /// clips it. Pass [width]/[height] for card/hero layouts; [size] stays the
 /// square thumbnail used on Home.
 class FoodImage extends StatelessWidget {
-  const FoodImage({
-    super.key,
-    required this.imageUrl,
-    required this.category,
-    this.size = 72,
-    this.width,
-    this.height,
-    this.radius = 12,
-  });
+  const FoodImage({super.key, required this.imageUrl, required this.category, this.size = 72, this.width, this.height, this.radius = 12});
 
   final String? imageUrl;
   final String? category;
@@ -58,7 +50,9 @@ class FoodImage extends StatelessWidget {
             ].fold<double>(72, (a, b) => a < b ? a : b);
             final placeholder = ColoredBox(
               color: p.bg,
-              child: Center(child: Icon(p.icon, color: p.fg, size: (extent * 0.48).clamp(28, 84))),
+              child: Center(
+                child: Icon(p.icon, color: p.fg, size: (extent * 0.48).clamp(28, 84)),
+              ),
             );
             final photo = imageUrl == null
                 ? placeholder
@@ -69,9 +63,7 @@ class FoodImage extends StatelessWidget {
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => placeholder,
                   );
-            return w.isFinite || h.isFinite
-                ? SizedBox(width: w.isFinite ? w : null, height: h.isFinite ? h : null, child: photo)
-                : photo;
+            return w.isFinite || h.isFinite ? SizedBox(width: w.isFinite ? w : null, height: h.isFinite ? h : null, child: photo) : photo;
           },
         ),
       ),

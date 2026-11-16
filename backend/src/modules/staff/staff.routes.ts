@@ -48,7 +48,8 @@ const confirmDemoPaymentBody = z.strictObject({
 });
 const rejectPaymentBody = z.strictObject({ reason: optionalText(200) });
 const walkInBody = z.strictObject({
-  servicePeriod: z.enum(['DAY', 'NIGHT']),
+  // Optional: the canteen's own type is used; a different value is rejected.
+  servicePeriod: z.enum(['DAY', 'NIGHT']).optional(),
   paymentMethod: z.enum(['CASH', 'UPI']),
   paymentReceived: z.literal(true),
   guestName: optionalText(80),
@@ -58,7 +59,8 @@ const walkInBody = z.strictObject({
     .min(1, { error: 'Add at least one item' }),
 });
 const walkInDemoBody = z.strictObject({
-  servicePeriod: z.enum(['DAY', 'NIGHT']),
+  // Optional: the canteen's own type is used; a different value is rejected.
+  servicePeriod: z.enum(['DAY', 'NIGHT']).optional(),
   paymentMethod: z.enum(['CASH', 'UPI']),
   simulatedPaymentReceived: z.literal(true),
   guestName: optionalText(80),
@@ -78,8 +80,9 @@ const salesQuery = paginationQuery.extend({
 const posMenuQuery = z.object({ period: z.enum(['DAY', 'NIGHT']).optional() });
 
 /**
- * /api/staff — canteen operations. Operating canteen is the primary
- * Staff.canteenId unless `?canteenId=` is present AND assigned in PostgreSQL.
+ * /api/staff — canteen operations. Every staff account is dedicated to one
+ * canteen (Staff.canteenId, from PostgreSQL). A `?canteenId=` naming any other
+ * canteen is refused with 403; there is no canteen switching.
  */
 export function createStaffRouter(ctx: AppContext, services: Services): Router {
   const router = Router();
@@ -253,7 +256,7 @@ export function createStaffRouter(ctx: AppContext, services: Services): Router {
       data: await services.cashier.posMenu(
         currentApprovedStaff(req),
         staffOperatingCanteenId(req),
-        period ?? 'NIGHT',
+        period,
       ),
     });
   });

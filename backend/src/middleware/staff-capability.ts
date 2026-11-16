@@ -10,16 +10,19 @@ import { id, parse } from '../http/validation.js';
 const canteenQuery = z.object({ canteenId: id.optional() });
 
 /**
- * Resolve the canteen this staff request operates on.
- *
- * Defaults to Staff.canteenId (primary). A client may send `?canteenId=`;
- * that value is used only after PostgreSQL confirms an assignment row.
+ * Resolve the canteen this staff request operates on: always the account's
+ * own Staff.canteenId from PostgreSQL. Staff accounts are dedicated to one
+ * canteen, so a `?canteenId=` naming any other canteen is refused (403) —
+ * there is no canteen switching, and client-supplied ids are never trusted.
  */
 export function resolveStaffCanteen(prisma: PrismaClient): RequestHandler {
   return async (req, _res, next) => {
     const staff = currentApprovedStaff(req);
     const requested = parse(canteenQuery, req.query).canteenId;
-    const canteenId = requested ?? staff.canteenId;
+    if (requested && requested !== staff.canteenId) {
+      throw new ForbiddenError('You are not assigned to this canteen.', 'CANTEEN_NOT_ASSIGNED');
+    }
+    const canteenId = staff.canteenId;
     const assignment = await prisma.staffCanteenAssignment.findUnique({
       where: { staffId_canteenId: { staffId: staff.id, canteenId } },
       select: { id: true },

@@ -22,17 +22,15 @@ class MenuPagination extends StatelessWidget {
         spacing: 6,
         runSpacing: 6,
         children: [
-          _PageButton(
-            tooltip: 'Previous page',
-            icon: Icons.chevron_left_rounded,
-            enabled: page > 1,
-            onPressed: () => onPage(page - 1),
-          ),
+          _PageButton(tooltip: 'Previous page', icon: Icons.chevron_left_rounded, enabled: page > 1, onPressed: () => onPage(page - 1)),
           for (final item in pages)
             item == null
                 ? const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text('…', style: TextStyle(color: ServeColors.muted, fontWeight: FontWeight.w700)),
+                    child: Text(
+                      '…',
+                      style: TextStyle(color: ServeColors.muted, fontWeight: FontWeight.w700),
+                    ),
                   )
                 : _PageButton(label: '$item', selected: item == page, onPressed: () => onPage(item)),
           _PageButton(

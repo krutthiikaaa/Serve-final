@@ -89,7 +89,15 @@ describe('staff routing (decided only by /api/auth/me)', () => {
             ...base,
             role,
             hostel: { id: base.id, name: 'Krishna' },
-            defaultCanteen: { id: base.id, name: 'K&G', isActive: true, isAcceptingOrders: true },
+            serviceArea: { id: base.id, name: 'Krishna & Godavari' },
+            defaultCanteen: {
+              id: base.id,
+              name: 'K&G',
+              type: 'NIGHT',
+              isActive: true,
+              isAcceptingOrders: true,
+              isPaused: false,
+            },
           };
     renderGate(me);
     expect(screen.getByText(text, { exact: false })).toBeInTheDocument();
@@ -102,7 +110,7 @@ describe('staff routing (decided only by /api/auth/me)', () => {
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
   });
 
-  it('shows a canteen switcher and only authorised nav for multi-canteen cashier', () => {
+  it('never shows a canteen switcher and shows only authorised nav', () => {
     renderGate(
       meStaff({
         assignments: [
@@ -111,8 +119,10 @@ describe('staff routing (decided only by /api/auth/me)', () => {
             canteen: {
               id: '7d2c6a52-6f3e-4a35-9a3b-1c2d3e4f5a60',
               name: 'Krishna & Godavari Night Canteen',
+              type: 'NIGHT',
               isActive: true,
               isAcceptingOrders: true,
+              isPaused: false,
             },
             capabilities: ['CASHIER'],
           },
@@ -121,15 +131,19 @@ describe('staff routing (decided only by /api/auth/me)', () => {
             canteen: {
               id: '8d2c6a52-6f3e-4a35-9a3b-1c2d3e4f5a61',
               name: 'Yamuna & Narmada Night Canteen',
+              type: 'NIGHT',
               isActive: true,
               isAcceptingOrders: true,
+              isPaused: false,
             },
             capabilities: ['CASHIER'],
           },
         ],
       }),
     );
-    expect(screen.getByLabelText('Selected canteen')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Selected canteen')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Yamuna & Narmada Night Canteen')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Cashier' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Menu' })).not.toBeInTheDocument();

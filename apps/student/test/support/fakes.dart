@@ -36,14 +36,22 @@ class FakeServeApi extends ServeApi {
     Hostel.fromJson({
       'id': '1c35f533-0000-4000-8000-000000000001',
       'name': 'Krishna',
-      'canteen': {'id': fx.kgId, 'name': 'Krishna & Godavari Night Canteen'},
+      'serviceArea': {'id': fx.kgAreaId, 'name': 'Krishna & Godavari'},
+      'canteen': {'id': fx.kgId, 'name': 'Krishna & Godavari Night Canteen', 'type': 'NIGHT'},
     }),
   ];
   List<Canteen> canteenList = [
     Canteen.fromJson(fx.canteenJson()),
     Canteen.fromJson(fx.canteenJson(id: fx.vedId, name: 'Vedavathi Night Canteen')),
   ];
-  Map<String, Menu> menus = {fx.kgId: fx.menu(), fx.vedId: fx.menu(canteenId: fx.vedId, name: 'Vedavathi Night Canteen')};
+  Map<String, Menu> menus = {
+    fx.kgId: fx.menu(),
+    fx.vedId: fx.menu(canteenId: fx.vedId, name: 'Vedavathi Night Canteen'),
+    fx.kgDayId: fx.menu(canteenId: fx.kgDayId, name: 'Krishna & Godavari Day Canteen', status: 'PAUSED', state: 'OTHER_SERVICE_ACTIVE'),
+  };
+
+  /// The student's service area: Night serves, Day is off duty (seed default).
+  StudentService? serviceValue;
   Recommendations recommendationsValue = Recommendations(RecommendationBasis.popular, [
     fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich', price: 5000),
   ]);
@@ -99,9 +107,38 @@ class FakeServeApi extends ServeApi {
   Future<List<Canteen>> canteens() async => canteenList;
 
   @override
-  Future<Menu> menu(String canteenId, {ServicePeriod period = ServicePeriod.night}) async {
-    calls.add('menu:$canteenId:${period.apiValue}');
-    return menus[canteenId]!;
+  Future<List<Ref>> canteenDirectory() async => [for (final c in canteenList) Ref(c.id, c.name, c.type)];
+
+  @override
+  Future<Menu> menu(String canteenId) async {
+    final m = menus[canteenId]!;
+    calls.add('menu:$canteenId:${m.servicePeriod.apiValue}');
+    return m;
+  }
+
+  @override
+  Future<StudentService> studentService() async {
+    calls.add('service');
+    if (serviceValue != null) return serviceValue!;
+    final canteens = [
+      for (final id in [fx.kgDayId, fx.kgId])
+        if (menus[id] != null) menus[id]!.canteen,
+    ];
+    final open = canteens.where((c) => c.availability?.state == AvailabilityState.open).toList();
+    return StudentService(
+      hostel: const Ref('1c35f533-0000-4000-8000-000000000001', 'Krishna'),
+      serviceArea: const Ref(fx.kgAreaId, 'Krishna & Godavari'),
+      canteens: canteens,
+      current: open.isNotEmpty ? open.first : (canteens.isEmpty ? null : canteens.last),
+      unavailable: open.isEmpty,
+    );
+  }
+
+  @override
+  Future<CanteenPaymentConfig> orderPaymentConfig(String orderId) async {
+    calls.add('orderPaymentConfig:$orderId');
+    final canteenId = ordersById[orderId]?.canteen.id ?? fx.kgId;
+    return paymentConfigs[canteenId] ?? CanteenPaymentConfig.fromJson(fx.paymentConfigJson(canteenId: canteenId));
   }
 
   @override
@@ -111,7 +148,7 @@ class FakeServeApi extends ServeApi {
   }
 
   @override
-  Future<MenuItemDetail> menuItem(String id, {ServicePeriod period = ServicePeriod.night}) async {
+  Future<MenuItemDetail> menuItem(String id) async {
     for (final m in menus.values) {
       for (final c in m.categories) {
         for (final i in c.items) {
@@ -126,7 +163,8 @@ class FakeServeApi extends ServeApi {
   Future<Recommendations> recommendations(String canteenId) async => recommendationsValue;
 
   @override
-  Future<Quote> quote(String canteenId, List<CartLineInput> items, {ServicePeriod period = ServicePeriod.night}) async {
+  Future<Quote> quote(String canteenId, List<CartLineInput> items) async {
+    final period = menus[canteenId]?.servicePeriod ?? ServicePeriod.night;
     calls.add('quote:${period.apiValue}:${items.map((i) => '${i.menuItemId}x${i.quantity}').join(',')}');
     if (onQuote != null) return onQuote!(canteenId, items, period);
     final m = menus[canteenId]!;
@@ -156,12 +194,7 @@ class FakeServeApi extends ServeApi {
   }
 
   @override
-  Future<StudentOrder> placeOrder(
-    String canteenId,
-    List<CartLineInput> items, {
-    ServicePeriod period = ServicePeriod.night,
-    required String idempotencyKey,
-  }) async {
+  Future<StudentOrder> placeOrder(String canteenId, List<CartLineInput> items, {required String idempotencyKey}) async {
     idempotencyKeys.add(idempotencyKey);
     calls.add('placeOrder');
     if (onPlaceOrder != null) return onPlaceOrder!(canteenId, items, idempotencyKey);

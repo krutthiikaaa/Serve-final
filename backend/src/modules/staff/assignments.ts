@@ -1,6 +1,9 @@
 import type { Prisma, StaffCapability } from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../lib/prisma.js';
-import { NotFoundError, ValidationError } from '../../lib/errors.js';
+import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors.js';
+import { isUniqueViolation } from '../../lib/prisma-errors.js';
+import { rooms, type Outbox } from '../../realtime/events.js';
+import { writeNotifications } from '../notifications/notification.writer.js';
 
 /** Capabilities granted by the existing approve/assign flows. Never includes CASHIER. */
 export const OPERATING_CAPABILITIES = [
@@ -22,9 +25,12 @@ type Db = Pick<
   PrismaClient,
   'staff' | 'canteen' | 'staffCanteenAssignment' | 'staffAssignmentCapability'
 >;
+type Tx = Prisma.TransactionClient;
 
 const assignmentInclude = {
-  canteen: { select: { id: true, name: true, isActive: true, isAcceptingOrders: true } },
+  canteen: {
+    select: { id: true, name: true, isActive: true, isAcceptingOrders: true, isPaused: true },
+  },
   capabilities: { select: { capability: true }, orderBy: { capability: 'asc' as const } },
 } satisfies Prisma.StaffCanteenAssignmentInclude;
 
@@ -72,6 +78,77 @@ export async function ensureOperatingAssignment(db: Db, staffId: string, canteen
   return assignment;
 }
 
+/**
+ * Make `staffId` the dedicated (only) approved account of `canteen`.
+ *
+ * - A staff account belongs to exactly one canteen: capability rows for any
+ *   other canteen are removed.
+ * - A canteen has at most one approved account
+ *   (index Staff_one_approved_account_per_canteen). If another account holds
+ *   the canteen, the call fails with 409 CANTEEN_HAS_STAFF_ACCOUNT unless
+ *   `replaceExisting` is set; then that account loses access in the same
+ *   transaction (status PENDING, no canteen, sockets disconnected).
+ */
+export async function assignDedicatedAccount(
+  tx: Tx,
+  outbox: Outbox,
+  input: {
+    staffId: string;
+    canteen: { id: string; name: string };
+    replaceExisting?: boolean | undefined;
+  },
+): Promise<{ released: { id: string; name: string; email: string } | null }> {
+  const holder = await tx.staff.findFirst({
+    where: { canteenId: input.canteen.id, status: 'APPROVED', id: { not: input.staffId } },
+    select: { id: true, name: true, email: true },
+  });
+  if (holder && !input.replaceExisting) {
+    throw new ConflictError(
+      `${input.canteen.name} already has a dedicated staff account (${holder.email}). Replace it to continue.`,
+      'CANTEEN_HAS_STAFF_ACCOUNT',
+      { staff: holder },
+    );
+  }
+  if (holder) {
+    await tx.staff.update({
+      where: { id: holder.id },
+      data: { status: 'PENDING', canteenId: null },
+    });
+    await tx.staffCanteenAssignment.deleteMany({ where: { staffId: holder.id } });
+    await writeNotifications(tx, outbox, [{ kind: 'staff', id: holder.id }], {
+      type: 'STAFF_CANTEEN_ASSIGNED',
+      title: 'Canteen access removed',
+      message: `An admin assigned ${input.canteen.name} to another staff account.`,
+      data: { canteenId: input.canteen.id },
+    });
+    outbox.emit('staff.unassigned', [rooms.staff(holder.id), rooms.admins()], {
+      staffId: holder.id,
+      status: 'PENDING',
+    });
+    outbox.command({ type: 'disconnect-staff', staffId: holder.id });
+  }
+
+  await tx.staffCanteenAssignment.deleteMany({
+    where: { staffId: input.staffId, canteenId: { not: input.canteen.id } },
+  });
+  try {
+    await tx.staff.update({
+      where: { id: input.staffId },
+      data: { status: 'APPROVED', canteenId: input.canteen.id },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(
+        `${input.canteen.name} was just assigned to another staff account. Refresh and try again.`,
+        'CANTEEN_HAS_STAFF_ACCOUNT',
+      );
+    }
+    throw err;
+  }
+  await ensureOperatingAssignment(tx, input.staffId, input.canteen.id);
+  return { released: holder };
+}
+
 export async function listStaffAssignments(db: Db, staffId: string) {
   const rows = await db.staffCanteenAssignment.findMany({
     where: { staffId },
@@ -97,6 +174,13 @@ export async function replaceStaffAssignments(
   assignments: readonly StaffAssignmentInput[],
 ) {
   const canteenIds = assignments.map((row) => row.canteenId);
+  if (canteenIds.some((canteenId) => canteenId !== primaryCanteenId)) {
+    throw new ValidationError(
+      'A staff account works for exactly one canteen. Assign each canteen its own account.',
+      undefined,
+      'SINGLE_CANTEEN_ONLY',
+    );
+  }
   if (new Set(canteenIds).size !== canteenIds.length) {
     throw new ValidationError(
       'Each canteen may appear only once in the assignment list.',

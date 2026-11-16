@@ -21,7 +21,8 @@ export type AvailabilityCode =
 export type ConfigurationWarning = 'AUTO_WITHOUT_SCHEDULE' | 'INVALID_SCHEDULE';
 
 export interface AvailabilityInput {
-  canteen: { isActive: boolean; isAcceptingOrders: boolean };
+  /** isAcceptingOrders = on duty; isPaused = temporary pause. */
+  canteen: { isActive: boolean; isAcceptingOrders: boolean; isPaused: boolean };
   service: { isEnabled: boolean; override: ScheduleOverride } | null;
   schedules: readonly OperatingScheduleRow[];
   now?: Date;
@@ -58,7 +59,9 @@ export function evaluateServiceAvailability(input: AvailabilityInput): Availabil
   const warnings: ConfigurationWarning[] = [];
 
   if (!input.canteen.isActive) return closed('CANTEEN_INACTIVE');
-  if (!input.canteen.isAcceptingOrders) return closed('CANTEEN_NOT_ACCEPTING_ORDERS');
+  if (!input.canteen.isAcceptingOrders || input.canteen.isPaused) {
+    return closed('CANTEEN_NOT_ACCEPTING_ORDERS');
+  }
   if (!input.service || !input.service.isEnabled) return closed('SERVICE_DISABLED');
 
   const inspection = inspectOperatingSchedules(input.schedules);

@@ -88,6 +88,32 @@ export const IconRefresh = make([
   'M8 16H3v5',
 ]);
 export const IconPlus = make(['M12 5v14', 'M5 12h14']);
+export const IconSun = make([
+  'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
+  'M12 1v2',
+  'M12 21v2',
+  'M4.22 4.22l1.42 1.42',
+  'M18.36 18.36l1.42 1.42',
+  'M1 12h2',
+  'M21 12h2',
+  'M4.22 19.78l1.42-1.42',
+  'M18.36 5.64l1.42-1.42',
+]);
+export const IconMoon = make(['M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z']);
+export const IconUpload = make([
+  'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4',
+  'M17 8l-5-5-5 5',
+  'M12 3v12',
+]);
+export const IconQr = make([
+  'M3 3h7v7H3z',
+  'M14 3h7v7h-7z',
+  'M3 14h7v7H3z',
+  'M14 14h3v3h-3z',
+  'M20 14v.01',
+  'M14 20h.01',
+  'M17 17h4v4h-4',
+]);
 export const IconEdit = make(['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z']);
 export const IconPause = make(['M10 4H6v16h4z', 'M18 4h-4v16h4z']);
 export const IconPlay = make(['M6 3l14 9-14 9z']);

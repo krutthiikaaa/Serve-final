@@ -47,10 +47,7 @@ beforeAll(async () => {
     .set(bearer(admin.token))
     .send({
       primaryCanteenId: kg.id,
-      assignments: [
-        { canteenId: kg.id, capabilities: ['CASHIER'] },
-        { canteenId: yn.id, capabilities: ['CASHIER'] },
-      ],
+      assignments: [{ canteenId: kg.id, capabilities: ['CASHIER'] }],
     })
     .expect(200);
 });
@@ -213,7 +210,7 @@ describe('per-canteen DEMO/LIVE payment configuration', () => {
       })
       .expect(201);
     expect(demoSale.body.data.order.payment.isSimulated).toBe(true);
-    expect(demoSale.body.data.receipt.notice).toBe('DEMO TRANSACTION — NO REAL PAYMENT');
+    expect(demoSale.body.data.receipt.notice).toBe('SIMULATED TRANSACTION — NO REAL PAYMENT');
 
     const liveHistory = await request(app)
       .get('/api/staff/sales?simulated=false')

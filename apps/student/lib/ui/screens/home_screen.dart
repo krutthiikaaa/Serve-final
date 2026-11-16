@@ -23,10 +23,13 @@ import '../widgets/states.dart';
 import '../widgets/surface.dart';
 
 class _HomeData {
-  const _HomeData(this.menu, this.recommendations, this.activeOrder);
+  const _HomeData(this.menu, this.recommendations, this.activeOrder, this.service);
   final Menu menu;
   final Recommendations recommendations;
   final StudentOrder? activeOrder;
+
+  /// The student's service area (Day and Night canteens). Null if unavailable.
+  final StudentService? service;
 }
 
 class HomeScreen extends StatefulWidget {
@@ -73,7 +76,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
 
   Future<void> _load() async {
     final id = _canteenId;
-    final period = _period ?? ServicePeriod.night;
     if (id == null) return;
     final generation = ++_generation;
     final api = context.read<ServeApi>();
@@ -83,15 +85,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
     });
     try {
       final results = await Future.wait([
-        api.menu(id, period: period),
+        api.menu(id),
         api.recommendations(id),
         api.orders(status: 'active', limit: 1),
+        api.studentService().then<StudentService?>((s) => s, onError: (Object _) => null),
       ]);
       if (!mounted || generation != _generation) return;
       final menu = results[0] as Menu;
       context.read<CanteenSelection>().applyCanteen(menu.canteen);
       final active = results[2] as PageResult<StudentOrder>;
-      setState(() => _data = _HomeData(menu, results[1] as Recommendations, active.items.firstOrNull));
+      setState(() => _data = _HomeData(menu, results[1] as Recommendations, active.items.firstOrNull, results[3] as StudentService?));
     } catch (e) {
       if (mounted && generation == _generation) setState(() => _error = e);
     } finally {
@@ -110,6 +113,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
   @override
   void onLiveEvent(RealtimeEvent event) {
     if (event.type.startsWith('order.')) {
+      _load();
+    } else if (event.type == 'service_area.updated') {
       _load();
     } else if (event.type.startsWith('menu.') || event.type == 'canteen.status_changed') {
       final canteenId =
@@ -152,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Li
                         const SizedBox(height: 16),
                         const _HomeSearchBar(),
                         const SizedBox(height: 18),
-                        _CanteenCard(canteen: data.menu.canteen, hostelName: student?.hostel.name, period: data.menu.servicePeriod),
+                        _CanteenCard(canteen: data.menu.canteen, hostelName: student?.hostel.name, service: data.service),
                         if (data.activeOrder != null) ...[const SizedBox(height: 14), _ActiveOrderCard(order: data.activeOrder!)],
                         const SizedBox(height: ServeSpace.section),
                         _MostOrdered(data: data),
@@ -183,7 +188,7 @@ class _Welcome extends StatelessWidget {
       children: [
         Text('Hi, $name', style: theme.textTheme.headlineMedium),
         const SizedBox(height: 4),
-        Text('What are you craving tonight?', style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
+        Text('What would you like today?', style: theme.textTheme.bodyLarge?.copyWith(color: ServeColors.muted)),
       ],
     );
   }
@@ -231,9 +236,9 @@ class _HomeSearchBar extends StatelessWidget {
 }
 
 class _CanteenCard extends StatelessWidget {
-  const _CanteenCard({required this.canteen, required this.period, this.hostelName});
+  const _CanteenCard({required this.canteen, this.service, this.hostelName});
   final Canteen canteen;
-  final ServicePeriod period;
+  final StudentService? service;
   final String? hostelName;
 
   @override
@@ -263,7 +268,7 @@ class _CanteenCard extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          'PICKING UP FROM',
+                          service == null ? 'PICKING UP FROM' : 'SERVING ${service!.serviceArea.name.toUpperCase()}',
                           style: theme.textTheme.labelSmall?.copyWith(color: ServeColors.oliveInk, letterSpacing: 1),
                         ),
                         const Text(
@@ -274,32 +279,36 @@ class _CanteenCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(canteen.name, style: theme.textTheme.titleMedium),
-                    if (place != null && place.isNotEmpty) ...[
+                    if (place != null && place.isNotEmpty) ...[const SizedBox(height: 2), Text(place, style: theme.textTheme.bodySmall)],
+                    if (canteen.openingHours != null) ...[
                       const SizedBox(height: 2),
-                      Text(place, style: theme.textTheme.bodySmall),
+                      Text(canteen.openingHours!, style: theme.textTheme.bodySmall),
                     ],
                     const SizedBox(height: 10),
-                    CanteenStatusLabel(canteen: canteen),
-                    const SizedBox(height: 10),
                     ServiceAvailabilityPills(canteen: canteen),
-                    const SizedBox(height: 12),
-                    ServicePeriodToggle(
-                      value: period,
-                      enabledPeriods: {
-                        for (final p in ServicePeriod.values)
-                          if (canteen.supports(p) || canteen.supportedPeriods.isEmpty) p,
-                      },
-                      onChanged: (next) async {
-                        if (!context.mounted) return;
-                        if (!await confirmCartContextChange(context, canteenId: canteen.id, period: next)) return;
-                        if (!context.mounted) return;
-                        context.read<CanteenSelection>().selectPeriod(next);
-                      },
-                    ),
-                    if (canteen.orderingBlockReason(period) != null) ...[
+                    if (service != null) ...[
+                      const SizedBox(height: 12),
+                      ServiceSwitch(
+                        service: service!,
+                        selectedId: canteen.id,
+                        onSelect: (next) async {
+                          if (!await confirmCartContextChange(context, canteenId: next.id, period: next.type)) return;
+                          if (!context.mounted) return;
+                          context.read<CanteenSelection>().select(next.id, next.name, details: next);
+                        },
+                      ),
+                    ],
+                    if (service?.unavailable == true) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Neither the Day nor the Night canteen is taking orders right now. You can still browse the menu.',
+                        key: Key('area-unavailable'),
+                        style: TextStyle(color: ServeColors.orangeInk, fontWeight: FontWeight.w600, height: 1.35),
+                      ),
+                    ] else if (canteen.blockReason != null) ...[
                       const SizedBox(height: 10),
                       Text(
-                        canteen.orderingBlockReason(period)!,
+                        canteen.blockReason!,
                         style: const TextStyle(color: ServeColors.orangeInk, fontWeight: FontWeight.w600, height: 1.35),
                       ),
                     ],
@@ -480,7 +489,11 @@ class _HomeFoodCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Positioned(top: 6, right: 6, child: FavouriteButton(itemId: item.id, itemName: item.name)),
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: FavouriteButton(itemId: item.id, itemName: item.name),
+                    ),
                     Positioned(
                       right: 6,
                       bottom: 6,
@@ -530,7 +543,10 @@ class _HomeFoodCard extends StatelessWidget {
                     if (unavailable)
                       const Padding(
                         padding: EdgeInsets.only(top: 2),
-                        child: Text('Unavailable', style: TextStyle(color: ServeColors.orangeInk, fontSize: 11, fontWeight: FontWeight.w700)),
+                        child: Text(
+                          'Unavailable',
+                          style: TextStyle(color: ServeColors.orangeInk, fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
                       ),
                   ],
                 ),
@@ -630,10 +646,7 @@ class _FullMenuBanner extends StatelessWidget {
                 children: [
                   const IconTile(icon: Icons.restaurant_menu_rounded, size: 48, background: Color(0x33FFFFFF), color: ServeColors.white),
                   const SizedBox(height: 14),
-                  Text(
-                    'Explore the Full Menu',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: ServeColors.white),
-                  ),
+                  Text('Explore the Full Menu', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: ServeColors.white)),
                   const SizedBox(height: 6),
                   const Text(
                     'Browse all items, filter, and find something delicious.',
@@ -669,6 +682,9 @@ class _BannerBlob extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: size,
     height: size,
-    decoration: BoxDecoration(shape: BoxShape.circle, color: ServeColors.white.withValues(alpha: opacity)),
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: ServeColors.white.withValues(alpha: opacity),
+    ),
   );
 }

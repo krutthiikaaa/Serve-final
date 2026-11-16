@@ -101,11 +101,15 @@ class ProfileScreen extends StatelessWidget {
                   _SectionCard(
                     children: [
                       _ProfileRow(icon: Icons.apartment_rounded, title: 'Hostel', subtitle: me.hostel.name),
-                      _ProfileRow(icon: Icons.home_work_outlined, title: 'Default canteen', subtitle: me.defaultCanteen.name),
+                      _ProfileRow(
+                        icon: Icons.home_work_outlined,
+                        title: 'Service area',
+                        subtitle: me.serviceArea?.name ?? me.defaultCanteen?.name ?? '—',
+                      ),
                       _ProfileRow(
                         icon: Icons.storefront_rounded,
                         title: 'Ordering from',
-                        subtitle: selection.name ?? me.defaultCanteen.name,
+                        subtitle: selection.name ?? me.defaultCanteen?.name ?? 'No canteen available',
                         onTap: () => openCanteenSelection(context),
                       ),
                     ],

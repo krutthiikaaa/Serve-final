@@ -24,7 +24,9 @@ function report(overrides: Partial<AdminReport> = {}): AdminReport {
       rejected: 2,
     },
     series: [{ date: '2026-10-07', liveSalesPaise: 100_000, orderCount: 2 }],
-    byCanteen: [{ id: uuid(), name: 'Vedavathi', liveSalesPaise: 100_000, orderCount: 2 }],
+    byCanteen: [
+      { id: uuid(), name: 'Vedavathi', type: 'NIGHT', liveSalesPaise: 100_000, orderCount: 2 },
+    ],
     byPeriod: [
       { period: 'DAY', liveSalesPaise: 40_000, orderCount: 1 },
       { period: 'NIGHT', liveSalesPaise: 60_000, orderCount: 1 },
@@ -52,7 +54,7 @@ describe('reports', () => {
     renderAdmin(<ReportsPage />, { api });
     const live = (await screen.findByText('Successful LIVE sales')).closest('.kpi')!;
     expect(live).toHaveTextContent('₹1,000');
-    expect(screen.getByText(/DEMO sales in this range: ₹150/)).toBeInTheDocument();
+    expect(screen.getByText(/Test sales in this range: ₹150/)).toBeInTheDocument();
     expect(live).not.toHaveTextContent('₹1,150');
     expect(screen.getByText('Egg Roll')).toBeInTheDocument();
   });

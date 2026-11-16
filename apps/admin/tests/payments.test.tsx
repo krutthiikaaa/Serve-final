@@ -11,6 +11,8 @@ const overview = (): AdminPaymentOverview => ({
     {
       id: uuid(),
       name: 'Testing Canteen',
+      type: 'NIGHT',
+      qrUploadedAt: null,
       mode: 'DEMO',
       merchantName: null,
       upiConfigured: false,
@@ -21,6 +23,8 @@ const overview = (): AdminPaymentOverview => ({
     {
       id: uuid(),
       name: 'Live Canteen',
+      type: 'DAY',
+      qrUploadedAt: null,
       mode: 'LIVE',
       merchantName: 'Live Mess',
       upiConfigured: false,
@@ -61,6 +65,7 @@ describe('payments and QR', () => {
         svg: '<svg></svg>',
         warning: 'DEMO ONLY — NOT PAYABLE',
       },
+      qr: null,
       warnings: ['DEMO_MODE_ACTIVE'],
       updatedAt: '2026-10-06T18:00:00.000Z',
     });

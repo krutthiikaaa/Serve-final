@@ -4,7 +4,8 @@ import { createFirebaseAuth } from '../../src/lib/firebase.js';
 import { bootstrapAdmin } from '../../src/modules/auth/admin-bootstrap.js';
 import { seedDatabase } from '../../src/db/seed.js';
 import { buildTestApp } from '../helpers/test-app.js';
-import { truncateAll } from '../helpers/db.js';
+import { createHostelRecord, truncateAll } from '../helpers/db.js';
+import { canteenBySlug } from '../helpers/actors.js';
 import { TEST_PASSWORD, createFirebaseUser, signIn, uniqueEmail } from '../helpers/firebase.js';
 
 /**
@@ -20,7 +21,7 @@ beforeAll(async () => {
   await seedDatabase(prisma);
   const hostel = await prisma.hostel.findUniqueOrThrow({ where: { name: 'Krishna' } });
   krishnaHostelId = hostel.id;
-  krishnaCanteenId = hostel.canteenId;
+  krishnaCanteenId = (await canteenBySlug(prisma, 'krishna-godavari')).id;
 });
 afterAll(() => prisma.$disconnect());
 
@@ -207,8 +208,10 @@ describe('student registration', () => {
       'INVALID_HOSTEL',
     );
 
-    const inactive = await prisma.hostel.create({
-      data: { name: 'Closed Tower', canteenId: krishnaCanteenId, isActive: false },
+    const inactive = await createHostelRecord(prisma, {
+      name: 'Closed Tower',
+      canteenId: krishnaCanteenId,
+      isActive: false,
     });
     expect((await send(inactive.id).expect(422)).body.error.code).toBe('HOSTEL_INACTIVE');
     expect(await prisma.student.count({ where: { firebaseUid: user.uid } })).toBe(0);

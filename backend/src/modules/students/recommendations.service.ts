@@ -2,7 +2,7 @@ import type { PrismaClient } from '../../lib/prisma.js';
 import type { Clock } from '../../lib/time.js';
 import { systemClock } from '../../lib/time.js';
 import type { StudentPrincipal } from '../auth/principal.js';
-import { DEFAULT_SERVICE_PERIOD } from '../canteens/availability.js';
+import type { ServicePeriod } from '../canteens/availability.js';
 import { serviceAvailability } from '../canteens/canteen.dto.js';
 import type { CanteensService } from '../canteens/canteens.service.js';
 import { menuItemSelect, toMenuItemDto } from '../menu/menu.dto.js';
@@ -11,13 +11,11 @@ const LIMIT = 4;
 const POPULAR_WINDOW_DAYS = 30;
 const COUNTED_STATUSES = ['PAYMENT_CONFIRMED', 'PREPARING', 'READY', 'COLLECTED'] as const;
 
-const periodItemSelect = {
-  ...menuItemSelect,
-  services: {
-    where: { period: DEFAULT_SERVICE_PERIOD },
-    select: { pricePaise: true, isAvailable: true },
-  },
-} as const;
+const periodItemSelect = (period: ServicePeriod) =>
+  ({
+    ...menuItemSelect,
+    services: { where: { period }, select: { pricePaise: true, isAvailable: true } },
+  }) as const;
 
 /**
  * Home-screen suggestions from real order history:
@@ -25,14 +23,14 @@ const periodItemSelect = {
  *  2. POPULAR      — most ordered by everyone at this canteen (last 30 days)
  *  3. MENU         — first available items when there is no history yet
  *
- * Prices are the NIGHT service prices (student day/night selection is later).
+ * Prices are those of the canteen's own type (Day or Night).
  */
 export function createRecommendationsService(
   prisma: PrismaClient,
   canteens: CanteensService,
   clock: Clock = systemClock,
 ) {
-  async function itemsByIds(ids: string[], canteenId: string) {
+  async function itemsByIds(ids: string[], canteenId: string, period: ServicePeriod) {
     if (ids.length === 0) return [];
     const items = await prisma.menuItem.findMany({
       where: {
@@ -41,9 +39,9 @@ export function createRecommendationsService(
         isActive: true,
         isAvailable: true,
         category: { isActive: true },
-        services: { some: { period: DEFAULT_SERVICE_PERIOD, isAvailable: true } },
+        services: { some: { period, isAvailable: true } },
       },
-      select: periodItemSelect,
+      select: periodItemSelect(period),
     });
     const order = new Map(ids.map((id, index) => [id, index]));
     return items.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -71,28 +69,29 @@ export function createRecommendationsService(
   return {
     async forStudent(student: StudentPrincipal, canteenId: string) {
       const canteen = await canteens.visibleCanteen(student, canteenId);
-      const night = canteen.services.find((service) => service.period === DEFAULT_SERVICE_PERIOD);
-      const takesOrders = serviceAvailability(canteen, night, clock()).open;
+      const period = canteen.type;
+      const own = canteen.services.find((service) => service.period === period);
+      const takesOrders = serviceAvailability(canteen, own, clock()).open;
       const dto = (items: Awaited<ReturnType<typeof itemsByIds>>) =>
         items.slice(0, LIMIT).flatMap((item) => {
-          const period = item.services[0];
-          if (!period) return [];
+          const price = item.services[0];
+          if (!price) return [];
           return [
             toMenuItemDto(
               {
                 ...item,
-                pricePaise: period.pricePaise,
-                isAvailable: item.isAvailable && period.isAvailable,
+                pricePaise: price.pricePaise,
+                isAvailable: item.isAvailable && price.isAvailable,
               },
               { categoryActive: true, canteenTakesOrders: takesOrders },
             ),
           ];
         });
 
-      const mine = await itemsByIds(await topItemIds(canteenId, student.id), canteenId);
+      const mine = await itemsByIds(await topItemIds(canteenId, student.id), canteenId, period);
       if (mine.length > 0) return { basis: 'MOST_ORDERED' as const, items: dto(mine) };
 
-      const popular = await itemsByIds(await topItemIds(canteenId), canteenId);
+      const popular = await itemsByIds(await topItemIds(canteenId), canteenId, period);
       if (popular.length > 0) return { basis: 'POPULAR' as const, items: dto(popular) };
 
       const fallback = await prisma.menuItem.findMany({
@@ -101,9 +100,9 @@ export function createRecommendationsService(
           isActive: true,
           isAvailable: true,
           category: { isActive: true },
-          services: { some: { period: DEFAULT_SERVICE_PERIOD, isAvailable: true } },
+          services: { some: { period, isAvailable: true } },
         },
-        select: periodItemSelect,
+        select: periodItemSelect(period),
         orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
         take: LIMIT,
       });

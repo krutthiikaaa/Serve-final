@@ -48,6 +48,20 @@ test('staff onboarding → admin approval → paid order → live kitchen → pi
       .getByLabel('Note to the staff member (optional)')
       .fill('Welcome to the night shift');
     await dialog.getByRole('button', { name: 'Approve and assign' }).click();
+    // Each canteen has one dedicated staff account. If an earlier test left
+    // one on this canteen, the admin must confirm replacing it.
+    const replace = dialog.getByRole('button', { name: 'Replace account and approve' });
+    const outcome = await Promise.race([
+      replace.waitFor({ state: 'visible' }).then(() => 'replace' as const),
+      admin
+        .getByText(`E2E Kitchen Staff assigned to ${canteenName}`)
+        .waitFor({ state: 'visible' })
+        .then(() => 'done' as const),
+    ]);
+    if (outcome === 'replace') {
+      await expect(dialog.getByText(/already has a dedicated staff account/)).toBeVisible();
+      await replace.click();
+    }
     await expect(admin.getByText(`E2E Kitchen Staff assigned to ${canteenName}`)).toBeVisible();
   });
 

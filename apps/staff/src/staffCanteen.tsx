@@ -1,60 +1,34 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { MeStaff, StaffCapability } from '@serve/contracts';
-
-const STORAGE_KEY = 'serve.staff.canteenId';
 
 type Assignment = MeStaff['assignments'][number];
 
+/**
+ * The staff member's canteen. Every staff account is dedicated to exactly one
+ * canteen (decided by the backend from PostgreSQL); there is no canteen
+ * switching in the dashboard.
+ */
 interface StaffCanteenValue {
   canteenId: string;
+  /** DAY or NIGHT: the canteen's own (and only) service period. */
+  canteenType: 'DAY' | 'NIGHT';
   assignment: Assignment | undefined;
-  assignments: Assignment[];
-  selectCanteen: (id: string) => void;
   hasCapability: (capability: StaffCapability) => boolean;
 }
 
 const StaffCanteenContext = createContext<StaffCanteenValue | null>(null);
 
-function storedCanteenId() {
-  try {
-    return sessionStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function persistCanteenId(id: string) {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, id);
-  } catch {
-    /* ignore quota / private mode */
-  }
-}
-
 export function StaffCanteenProvider({ me, children }: { me: MeStaff; children: ReactNode }) {
-  const assignments = me.assignments;
-  const primaryId = me.canteen?.id ?? assignments[0]?.canteenId ?? '';
-  const [canteenId, setCanteenId] = useState(() => {
-    const stored = storedCanteenId();
-    if (stored && assignments.some((row) => row.canteenId === stored)) return stored;
-    return primaryId;
-  });
-
   const value = useMemo<StaffCanteenValue>(() => {
-    const resolved = assignments.some((row) => row.canteenId === canteenId) ? canteenId : primaryId;
-    const assignment = assignments.find((row) => row.canteenId === resolved);
+    const canteenId = me.canteen?.id ?? '';
+    const assignment = me.assignments.find((row) => row.canteenId === canteenId);
     return {
-      canteenId: resolved,
+      canteenId,
+      canteenType: me.canteen?.type ?? 'NIGHT',
       assignment,
-      assignments,
-      selectCanteen: (id: string) => {
-        if (!assignments.some((row) => row.canteenId === id)) return;
-        persistCanteenId(id);
-        setCanteenId(id);
-      },
       hasCapability: (capability) => assignment?.capabilities.includes(capability) ?? false,
     };
-  }, [assignments, canteenId, primaryId]);
+  }, [me]);
 
   return <StaffCanteenContext.Provider value={value}>{children}</StaffCanteenContext.Provider>;
 }

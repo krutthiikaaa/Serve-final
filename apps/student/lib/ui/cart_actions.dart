@@ -6,10 +6,8 @@ import '../state/canteen_selection.dart';
 import '../state/cart_controller.dart';
 import 'widgets/states.dart';
 
-const switchCanteenMessage =
-    'Your cart contains items from another canteen. Switching canteens will clear your current cart.';
-const switchPeriodMessage =
-    'Your cart contains items from a different day or night service. Switching will clear your current cart.';
+const switchCanteenMessage = 'Your cart contains items from another canteen. Switching canteens will clear your current cart.';
+const switchPeriodMessage = 'Your cart contains items from a different day or night service. Switching will clear your current cart.';
 
 /// Asks before clearing a cart that belongs to another canteen.
 Future<bool> confirmSwitchCanteen(BuildContext context) async {
@@ -50,11 +48,7 @@ Future<bool> confirmSwitchPeriod(BuildContext context) async {
   return result ?? false;
 }
 
-Future<bool> confirmCartContextChange(
-  BuildContext context, {
-  required String canteenId,
-  required ServicePeriod period,
-}) async {
+Future<bool> confirmCartContextChange(BuildContext context, {required String canteenId, required ServicePeriod period}) async {
   final cart = context.read<CartController>();
   if (!cart.conflictsWith(canteenId: canteenId, period: period)) return true;
   if (cart.canteenId != canteenId) {

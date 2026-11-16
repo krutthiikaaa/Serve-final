@@ -3,9 +3,9 @@ import type { PrismaClient } from '../../lib/prisma.js';
 import { NotFoundError } from '../../lib/errors.js';
 import type { Clock } from '../../lib/time.js';
 import { systemClock } from '../../lib/time.js';
-import type { Principal } from '../auth/principal.js';
+import type { Principal, StudentPrincipal } from '../auth/principal.js';
 import { categorySelect, menuItemSelect, toCategoryDto, toMenuItemDto } from '../menu/menu.dto.js';
-import { DEFAULT_SERVICE_PERIOD, type ServicePeriod } from './availability.js';
+import type { ServicePeriod } from './availability.js';
 import {
   canteenSelect,
   serviceAvailability,
@@ -13,6 +13,7 @@ import {
   type CanteenRow,
 } from './canteen.dto.js';
 import { ensureDemoPaymentConfig, toStudentPaymentConfigDto } from './payment-config.js';
+import { activeQrOf } from './qr-codes.js';
 
 /**
  * Who may see a canteen:
@@ -80,13 +81,14 @@ export function createCanteensService(
     },
 
     /** Student-facing menu: active categories with period-priced items (one query). */
-    async menu(
-      principal: Principal | null,
-      canteenId: string,
-      servicePeriod: ServicePeriod = DEFAULT_SERVICE_PERIOD,
-    ) {
+    /**
+     * A canteen serves exactly its own type (DAY or NIGHT). A legacy `?period=`
+     * is ignored; the response's `servicePeriod` is authoritative.
+     */
+    async menu(principal: Principal | null, canteenId: string, _requested?: ServicePeriod) {
       const now = clock();
       const canteen = await visibleCanteen(principal, canteenId);
+      const servicePeriod = canteen.type;
       const service = canteen.services.find((row) => row.period === servicePeriod);
       const availability = serviceAvailability(canteen, service, now);
       const categories = await prisma.menuCategory.findMany({
@@ -145,12 +147,13 @@ export function createCanteensService(
       }));
     },
 
-    async item(
-      principal: Principal | null,
-      itemId: string,
-      servicePeriod: ServicePeriod = DEFAULT_SERVICE_PERIOD,
-    ) {
+    async item(principal: Principal | null, itemId: string, _requested?: ServicePeriod) {
       const now = clock();
+      const owner = await prisma.menuItem.findUnique({
+        where: { id: itemId },
+        select: { canteen: { select: { type: true } } },
+      });
+      const servicePeriod: ServicePeriod = owner?.canteen.type ?? 'NIGHT';
       const item = await prisma.menuItem.findUnique({
         where: { id: itemId },
         select: {
@@ -194,9 +197,59 @@ export function createCanteensService(
       };
     },
 
+    async studentService(student: StudentPrincipal) {
+      const now = clock();
+      const hostel = await prisma.hostel.findUniqueOrThrow({
+        where: { id: student.hostelId },
+        select: {
+          id: true,
+          name: true,
+          serviceArea: {
+            select: {
+              id: true,
+              name: true,
+              canteens: { select: canteenSelect, orderBy: { type: 'asc' } },
+            },
+          },
+        },
+      });
+      const canteens = hostel.serviceArea.canteens
+        .filter((canteen) => canteen.isActive)
+        .map((canteen) => dto(canteen, now));
+      const open = canteens.find((canteen) => canteen.availability.state === 'OPEN') ?? null;
+      const fallback = canteens.find((canteen) => canteen.id === student.defaultCanteenId) ?? null;
+      return {
+        hostel: { id: hostel.id, name: hostel.name },
+        serviceArea: { id: hostel.serviceArea.id, name: hostel.serviceArea.name },
+        canteens,
+        current: open ?? fallback ?? canteens[0] ?? null,
+        /** True when no canteen of the area can take an order right now. */
+        unavailable: open === null,
+      };
+    },
+
+    /** Checkout QR for a student's own order: always its canteen's latest config. */
+    async orderPaymentConfig(student: StudentPrincipal, orderId: string) {
+      const order = await prisma.order.findFirst({
+        where: { id: orderId, studentId: student.id },
+        select: { canteen: { select: { id: true, name: true, type: true } } },
+      });
+      if (!order) throw new NotFoundError('Order not found.', 'ORDER_NOT_FOUND');
+      return {
+        canteen: order.canteen,
+        ...toStudentPaymentConfigDto(
+          await ensureDemoPaymentConfig(prisma, order.canteen.id),
+          await activeQrOf(prisma, order.canteen.id),
+        ),
+      };
+    },
+
     async paymentConfig(principal: Principal | null, canteenId: string) {
       const canteen = await visibleCanteen(principal, canteenId);
-      return toStudentPaymentConfigDto(await ensureDemoPaymentConfig(prisma, canteen.id));
+      return toStudentPaymentConfigDto(
+        await ensureDemoPaymentConfig(prisma, canteen.id),
+        await activeQrOf(prisma, canteen.id),
+      );
     },
   };
 }

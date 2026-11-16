@@ -4,15 +4,16 @@ import { io as connectClient, type Socket } from 'socket.io-client';
 import { createApp } from '../../src/app.js';
 import { createRealtimeServer, RealtimeBridge } from '../../src/realtime/socket-server.js';
 import { buildTestContext } from './test-app.js';
+import type { Clock } from '../../src/lib/time.js';
 
 /**
  * Starts the REAL backend (Express + Socket.IO) on an ephemeral port, wired to
  * the test database and the Firebase Auth Emulator — the same composition as
  * src/server.ts.
  */
-export async function startTestServer() {
+export async function startTestServer(options: { clock?: Clock } = {}) {
   const bridge = new RealtimeBridge();
-  const ctx = buildTestContext({ events: bridge });
+  const ctx = buildTestContext({ events: bridge, clock: options.clock });
   const app = createApp(ctx);
   const server: Server = createServer(app);
   const realtime = createRealtimeServer(server, ctx);

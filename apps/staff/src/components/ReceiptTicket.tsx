@@ -11,7 +11,9 @@ export function ReceiptTicket({ receipt }: { receipt: Receipt }) {
       <p className="receipt-university">{receipt.universityName}</p>
       <p className="receipt-canteen">{receipt.canteen.name}</p>
       {receipt.simulated ? (
-        <p className="receipt-demo">{receipt.notice ?? 'DEMO TRANSACTION — NO REAL PAYMENT'}</p>
+        <p className="receipt-demo">
+          {receipt.notice ?? 'SIMULATED TRANSACTION — NO REAL PAYMENT'}
+        </p>
       ) : null}
       <dl className="receipt-meta">
         <div>
@@ -68,9 +70,7 @@ export function ReceiptTicket({ receipt }: { receipt: Receipt }) {
         <strong>{formatRupees(receipt.totalPaise)}</strong>
       </p>
       <p className="receipt-pay">
-        {receipt.simulated
-          ? 'DEMO · Simulated — no real payment'
-          : `${receipt.paymentMethod} · Paid`}
+        {receipt.simulated ? 'Simulated — no real payment' : `${receipt.paymentMethod} · Paid`}
         {receipt.utr ? ` · Ref ${receipt.utr}` : ''}
       </p>
       <p className="receipt-customer">

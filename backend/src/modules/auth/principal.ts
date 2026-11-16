@@ -1,5 +1,6 @@
 import type { PrismaClient } from '../../lib/prisma.js';
 import type { StaffStatus } from '../../generated/prisma/client.js';
+import { areaCanteenSelect, defaultCanteenOf } from '../canteens/service-areas.js';
 
 /**
  * The authenticated caller as known to PostgreSQL. Built only from the
@@ -13,7 +14,9 @@ export interface StudentPrincipal {
   name: string;
   isActive: boolean;
   hostelId: string;
-  defaultCanteenId: string;
+  serviceAreaId: string;
+  /** Resolved from the hostel's service area at request time; null if it has no canteen. */
+  defaultCanteenId: string | null;
 }
 
 export interface StaffPrincipal {
@@ -49,7 +52,14 @@ export async function resolvePrincipal(
     prisma.staff.findUnique({ where: { firebaseUid } }),
     prisma.student.findUnique({
       where: { firebaseUid },
-      include: { hostel: { select: { canteenId: true } } },
+      include: {
+        hostel: {
+          select: {
+            serviceAreaId: true,
+            serviceArea: { select: { canteens: { select: areaCanteenSelect } } },
+          },
+        },
+      },
     }),
   ]);
 
@@ -84,7 +94,8 @@ export async function resolvePrincipal(
       name: student.name,
       isActive: student.isActive,
       hostelId: student.hostelId,
-      defaultCanteenId: student.hostel.canteenId,
+      serviceAreaId: student.hostel.serviceAreaId,
+      defaultCanteenId: defaultCanteenOf(student.hostel.serviceArea.canteens)?.id ?? null,
     };
   }
   return null;

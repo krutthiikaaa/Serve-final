@@ -1,7 +1,7 @@
 import type { Prisma } from '../../generated/prisma/client.js';
 
 export const orderInclude = {
-  canteen: { select: { id: true, name: true } },
+  canteen: { select: { id: true, name: true, type: true } },
   student: { select: { id: true, name: true } },
   items: {
     select: {

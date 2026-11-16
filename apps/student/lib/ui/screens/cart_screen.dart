@@ -62,11 +62,7 @@ class _CartScreenState extends State<CartScreen> {
     final generation = ++_generation;
     setState(() => _quoting = true);
     try {
-      final quote = await context.read<ServeApi>().quote(
-        canteenId,
-        _cart.toInputs(),
-        period: _cart.period ?? ServicePeriod.night,
-      );
+      final quote = await context.read<ServeApi>().quote(canteenId, _cart.toInputs());
       if (!mounted || generation != _generation) return;
       setState(() {
         _quote = quote;
@@ -158,10 +154,7 @@ class _CartScreenState extends State<CartScreen> {
           ),
           const SizedBox(height: 16),
           if (paused) ...[
-            NoticeBanner(
-              message: errorMessage(_error!),
-              icon: Icons.pause_circle_outline_rounded,
-            ),
+            NoticeBanner(message: errorMessage(_error!), icon: Icons.pause_circle_outline_rounded),
             const SizedBox(height: 14),
           ] else if (_error != null) ...[
             NoticeBanner(message: errorMessage(_error!), danger: true, icon: Icons.error_outline_rounded),
@@ -290,11 +283,7 @@ class _CartLineRow extends StatelessWidget {
               quantity: line.quantity,
               itemName: line.item.name,
               enabled: line.quantity < CartController.maxQuantity,
-              onAdd: () => cart.add(
-                line.item,
-                canteenName: cart.canteenName ?? '',
-                period: cart.period ?? ServicePeriod.night,
-              ),
+              onAdd: () => cart.add(line.item, canteenName: cart.canteenName ?? '', period: cart.period ?? ServicePeriod.night),
               onRemove: () => cart.decrement(line.item.id),
             ),
         ],

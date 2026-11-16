@@ -90,7 +90,8 @@ describe('student client', () => {
       .expect(201);
     const me = expectShape(meStudentSchema, registered.body.data);
     student.id = me.id;
-    canteenId = me.defaultCanteen.id;
+    expect(me.defaultCanteen).toMatchObject({ type: 'NIGHT' });
+    canteenId = me.defaultCanteen!.id;
   });
 
   it('browses canteens, the menu and an item', async () => {
@@ -268,7 +269,14 @@ describe('staff and admin clients', () => {
     );
     expect(meAfter.canteen?.id).toBe(canteenId);
     expectShape(
-      z_data(canteenSchema.extend({ counts: countsSchema })),
+      z_data(
+        canteenSchema.extend({
+          counts: countsSchema,
+          staffAccount: z
+            .strictObject({ id: z.uuid(), name: z.string(), email: z.email() })
+            .nullable(),
+        }),
+      ),
       (await api().get('/api/admin/canteens').set(bearer(admin.token)).expect(200)).body,
     );
     expectShape(

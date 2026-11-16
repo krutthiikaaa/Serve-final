@@ -44,6 +44,9 @@ class FavouritesController extends ChangeNotifier {
         byId[item.id] = (item: item, categoryName: category.name);
       }
     }
-    return [for (final id in _ids) if (byId[id] != null) byId[id]!];
+    return [
+      for (final id in _ids)
+        if (byId[id] != null) byId[id]!,
+    ];
   }
 }

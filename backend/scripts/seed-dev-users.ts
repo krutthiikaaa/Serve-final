@@ -50,6 +50,7 @@ async function firebaseUid(authClient: Auth, email: string, displayName: string)
 
 try {
   const kg = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'krishna-godavari' } });
+  const kgDay = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'krishna-godavari-day' } });
   const yn = await prisma.canteen.findUniqueOrThrow({ where: { slug: 'yamuna-narmada' } });
   const krishna = await prisma.hostel.findUniqueOrThrow({ where: { name: 'Krishna' } });
 
@@ -59,36 +60,29 @@ try {
     { email: 'admin@serve.dev', name: 'Dev Admin', password, allowCreateFirebaseUser: true },
   );
 
-  const approvedUid = await firebaseUid(auth, 'staff.kg@serve.dev', 'Dev Staff (K&G)');
-  const approvedStaff = await prisma.staff.upsert({
-    where: { firebaseUid: approvedUid },
-    update: {
-      name: 'Dev Staff (K&G)',
-      status: 'APPROVED',
-      canteenId: kg.id,
-    },
-    create: {
-      firebaseUid: approvedUid,
-      email: 'staff.kg@serve.dev',
-      name: 'Dev Staff (K&G)',
-      status: 'APPROVED',
-      canteenId: kg.id,
-    },
-  });
-  const assignment = await prisma.staffCanteenAssignment.upsert({
-    where: {
-      staffId_canteenId: { staffId: approvedStaff.id, canteenId: kg.id },
-    },
-    update: {},
-    create: { staffId: approvedStaff.id, canteenId: kg.id },
-  });
-  for (const capability of ['KITCHEN', 'MENU', 'PAUSE'] as const) {
-    await prisma.staffAssignmentCapability.upsert({
-      where: { assignmentId_capability: { assignmentId: assignment.id, capability } },
-      update: {},
-      create: { assignmentId: assignment.id, capability },
+  // One dedicated account per canteen (Day and Night are separate canteens).
+  async function dedicatedStaff(email: string, name: string, canteenId: string) {
+    const uid = await firebaseUid(auth, email, name);
+    const staff = await prisma.staff.upsert({
+      where: { firebaseUid: uid },
+      update: { name, status: 'APPROVED', canteenId },
+      create: { firebaseUid: uid, email, name, status: 'APPROVED', canteenId },
     });
+    const assignment = await prisma.staffCanteenAssignment.upsert({
+      where: { staffId_canteenId: { staffId: staff.id, canteenId } },
+      update: {},
+      create: { staffId: staff.id, canteenId },
+    });
+    for (const capability of ['KITCHEN', 'MENU', 'PAUSE', 'CASHIER'] as const) {
+      await prisma.staffAssignmentCapability.upsert({
+        where: { assignmentId_capability: { assignmentId: assignment.id, capability } },
+        update: {},
+        create: { assignmentId: assignment.id, capability },
+      });
+    }
   }
+  await dedicatedStaff('staff.kg@serve.dev', 'K&G Night Canteen', kg.id);
+  await dedicatedStaff('staff.kg.day@serve.dev', 'K&G Day Canteen', kgDay.id);
 
   const pendingUid = await firebaseUid(auth, 'staff.pending@serve.dev', 'Dev Staff (pending)');
   const pending = await prisma.staff.upsert({
@@ -120,7 +114,7 @@ try {
   });
 
   console.error(
-    'Emulator demo accounts ready: admin@serve.dev, staff.kg@serve.dev (approved, K&G), ' +
+    'Emulator development accounts ready: admin@serve.dev, staff.kg@serve.dev (K&G Night), staff.kg.day@serve.dev (K&G Day), ' +
       'staff.pending@serve.dev (pending), student@serve.dev (Krishna). Password: the DEV_SEED_PASSWORD you supplied',
   );
 } finally {

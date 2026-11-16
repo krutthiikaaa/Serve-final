@@ -171,7 +171,9 @@ class _StudentRegisterFormState extends State<StudentRegisterForm> {
             if (_hostelsError != null)
               Row(
                 children: [
-                  Expanded(child: Text(errorMessage(_hostelsError!), style: const TextStyle(color: ServeColors.danger))),
+                  Expanded(
+                    child: Text(errorMessage(_hostelsError!), style: const TextStyle(color: ServeColors.danger)),
+                  ),
                   TextButton(onPressed: _loadHostels, child: const Text('Retry')),
                 ],
               )
@@ -183,7 +185,10 @@ class _StudentRegisterFormState extends State<StudentRegisterForm> {
                 hint: Text(_hostels == null ? 'Loading hostels…' : 'Select your hostel'),
                 items: [
                   for (final h in _hostels ?? const <Hostel>[])
-                    DropdownMenuItem(value: h.id, child: Text('${h.name}  ·  ${h.canteen.name}', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(
+                      value: h.id,
+                      child: Text('${h.name}  ·  ${h.serviceArea?.name ?? h.canteen?.name ?? ''}', overflow: TextOverflow.ellipsis),
+                    ),
                 ],
                 onChanged: _hostels == null || _busy ? null : (v) => setState(() => _hostelId = v),
                 validator: (v) => v == null ? 'Select your hostel' : null,

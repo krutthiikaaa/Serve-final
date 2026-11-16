@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/api/models.dart';
 import '../../services/api/serve_api.dart';
+import '../../services/auth/auth_controller.dart';
 import '../../state/canteen_selection.dart';
 import '../../theme/serve_theme.dart';
 import '../cart_actions.dart';
@@ -30,7 +31,15 @@ class _CanteenSelectionScreenState extends State<CanteenSelectionScreen> {
     setState(() => _error = null);
     try {
       final canteens = await context.read<ServeApi>().canteens();
-      if (mounted) setState(() => _canteens = canteens);
+      if (!mounted) return;
+      // The student's own service area first, then canteens taking orders.
+      final areaId = context.read<AuthController>().student?.serviceArea?.id;
+      int rank(Canteen c) => (c.serviceArea?.id == areaId ? 0 : 2) + (c.availability?.state == AvailabilityState.open ? 0 : 1);
+      canteens.sort((a, b) {
+        final byRank = rank(a).compareTo(rank(b));
+        return byRank != 0 ? byRank : a.name.compareTo(b.name);
+      });
+      setState(() => _canteens = canteens);
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }

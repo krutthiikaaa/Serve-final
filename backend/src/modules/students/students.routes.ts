@@ -12,12 +12,20 @@ export function createStudentsRouter(ctx: AppContext, services: Services): Route
   router.get('/me/recommendations', async (req, res) => {
     const student = currentStudent(req);
     const { canteenId } = parse(z.object({ canteenId: id.optional() }), req.query);
+    const target = canteenId ?? student.defaultCanteenId;
     res.json({
-      data: await services.recommendations.forStudent(
-        student,
-        canteenId ?? student.defaultCanteenId,
-      ),
+      data: target
+        ? await services.recommendations.forStudent(student, target)
+        : { basis: 'MENU', items: [] },
     });
+  });
+  /**
+   * The student's service area with its Day and Night canteens, and the one
+   * to show now (`current`: the canteen taking orders, else the default).
+   * `current.availability.state` tells the app when neither can take orders.
+   */
+  router.get('/me/service', async (req, res) => {
+    res.json({ data: await services.canteens.studentService(currentStudent(req)) });
   });
   return router;
 }

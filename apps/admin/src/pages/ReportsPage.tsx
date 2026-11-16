@@ -60,7 +60,7 @@ export function ReportsPage() {
         <div>
           <h1>Reports & Analytics</h1>
           <p>
-            Successful LIVE sales are the only real revenue. DEMO sales are shown apart from them.
+            Successful live sales are the only real revenue. Test sales are shown apart from them.
           </p>
         </div>
       </div>
@@ -153,7 +153,7 @@ export function ReportsPage() {
             }
           >
             <option value="">All</option>
-            <option value="DEMO">DEMO</option>
+            <option value="DEMO">Test mode</option>
             <option value="LIVE">LIVE</option>
           </Select>
         </label>
@@ -205,7 +205,7 @@ function ReportBody({ report }: { report: AdminReport }) {
         ]}
       />
       <p className="muted small revenue-note">
-        DEMO sales in this range: {formatRupees(report.payments.demoSalesPaise)}. They are not
+        Test sales in this range: {formatRupees(report.payments.demoSalesPaise)}. They are not
         included in successful LIVE sales.
         {report.payments.otherLiveSalesPaise > 0
           ? ` Other LIVE sales (app checkout): ${formatRupees(report.payments.otherLiveSalesPaise)}.`

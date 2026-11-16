@@ -53,9 +53,7 @@ void main() {
   Future<http.Response> staffRequest(String method, String path, {Object? body, String? canteenId}) async {
     final email = env['SERVE_STAFF_EMAIL'] ?? 'staff.kg@serve.dev';
     final staff = await FirebaseAuthClient(config).signIn(email, env['DEV_SEED_PASSWORD'] ?? '');
-    final uri = Uri.parse('${config.apiUrl}$path').replace(
-      queryParameters: canteenId == null ? null : {'canteenId': canteenId},
-    );
+    final uri = Uri.parse('${config.apiUrl}$path').replace(queryParameters: canteenId == null ? null : {'canteenId': canteenId});
     final request = http.Request(method, uri)
       ..headers.addAll({'Authorization': 'Bearer ${staff.idToken}', 'Content-Type': 'application/json'});
     if (body != null) request.body = jsonEncode(body);
@@ -73,12 +71,7 @@ void main() {
   }
 
   Future<void> staffSetStatus(String orderId, String status, String canteenId) async {
-    final res = await staffRequest(
-      'PATCH',
-      '/api/staff/orders/$orderId/status',
-      body: {'status': status},
-      canteenId: canteenId,
-    );
+    final res = await staffRequest('PATCH', '/api/staff/orders/$orderId/status', body: {'status': status}, canteenId: canteenId);
     expect(res.statusCode, 200, reason: res.body);
   }
 
@@ -106,41 +99,43 @@ void main() {
     final krishna = hostels.firstWhere((h) => h.name == 'Krishna');
     final me = await api.registerStudent(name: 'Flutter Integration', email: email, hostelId: krishna.id);
     auth.setMe(me);
-    expect(me.defaultCanteen.id, krishna.canteen.id);
+    final canteen = me.defaultCanteen!;
+    expect(canteen.id, krishna.canteen!.id);
+    // The area's Night canteen serves by default; it identifies its type.
+    expect(canteen.type, ServicePeriod.night);
+    expect(me.serviceArea?.name, 'Krishna & Godavari');
 
     // 2. Authenticated socket; the server assigns the rooms.
     realtime.start();
     await eventually(() => realtime.state == LiveState.connected ? true : null);
-    expect(await realtime.subscribeMenu(me.defaultCanteen.id), isTrue);
+    expect(await realtime.subscribeMenu(canteen.id), isTrue);
 
     // 3. Menu, recommendations and an authoritative quote for the selected period.
-    final menu = await api.menu(me.defaultCanteen.id, period: ServicePeriod.night);
+    final menu = await api.menu(canteen.id);
+    expect(menu.servicePeriod, ServicePeriod.night);
+    expect(menu.canteen.type, ServicePeriod.night);
+
+    // The student's service area has a Day and a Night canteen; only Night serves now.
+    final service = await api.studentService();
+    expect(service.current?.id, canteen.id);
+    expect(service.unavailable, isFalse);
+    expect(service.ofType(ServicePeriod.day)?.availability?.state, AvailabilityState.otherServiceActive);
     final item = menu.visibleCategories.expand((c) => c.items).firstWhere((i) => i.isOrderable);
-    final recommendations = await api.recommendations(me.defaultCanteen.id);
+    final recommendations = await api.recommendations(canteen.id);
     expect(recommendations.items, isNotEmpty);
-    final quote = await api.quote(me.defaultCanteen.id, [CartLineInput(item.id, 2)], period: ServicePeriod.night);
+    final quote = await api.quote(canteen.id, [CartLineInput(item.id, 2)]);
     expect(quote.totalPaise, item.pricePaise * 2);
     expect(quote.servicePeriod, ServicePeriod.night);
 
-    final payConfig = await api.paymentConfig(me.defaultCanteen.id);
+    final payConfig = await api.paymentConfig(canteen.id);
     expect(payConfig.mode, PaymentMode.demo);
     expect(payConfig.demoQr?.warning, 'DEMO ONLY — NOT PAYABLE');
     expect(payConfig.upiVpa, isNull);
 
     // 4. One key per checkout attempt: a retry returns the same order.
     final key = uuidV4();
-    final placed = await api.placeOrder(
-      me.defaultCanteen.id,
-      [CartLineInput(item.id, 2)],
-      period: ServicePeriod.night,
-      idempotencyKey: key,
-    );
-    final replay = await api.placeOrder(
-      me.defaultCanteen.id,
-      [CartLineInput(item.id, 2)],
-      period: ServicePeriod.night,
-      idempotencyKey: key,
-    );
+    final placed = await api.placeOrder(canteen.id, [CartLineInput(item.id, 2)], idempotencyKey: key);
+    final replay = await api.placeOrder(canteen.id, [CartLineInput(item.id, 2)], idempotencyKey: key);
     expect(replay.id, placed.id);
     expect(placed.status, OrderStatus.placed);
     expect(placed.totalPaise, quote.totalPaise);

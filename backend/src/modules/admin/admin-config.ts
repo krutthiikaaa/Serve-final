@@ -24,6 +24,7 @@ import {
   officialDetailsReady,
   toAdminPaymentConfigDto,
 } from '../canteens/payment-config.js';
+import { activeQrOf } from '../canteens/qr-codes.js';
 
 export type AdminConfigurationWarning =
   | 'AUTO_WITHOUT_SCHEDULE'
@@ -380,7 +381,10 @@ export function createAdminConfigService(prisma: PrismaClient, logger: Logger) {
 
     async getPaymentConfig(canteenId: string) {
       await requireCanteen(canteenId);
-      return toAdminPaymentConfigDto(await ensureDemoPaymentConfig(prisma, canteenId));
+      return toAdminPaymentConfigDto(
+        await ensureDemoPaymentConfig(prisma, canteenId),
+        await activeQrOf(prisma, canteenId),
+      );
     },
 
     async updatePaymentConfig(admin: AdminPrincipal, canteenId: string, input: PaymentConfigInput) {
@@ -443,7 +447,7 @@ export function createAdminConfigService(prisma: PrismaClient, logger: Logger) {
           },
         });
       }
-      return toAdminPaymentConfigDto(row);
+      return toAdminPaymentConfigDto(row, await activeQrOf(prisma, canteenId));
     },
 
     async updateStaffAssignments(
@@ -458,6 +462,14 @@ export function createAdminConfigService(prisma: PrismaClient, logger: Logger) {
       if (!staff) throw new NotFoundError('Staff member not found.', 'STAFF_NOT_FOUND');
       if (staff.status === 'DEACTIVATED') {
         throw new ConflictError('This staff member is deactivated.', 'STAFF_DEACTIVATED');
+      }
+      // Capabilities only. Moving an account to another canteen goes through
+      // the dedicated-account assignment (PATCH /staff/:id/assignment).
+      if (staff.status !== 'APPROVED' || staff.canteenId !== input.primaryCanteenId) {
+        throw new ConflictError(
+          'Assign the canteen first, then edit this account’s permissions.',
+          'ASSIGNMENT_REQUIRED',
+        );
       }
 
       const before = {

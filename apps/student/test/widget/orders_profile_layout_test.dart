@@ -107,7 +107,8 @@ void main() {
     expect(find.text('Pickup'), findsOneWidget);
     expect(find.text('Hostel'), findsOneWidget);
     expect(find.text('Krishna'), findsWidgets);
-    expect(find.text('Default canteen'), findsOneWidget);
+    expect(find.text('Service area'), findsOneWidget);
+    expect(find.text('Krishna & Godavari'), findsWidgets);
     expect(find.text('Krishna & Godavari Night Canteen'), findsWidgets);
     expect(find.text('Ordering from'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);

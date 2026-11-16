@@ -1,3 +1,4 @@
+import { activeQrOf } from '../canteens/qr-codes.js';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../lib/prisma.js';
@@ -22,7 +23,7 @@ type PaymentMethod = 'CASH' | 'UPI';
 type OrderChannel = 'APP' | 'WALK_IN';
 
 export interface WalkInInput {
-  servicePeriod: ServicePeriod;
+  servicePeriod?: ServicePeriod | undefined;
   paymentMethod: PaymentMethod;
   paymentReceived?: boolean | undefined;
   simulatedPaymentReceived?: boolean | undefined;
@@ -111,9 +112,9 @@ export function createCashierService(
       if (fresh.studentId) {
         await writeNotifications(tx, outbox, [{ kind: 'student', id: fresh.studentId }], {
           type: 'PAYMENT_CONFIRMED',
-          title: input.simulated ? 'Demo payment recorded' : 'Payment confirmed',
+          title: input.simulated ? 'Test payment recorded' : 'Payment confirmed',
           message: input.simulated
-            ? `DEMO transaction recorded. Order #${fresh.orderNumber} is not a real payment.`
+            ? `Test transaction recorded. Order #${fresh.orderNumber} is not a real payment.`
             : `Payment received. Order #${fresh.orderNumber} has been sent to the canteen.`,
           orderId: fresh.id,
           data: {
@@ -201,12 +202,15 @@ export function createCashierService(
       return { ...result, data: result.data.map((order) => toOrderDto(order, 'staff')) };
     },
 
-    async posMenu(principal: ApprovedStaffPrincipal, canteenId: string, period: ServicePeriod) {
+    async posMenu(principal: ApprovedStaffPrincipal, canteenId: string, period?: ServicePeriod) {
       return canteens.menu(principal, canteenId, period);
     },
 
     async paymentConfig(canteenId: string) {
-      return toStaffPaymentConfigDto(await ensureDemoPaymentConfig(prisma, canteenId));
+      return toStaffPaymentConfigDto(
+        await ensureDemoPaymentConfig(prisma, canteenId),
+        await activeQrOf(prisma, canteenId),
+      );
     },
 
     /**
@@ -240,7 +244,7 @@ export function createCashierService(
     ) {
       if (input.simulatedPaymentReceived !== true) {
         throw new ValidationError(
-          'Confirm the simulated DEMO payment explicitly.',
+          'Confirm the simulated payment explicitly.',
           { simulatedPaymentReceived: 'Required' },
           'PAYMENT_NOT_CONFIRMED',
         );
@@ -312,7 +316,7 @@ export function createCashierService(
     ) {
       if (input.simulatedPaymentReceived !== true) {
         throw new ValidationError(
-          'Confirm the simulated DEMO sale explicitly.',
+          'Confirm the simulated sale explicitly.',
           { simulatedPaymentReceived: 'Required' },
           'PAYMENT_NOT_CONFIRMED',
         );

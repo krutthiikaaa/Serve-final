@@ -20,10 +20,21 @@ void main() {
     expect(m.visibleCategories.single.items[1].isOrderable, isFalse);
   });
 
-  test('parses DAY/NIGHT canteen availability from the backend, not the phone clock', () {
+  test('parses the canteen type and backend availability, not the phone clock', () {
     final open = Canteen.fromJson(canteenJson());
+    expect(open.type, ServicePeriod.night);
+    expect(open.serviceArea?.name, 'Krishna & Godavari');
+    expect(open.availability?.state, AvailabilityState.open);
+    expect(open.blockReason, isNull);
     expect(open.availabilityFor(ServicePeriod.night), ServiceAvailability.open);
-    expect(open.availabilityLabel(ServicePeriod.day), 'Open now');
+    expect(open.availabilityLabel(ServicePeriod.night), 'Open now');
+
+    final day = Canteen.fromJson(
+      canteenJson(id: kgDayId, name: 'Krishna & Godavari Day Canteen', status: 'PAUSED', state: 'OTHER_SERVICE_ACTIVE'),
+    );
+    expect(day.type, ServicePeriod.day);
+    expect(day.availability?.state, AvailabilityState.otherServiceActive);
+    expect(day.blockReason, 'Krishna & Godavari Night Canteen is serving your area right now.');
     final closedJson = canteenJson();
     closedJson['supportedPeriods'] = ['NIGHT'];
     closedJson['services'] = [
@@ -36,6 +47,31 @@ void main() {
     expect(closed.availabilityFor(ServicePeriod.night), ServiceAvailability.closed);
     expect(closed.availabilityFor(ServicePeriod.day), ServiceAvailability.notConfigured);
     expect(closed.orderingBlockReason(ServicePeriod.night), contains('closed'));
+  });
+
+  test('names every canteen state the way the staff and admin apps do', () {
+    Canteen withState(String state, {String message = 'Not taking orders.'}) {
+      final json = canteenJson(status: 'PAUSED', state: state);
+      (json['availability'] as Map<String, dynamic>)['message'] = message;
+      return Canteen.fromJson(json);
+    }
+
+    expect(Canteen.fromJson(canteenJson()).availability?.label, 'Taking orders');
+    expect(withState('PAUSED').availability?.label, 'Paused');
+    expect(withState('OFF_DUTY').availability?.state, AvailabilityState.offDuty);
+    expect(withState('OFF_DUTY').availability?.label, 'Off duty');
+    expect(withState('OFF_DUTY').blockReason, 'No canteen is serving your area right now.');
+    expect(withState('OTHER_SERVICE_ACTIVE').availability?.label, 'Off duty');
+    final scheduled = withState('CLOSED_BY_SCHEDULE', message: 'Closed by schedule. Opens at 18:00.');
+    expect(scheduled.availability?.state, AvailabilityState.closedBySchedule);
+    expect(scheduled.availability?.label, 'Closed by schedule');
+    expect(scheduled.blockReason, 'Closed by schedule. Opens at 18:00.');
+    expect(withState('INACTIVE').availability?.label, 'Temporarily disabled');
+    expect(withState('SERVICE_DISABLED').availability?.label, 'Unavailable');
+    // A state this build does not know yet is never treated as open.
+    final future = withState('SOMETHING_NEW');
+    expect(future.availability?.state, isNot(AvailabilityState.open));
+    expect(future.blockReason, isNotNull);
   });
 
   test('demo QR payload is unique and never a UPI payment URI', () {

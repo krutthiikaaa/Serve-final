@@ -16,27 +16,51 @@ mixin LiveReload<T extends StatefulWidget> on State<T>, WidgetsBindingObserver {
   /// Override to poll REST when the socket is down (order tracking / payment).
   Duration? get livePollInterval => null;
 
+  /// True while this screen's route is still part of the navigator.
+  ///
+  /// A route that was replaced or removed keeps its State mounted until Flutter
+  /// disposes it after the replacing route's transition. During that window it
+  /// must not react to live data: e.g. a replaced payment screen would
+  /// otherwise navigate again on every later order event.
+  bool get liveActive {
+    if (!mounted || _stopped) return false;
+    return ModalRoute.of(context)?.isActive ?? true;
+  }
+
+  bool _stopped = false;
+
   /// Call from initState.
   void startLive() {
     final realtime = _realtime = context.read<RealtimeService>();
     _seenEpoch = realtime.epoch;
     realtime.addListener(_onRealtime);
     _liveSub = realtime.events.listen((event) {
-      if (mounted) onLiveEvent(event);
+      if (liveActive) onLiveEvent(event);
     });
     WidgetsBinding.instance.addObserver(this);
     final interval = livePollInterval;
     if (interval != null) {
       _poll = Timer.periodic(interval, (_) {
-        if (!mounted) return;
+        if (!liveActive) return;
         if (_realtime?.state != LiveState.connected) onReconnect();
       });
     }
   }
 
+  /// Stop all live updates now (e.g. right before navigating away), without
+  /// waiting for dispose.
+  void stopLive() {
+    _stopped = true;
+    _liveSub?.cancel();
+    _liveSub = null;
+    _poll?.cancel();
+    _poll = null;
+    _realtime?.removeListener(_onRealtime);
+  }
+
   void _onRealtime() {
     final realtime = _realtime;
-    if (realtime == null || !mounted) return;
+    if (realtime == null || !liveActive) return;
     if (realtime.epoch != _seenEpoch) {
       _seenEpoch = realtime.epoch;
       // Includes the first connection: anything that changed between the
@@ -58,7 +82,7 @@ mixin LiveReload<T extends StatefulWidget> on State<T>, WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) onReconnect();
+    if (state == AppLifecycleState.resumed && liveActive) onReconnect();
   }
 
   @override

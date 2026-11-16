@@ -76,7 +76,11 @@ class _FoodProductCardState extends State<FoodProductCard> {
                             ),
                           ),
                         ),
-                        Positioned(top: 6, left: 6, child: FavouriteButton(itemId: item.id, itemName: item.name)),
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: FavouriteButton(itemId: item.id, itemName: item.name),
+                        ),
                         Positioned(
                           top: 6,
                           right: 6,

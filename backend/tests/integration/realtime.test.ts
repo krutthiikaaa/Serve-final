@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
-import { truncateAll } from '../helpers/db.js';
+import { createCanteenRecord, truncateAll } from '../helpers/db.js';
 import { createFirebaseUser } from '../helpers/firebase.js';
 import { testEnv } from '../helpers/test-app.js';
 import {
@@ -331,8 +331,9 @@ describe('menu events', () => {
   it('validates menu subscriptions server-side', async () => {
     const socket = await server.connect(studentA.token);
     expect((await subscribeMenu(socket, 'not-a-uuid')).error?.code).toBe('VALIDATION_ERROR');
-    const hidden = await server.prisma.canteen.create({
-      data: { name: 'Hidden Canteen', slug: 'hidden-canteen', isActive: false },
+    const hidden = await createCanteenRecord(server.prisma, {
+      name: 'Hidden Canteen',
+      isActive: false,
     });
     expect((await subscribeMenu(socket, hidden.id)).error?.code).toBe('CANTEEN_NOT_FOUND');
     socket.disconnect();
@@ -356,10 +357,11 @@ describe('staff assignment events', () => {
     const pending = await server.prisma.canteenChangeRequest.findFirstOrThrow({
       where: { staffId: staff.id, status: 'PENDING' },
     });
+    // Yamuna & Narmada Night already has a dedicated account: replace it.
     await request(server.app)
       .post(`/api/admin/change-requests/${pending.id}/approve`)
       .set(bearer(admin.token))
-      .send({})
+      .send({ replaceExisting: true })
       .expect(200);
     expect(await approved).toMatchObject({
       staffId: staff.id,
@@ -393,7 +395,7 @@ describe('staff assignment events', () => {
     await request(server.app)
       .patch(`/api/admin/staff/${staff.id}/assignment`)
       .set(bearer(admin.token))
-      .send({ canteenId: kg.id })
+      .send({ canteenId: kg.id, replaceExisting: true })
       .expect(200);
     await moved;
     await settle(100);
@@ -432,7 +434,9 @@ describe('staff assignment events', () => {
     const staff = await newPendingStaff(server.app, kg.id);
     expect((await createdEvent).changeRequest.requestedCanteen.id).toBe(kg.id);
 
-    const approvedStaff = await newApprovedStaff(server.app, admin, kg.id);
+    const approvedStaff = await newApprovedStaff(server.app, admin, kg.id, {
+      replaceExisting: true,
+    });
     const staffSocket = await server.connect(approvedStaff.token);
     const deactivatedEvent = nextEvent<{ staffId: string }>(staffSocket, 'staff.deactivated');
     const disconnected = new Promise<string>((resolve) => staffSocket.once('disconnect', resolve));

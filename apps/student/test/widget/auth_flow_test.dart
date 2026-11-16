@@ -179,7 +179,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret1');
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Krishna & Godavari Night Canteen').last);
+    await tester.tap(find.text('Krishna & Godavari Night Canteen · Night').last);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Request access'));
     await tester.pumpAndSettle();

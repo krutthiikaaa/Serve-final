@@ -64,6 +64,7 @@ export async function newApprovedStaff(
   app: Express,
   admin: Actor,
   canteenId: string,
+  options: { replaceExisting?: boolean } = {},
 ): Promise<Actor> {
   const staff = await newPendingStaff(app, canteenId);
   const pending = await request(app)
@@ -76,7 +77,7 @@ export async function newApprovedStaff(
   const approved = await request(app)
     .post(`/api/admin/change-requests/${requestRow.id}/approve`)
     .set(bearer(admin.token))
-    .send({});
+    .send(options.replaceExisting ? { replaceExisting: true } : {});
   if (approved.status !== 200) throw new Error(`approval failed: ${JSON.stringify(approved.body)}`);
   return staff;
 }

@@ -23,6 +23,14 @@ class ApiClient {
     : _http = httpClient ?? http.Client();
 
   final String baseUrl;
+
+  /// Absolute URL for a server-relative API path the backend returned
+  /// (e.g. `/api/qr-codes/:id`). Only same-API paths are accepted.
+  String assetUrl(String apiPath) {
+    if (!apiPath.startsWith('/api/')) throw ArgumentError.value(apiPath, 'apiPath', 'Not an API path');
+    return '$baseUrl$apiPath';
+  }
+
   final TokenProvider _token;
   final http.Client _http;
   final Duration timeout;

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '@serve/web-shared';
 import { describe, expect, it } from 'vitest';
 import { StaffPage } from '../src/pages/StaffPage';
 import {
@@ -84,7 +85,7 @@ describe('staff management', () => {
     renderAdmin(<StaffPage />, { api });
     await userEvent.click(await screen.findByRole('button', { name: 'Manage Priya Staff' }));
     const dialog = await screen.findByRole('dialog', { name: 'Priya Staff' });
-    const select = within(dialog).getByLabelText('Move to canteen');
+    const select = within(dialog).getByLabelText('Move this account to');
     // Only active canteens other than the current one are offered.
     expect(within(select).queryByText('Closed Canteen')).not.toBeInTheDocument();
     expect(within(select).queryByText(current.name)).not.toBeInTheDocument();
@@ -92,6 +93,39 @@ describe('staff management', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reassign' }));
     expect(api.assignStaff).toHaveBeenCalledWith(s.id, target.id);
     expect(await screen.findByText(`Priya Staff assigned to ${target.name}`)).toBeInTheDocument();
+  });
+
+  it('asks before replacing a canteen’s existing dedicated account', async () => {
+    const api = fakeAdminApi();
+    const target = adminCanteen('Vedavathi Night Canteen', {
+      staffAccount: { id: 'other', name: 'Old', email: 'old@serve.dev' },
+    });
+    const s = staffSummary({ status: 'PENDING' });
+    api.canteens.mockResolvedValue([target]);
+    api.staff.mockResolvedValue({ data: [s], nextCursor: null });
+    api.staffMember.mockResolvedValue(staffDetail(s));
+    api.assignStaff
+      .mockRejectedValueOnce(
+        new ApiError(409, 'CANTEEN_HAS_STAFF_ACCOUNT', 'Already assigned', {
+          staff: { id: 'other', name: 'Old', email: 'old@serve.dev' },
+        }),
+      )
+      .mockResolvedValue({
+        ...s,
+        status: 'APPROVED',
+        canteen: { id: target.id, name: target.name },
+      });
+    renderAdmin(<StaffPage />, { api });
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage Priya Staff' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Priya Staff' });
+    const select = within(dialog).getByLabelText('Dedicate this account to');
+    expect(within(select).getByText(/assigned to old@serve.dev/)).toBeInTheDocument();
+    await userEvent.selectOptions(select, target.id);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Approve and assign' }));
+    expect(api.assignStaff).toHaveBeenLastCalledWith(s.id, target.id);
+    expect(await within(dialog).findByText(/already has a dedicated account/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Replace account' }));
+    expect(api.assignStaff).toHaveBeenLastCalledWith(s.id, target.id, true);
   });
 
   it('deactivates only after confirmation', async () => {

@@ -40,22 +40,24 @@ const catalogue = (canteenId: string) => {
 };
 
 describe('menu management', () => {
-  it('shows day and night prices for the selected canteen', async () => {
+  it('shows the price of the selected canteen’s own period', async () => {
     const api = fakeAdminApi();
-    const canteen = adminCanteen('Vedavathi Night Canteen');
-    api.canteens.mockResolvedValue([canteen]);
-    api.menuCatalogue.mockResolvedValue(catalogue(canteen.id));
+    const night = adminCanteen('Vedavathi Night Canteen');
+    const day = adminCanteen('Vedavathi Day Canteen');
+    api.canteens.mockResolvedValue([night, day]);
+    api.menuCatalogue.mockResolvedValue(catalogue(night.id));
     renderAdmin(<MenuPage />, { api });
     expect(await screen.findByText('Egg Roll')).toBeInTheDocument();
     const row = screen.getByText('Egg Roll').closest('tr')!;
-    expect(within(row).getByText('₹40')).toBeInTheDocument();
+    // Night canteen: the NIGHT price/availability only.
     expect(within(row).getByText('₹45')).toBeInTheDocument();
-    expect(within(row).getByText('On')).toBeInTheDocument();
     expect(within(row).getByText('Off')).toBeInTheDocument();
-    expect(within(row).getByText('Vedavathi Night Canteen')).toBeInTheDocument();
+    expect(within(row).queryByText('₹40')).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Vedavathi Day Canteen · Day' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Day' })).not.toBeInTheDocument();
   });
 
-  it('filters to the night period and saves a day price', async () => {
+  it('edits one price for the canteen’s own period', async () => {
     const api = fakeAdminApi();
     const canteen = adminCanteen('Vedavathi Night Canteen');
     const rows = catalogue(canteen.id);
@@ -66,26 +68,21 @@ describe('menu management', () => {
       id: rows[0]!.items[0]!.id,
       canteenId: canteen.id,
       name: 'Egg Roll',
-      pricePaise: 4500,
-      isAvailable: false,
+      pricePaise: 5500,
+      isAvailable: true,
       services: rows[0]!.items[0]!.services,
     });
     renderAdmin(<MenuPage />, { api });
     await screen.findByText('Egg Roll');
-    await userEvent.click(screen.getByRole('tab', { name: 'Day' }));
-    expect(screen.getByText('Egg Roll')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.clear(within(dialog).getByLabelText('Day price (₹)'));
-    await userEvent.type(within(dialog).getByLabelText('Day price (₹)'), '55');
+    await userEvent.clear(within(dialog).getByLabelText('Price (₹)'));
+    await userEvent.type(within(dialog).getByLabelText('Price (₹)'), '55');
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Available to order' }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(api.updateMenuItemServices).toHaveBeenCalledWith(
-      rows[0]!.items[0]!.id,
-      expect.arrayContaining([
-        { period: 'DAY', pricePaise: 5500, isAvailable: true },
-        { period: 'NIGHT', pricePaise: 4500, isAvailable: false },
-      ]),
-    );
+    expect(api.updateMenuItemServices).toHaveBeenCalledWith(rows[0]!.items[0]!.id, [
+      { period: 'NIGHT', pricePaise: 5500, isAvailable: true },
+    ]);
   });
 
   it('shows an empty menu without inventing items', async () => {

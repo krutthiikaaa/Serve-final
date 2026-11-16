@@ -10,6 +10,8 @@ import { createAuthRouter } from './modules/auth/auth.routes.js';
 import { createServices } from './services.js';
 import {
   createCanteensRouter,
+  createQrImageRouter,
+  createServiceAreaDirectoryRouter,
   createHostelsRouter,
   createMenuRouter,
 } from './modules/canteens/canteens.routes.js';
@@ -103,7 +105,9 @@ export function createApp(ctx: AppContext): Express {
 
   app.use('/api/auth', createAuthRouter(ctx, services));
   app.use('/api/hostels', createHostelsRouter(ctx));
+  app.use('/api/service-areas', createServiceAreaDirectoryRouter(ctx));
   app.use('/api/canteens', createCanteensRouter(ctx, services));
+  app.use('/api/qr-codes', createQrImageRouter(services));
   app.use('/api/menu', createMenuRouter(ctx, services));
   app.use('/api/cart', createCartRouter(ctx, services));
   app.use('/api/orders', createOrdersRouter(ctx, services));

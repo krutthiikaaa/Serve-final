@@ -3,7 +3,7 @@ const AUDIT_EVENTS = [
   ['admin.canteen.schedule.update', 'Operating schedule changed'],
   ['admin.menu.item.services.update', 'Menu price or period availability changed'],
   ['admin.canteen.payment_config.update', 'Official payment details changed'],
-  ['admin.canteen.payment_mode.update', 'Payment mode changed between DEMO and LIVE'],
+  ['admin.canteen.payment_mode.update', 'Payment mode changed between test and live'],
   ['admin.canteen.payment_qr.update', 'Official QR configuration changed'],
   ['admin.staff.assigned', 'Staff assigned to a canteen'],
   ['admin.staff.assignments.update', 'Staff canteen assignments or capabilities changed'],

@@ -3,7 +3,7 @@ import type { ChangeRequestStatus, Prisma } from '../../generated/prisma/client.
 import type { PrismaClient } from '../../lib/prisma.js';
 import { writeAudit } from '../../lib/audit.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors.js';
-import { ensureOperatingAssignment } from '../staff/assignments.js';
+import { assignDedicatedAccount } from '../staff/assignments.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
 import { Outbox, rooms, type EventPublisher } from '../../realtime/events.js';
 import { pageArgs, toPage, type Pagination } from '../../http/validation.js';
@@ -55,6 +55,14 @@ export function createChangeRequestsService(
         throw new NotFoundError('Canteen not found.', 'CANTEEN_NOT_FOUND');
       if (staff.status === 'APPROVED' && staff.canteenId === canteen.id) {
         throw new ConflictError('You are already assigned to this canteen.', 'ALREADY_ASSIGNED');
+      }
+      // Dedicated accounts: an approved account belongs to its canteen. Only
+      // an admin can move it; staff can never change their own assignment.
+      if (staff.status === 'APPROVED') {
+        throw new ForbiddenError(
+          'This account is dedicated to its canteen. Ask an admin to change the assignment.',
+          'ASSIGNMENT_LOCKED',
+        );
       }
 
       const outbox = new Outbox();
@@ -124,6 +132,7 @@ export function createChangeRequestsService(
       requestId: string,
       decision: 'APPROVED' | 'REJECTED',
       reviewNotes?: string | null,
+      options: { replaceExisting?: boolean | undefined } = {},
     ) {
       const existing = await prisma.canteenChangeRequest.findUnique({
         where: { id: requestId },
@@ -164,11 +173,11 @@ export function createChangeRequestsService(
         }
         const staffRecipient = [{ kind: 'staff' as const, id: existing.staffId }];
         if (decision === 'APPROVED') {
-          await tx.staff.update({
-            where: { id: existing.staffId },
-            data: { status: 'APPROVED', canteenId: existing.requestedCanteenId },
+          await assignDedicatedAccount(tx, outbox, {
+            staffId: existing.staffId,
+            canteen: { id: existing.requestedCanteen.id, name: existing.requestedCanteen.name },
+            replaceExisting: options.replaceExisting,
           });
-          await ensureOperatingAssignment(tx, existing.staffId, existing.requestedCanteenId);
           await writeNotifications(tx, outbox, staffRecipient, {
             type: wasApproved ? 'STAFF_CANTEEN_ASSIGNED' : 'STAFF_APPROVED',
             title: wasApproved ? 'Canteen assignment updated' : 'Access approved',

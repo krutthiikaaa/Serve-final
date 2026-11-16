@@ -109,7 +109,7 @@ export class StudentActor extends ApiActor {
     return actor;
   }
 
-  menu(canteenId = this.me.defaultCanteen.id) {
+  menu(canteenId = this.me.defaultCanteen!.id) {
     return this.data<Menu>('GET', `/canteens/${canteenId}/menu`);
   }
 
@@ -215,6 +215,9 @@ export async function approvedStaff(name: string, canteenName: string) {
   );
   const request = pending.body.data.find((r) => r.staff.email === email);
   if (!request) throw new Error('Change request not found');
-  await admin.data('POST', `/admin/change-requests/${request.id}/approve`, {});
+  // Each canteen has one dedicated account: this test's account replaces any earlier one.
+  await admin.data('POST', `/admin/change-requests/${request.id}/approve`, {
+    replaceExisting: true,
+  });
   return { email, staff, canteen, admin };
 }

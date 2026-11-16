@@ -7,32 +7,52 @@ DateTime? _dateOrNull(Object? v) => v == null ? null : DateTime.parse(v as Strin
 Map<String, dynamic> _map(Object? v) => (v! as Map).cast<String, dynamic>();
 List<Map<String, dynamic>> _list(Object? v) => (v! as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
 
+/// `{ id, name }`, plus the canteen type when the reference is a canteen.
 class Ref {
-  const Ref(this.id, this.name);
-  factory Ref.fromJson(Map<String, dynamic> j) => Ref(j['id'] as String, j['name'] as String);
+  const Ref(this.id, this.name, [this.type]);
+  factory Ref.fromJson(Map<String, dynamic> j) =>
+      Ref(j['id'] as String, j['name'] as String, j['type'] is String ? servicePeriodFrom(j['type'] as String) : null);
   final String id;
   final String name;
+
+  /// DAY or NIGHT for canteen references; null for other references.
+  final ServicePeriod? type;
 }
 
 class Hostel {
-  const Hostel({required this.id, required this.name, required this.canteen});
-  factory Hostel.fromJson(Map<String, dynamic> j) =>
-      Hostel(id: j['id'] as String, name: j['name'] as String, canteen: Ref.fromJson(_map(j['canteen'])));
+  const Hostel({required this.id, required this.name, required this.canteen, this.serviceArea});
+  factory Hostel.fromJson(Map<String, dynamic> j) => Hostel(
+    id: j['id'] as String,
+    name: j['name'] as String,
+    serviceArea: j['serviceArea'] == null ? null : Ref.fromJson(_map(j['serviceArea'])),
+    canteen: j['canteen'] == null ? null : Ref.fromJson(_map(j['canteen'])),
+  );
   final String id;
   final String name;
-  final Ref canteen;
+  final Ref? serviceArea;
+
+  /// The canteen this hostel's students see now (Day or Night), if any.
+  final Ref? canteen;
 }
 
 class CanteenState {
-  const CanteenState({required this.id, required this.name, required this.isActive, required this.isAcceptingOrders});
+  const CanteenState({
+    required this.id,
+    required this.name,
+    required this.isActive,
+    required this.isAcceptingOrders,
+    this.type = ServicePeriod.night,
+  });
   factory CanteenState.fromJson(Map<String, dynamic> j) => CanteenState(
     id: j['id'] as String,
     name: j['name'] as String,
+    type: j['type'] is String ? servicePeriodFrom(j['type'] as String) : ServicePeriod.night,
     isActive: j['isActive'] as bool,
     isAcceptingOrders: j['isAcceptingOrders'] as bool,
   );
   final String id;
   final String name;
+  final ServicePeriod type;
   final bool isActive;
   final bool isAcceptingOrders;
 }
@@ -59,19 +79,32 @@ class OtherRoleMe extends Me {
 }
 
 class StudentMe extends Me {
-  const StudentMe({required this.id, required this.name, required this.email, required this.hostel, required this.defaultCanteen});
+  const StudentMe({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.hostel,
+    required this.defaultCanteen,
+    this.serviceArea,
+  });
   factory StudentMe.fromJson(Map<String, dynamic> j) => StudentMe(
     id: j['id'] as String,
     name: j['name'] as String,
     email: j['email'] as String,
     hostel: Ref.fromJson(_map(j['hostel'])),
-    defaultCanteen: CanteenState.fromJson(_map(j['defaultCanteen'])),
+    serviceArea: j['serviceArea'] == null ? null : Ref.fromJson(_map(j['serviceArea'])),
+    defaultCanteen: j['defaultCanteen'] == null ? null : CanteenState.fromJson(_map(j['defaultCanteen'])),
   );
   final String id;
   final String name;
   final String email;
   final Ref hostel;
-  final CanteenState defaultCanteen;
+
+  /// The hostel's service area (its Day and Night canteens).
+  final Ref? serviceArea;
+
+  /// The area canteen taking orders now, else its default. Null if the area has none.
+  final CanteenState? defaultCanteen;
 
   String get firstName => name.trim().split(RegExp(r'\s+')).first;
 }
@@ -95,17 +128,59 @@ ServicePeriod servicePeriodFrom(String s) => switch (s) {
 extension ServicePeriodX on ServicePeriod {
   String get apiValue => this == ServicePeriod.day ? 'DAY' : 'NIGHT';
   String get label => this == ServicePeriod.day ? 'Day' : 'Night';
+  String get canteenLabel => this == ServicePeriod.day ? 'Day Canteen' : 'Night Canteen';
+}
+
+/// Backend-authored availability of one canteen (never the phone clock).
+///   otherServiceActive  off duty: the area's other canteen is serving
+///   closedBySchedule    off duty: the area's Day/Night schedule has no service now
+///   offDuty             off duty: no canteen of the area is serving
+///   paused              on duty, new orders paused by staff
+enum AvailabilityState { open, closed, paused, offDuty, closedBySchedule, otherServiceActive, serviceDisabled, inactive }
+
+AvailabilityState availabilityStateFrom(String s) => switch (s) {
+  'OPEN' => AvailabilityState.open,
+  'CLOSED' => AvailabilityState.closed,
+  'PAUSED' => AvailabilityState.paused,
+  'OFF_DUTY' => AvailabilityState.offDuty,
+  'CLOSED_BY_SCHEDULE' => AvailabilityState.closedBySchedule,
+  'OTHER_SERVICE_ACTIVE' => AvailabilityState.otherServiceActive,
+  'SERVICE_DISABLED' => AvailabilityState.serviceDisabled,
+  'INACTIVE' => AvailabilityState.inactive,
+  // A state added later on the server: never offer ordering on a guess.
+  _ => AvailabilityState.serviceDisabled,
+};
+
+class CanteenAvailability {
+  const CanteenAvailability({required this.state, required this.isOpenNow, required this.message, this.otherServiceCanteen});
+  factory CanteenAvailability.fromJson(Map<String, dynamic> j) => CanteenAvailability(
+    state: availabilityStateFrom(j['state'] as String),
+    isOpenNow: j['isOpenNow'] as bool,
+    message: j['message'] as String,
+    otherServiceCanteen: j['otherServiceCanteen'] == null ? null : Ref.fromJson(_map(j['otherServiceCanteen'])),
+  );
+  final AvailabilityState state;
+  final bool isOpenNow;
+  final String message;
+
+  /// The area's other canteen when it is the one serving now.
+  final Ref? otherServiceCanteen;
+
+  /// The same words the staff and admin apps use for each state.
+  String get label => switch (state) {
+    AvailabilityState.open => 'Taking orders',
+    AvailabilityState.paused => 'Paused',
+    AvailabilityState.offDuty || AvailabilityState.otherServiceActive => 'Off duty',
+    AvailabilityState.closedBySchedule || AvailabilityState.closed => 'Closed by schedule',
+    AvailabilityState.serviceDisabled => 'Unavailable',
+    AvailabilityState.inactive => 'Temporarily disabled',
+  };
 }
 
 enum ServiceAvailability { open, closed, disabled, notConfigured, paused }
 
 class CanteenService {
-  const CanteenService({
-    required this.period,
-    required this.isEnabled,
-    required this.override,
-    required this.isOpenNow,
-  });
+  const CanteenService({required this.period, required this.isEnabled, required this.override, required this.isOpenNow});
   factory CanteenService.fromJson(Map<String, dynamic> j) => CanteenService(
     period: servicePeriodFrom(j['period'] as String),
     isEnabled: j['isEnabled'] as bool,
@@ -133,6 +208,9 @@ class Canteen {
     required this.location,
     required this.openingHours,
     required this.status,
+    this.type = ServicePeriod.night,
+    this.serviceArea,
+    this.availability,
     this.supportedPeriods = const [],
     this.services = const [],
     this.configurationWarnings = const [],
@@ -140,6 +218,9 @@ class Canteen {
   factory Canteen.fromJson(Map<String, dynamic> j) => Canteen(
     id: j['id'] as String,
     name: j['name'] as String,
+    type: j['type'] is String ? servicePeriodFrom(j['type'] as String) : ServicePeriod.night,
+    serviceArea: j['serviceArea'] == null ? null : Ref.fromJson(_map(j['serviceArea'])),
+    availability: j['availability'] == null ? null : CanteenAvailability.fromJson(_map(j['availability'])),
     location: j['location'] as String?,
     openingHours: j['openingHours'] as String?,
     status: _canteenStatus(j['status'] as String),
@@ -148,12 +229,15 @@ class Canteen {
         if (p is String) servicePeriodFrom(p),
     ],
     services: [for (final s in (j['services'] as List?) ?? const []) CanteenService.fromJson(_map(s))],
-    configurationWarnings: [
-      for (final w in (j['configurationWarnings'] as List?) ?? const []) ConfigurationWarning.fromJson(_map(w)),
-    ],
+    configurationWarnings: [for (final w in (j['configurationWarnings'] as List?) ?? const []) ConfigurationWarning.fromJson(_map(w))],
   );
   final String id;
   final String name;
+
+  /// DAY or NIGHT. A canteen serves only its own type.
+  final ServicePeriod type;
+  final Ref? serviceArea;
+  final CanteenAvailability? availability;
   final String? location;
   final String? openingHours;
   final CanteenStatus status;
@@ -195,14 +279,32 @@ class Canteen {
     ServiceAvailability.paused => 'Not accepting orders',
   };
 
+  /// Why this canteen cannot take an order now (null when it can). Uses the
+  /// backend availability state when present, so Day/Night exclusivity is shown.
+  String? get blockReason {
+    final a = availability;
+    if (a == null) return orderingBlockReason(type);
+    return switch (a.state) {
+      AvailabilityState.open => null,
+      AvailabilityState.otherServiceActive =>
+        '${a.otherServiceCanteen?.name ?? 'The ${type == ServicePeriod.day ? 'Night' : 'Day'} Canteen'} is serving your area right now.',
+      AvailabilityState.paused => 'Ordering is paused for now. You can still browse the menu.',
+      // The server's message names the next opening time ("Opens at 18:00.").
+      AvailabilityState.closedBySchedule => a.message,
+      AvailabilityState.offDuty => 'No canteen is serving your area right now.',
+      AvailabilityState.closed => openingHours == null ? 'Closed right now.' : 'Closed right now. Hours: $openingHours',
+      AvailabilityState.serviceDisabled => 'This canteen is unavailable right now.',
+      AvailabilityState.inactive => 'This canteen is temporarily disabled.',
+    };
+  }
+
   String? orderingBlockReason(ServicePeriod period) => switch (availabilityFor(period)) {
     ServiceAvailability.open => null,
     ServiceAvailability.paused => 'This canteen is not accepting orders right now.',
     ServiceAvailability.disabled => 'This service is not available at this canteen.',
     ServiceAvailability.notConfigured => 'This service has not been set up yet.',
-    ServiceAvailability.closed => openingHours == null
-        ? 'This service is closed right now.'
-        : 'This service is closed right now. Hours: $openingHours',
+    ServiceAvailability.closed =>
+      openingHours == null ? 'This service is closed right now.' : 'This service is closed right now. Hours: $openingHours',
   };
 }
 
@@ -320,13 +422,7 @@ class QuoteLine {
 
 /// Authoritative prices and total from `POST /api/cart/quote`.
 class Quote {
-  const Quote({
-    required this.canteen,
-    required this.items,
-    required this.itemCount,
-    required this.totalPaise,
-    required this.servicePeriod,
-  });
+  const Quote({required this.canteen, required this.items, required this.itemCount, required this.totalPaise, required this.servicePeriod});
   factory Quote.fromJson(Map<String, dynamic> j) => Quote(
     canteen: Ref.fromJson(_map(j['canteen'])),
     items: _list(j['items']).map(QuoteLine.fromJson).toList(),
@@ -568,11 +664,8 @@ PaymentMode paymentModeFrom(String s) => switch (s) {
 
 class DemoQr {
   const DemoQr({required this.payload, required this.svg, required this.warning});
-  factory DemoQr.fromJson(Map<String, dynamic> j) => DemoQr(
-    payload: j['payload'] as String,
-    svg: j['svg'] as String,
-    warning: j['warning'] as String,
-  );
+  factory DemoQr.fromJson(Map<String, dynamic> j) =>
+      DemoQr(payload: j['payload'] as String, svg: j['svg'] as String, warning: j['warning'] as String);
   final String payload;
   final String svg;
   final String warning;
@@ -580,9 +673,22 @@ class DemoQr {
   bool get isPayable => false;
 }
 
+/// An uploaded payment QR. [url] is relative to the API origin and changes on
+/// every upload, so a cached image can never be an outdated QR.
+class PaymentQr {
+  const PaymentQr({required this.id, required this.url, required this.uploadedAt});
+  factory PaymentQr.fromJson(Map<String, dynamic> j) =>
+      PaymentQr(id: j['id'] as String, url: j['url'] as String, uploadedAt: _date(j['uploadedAt']));
+  final String id;
+  final String url;
+  final DateTime uploadedAt;
+}
+
 /// Student-visible canteen payment config. Never includes Admin storage keys.
 class CanteenPaymentConfig {
   const CanteenPaymentConfig({
+    this.qr,
+    this.canteen,
     required this.canteenId,
     required this.mode,
     required this.upiVpa,
@@ -594,6 +700,8 @@ class CanteenPaymentConfig {
     required this.warnings,
   });
   factory CanteenPaymentConfig.fromJson(Map<String, dynamic> j) => CanteenPaymentConfig(
+    qr: j['qr'] == null ? null : PaymentQr.fromJson(_map(j['qr'])),
+    canteen: j['canteen'] == null ? null : Ref.fromJson(_map(j['canteen'])),
     canteenId: j['canteenId'] as String,
     mode: paymentModeFrom(j['mode'] as String),
     upiVpa: j['upiVpa'] as String?,
@@ -602,8 +710,17 @@ class CanteenPaymentConfig {
     instructions: j['instructions'] as String?,
     isActive: j['isActive'] as bool,
     demoQr: j['demoQr'] == null ? null : DemoQr.fromJson(_map(j['demoQr'])),
-    warnings: [for (final w in (j['warnings'] as List?) ?? const []) if (w is String) w],
+    warnings: [
+      for (final w in (j['warnings'] as List?) ?? const [])
+        if (w is String) w,
+    ],
   );
+
+  /// Uploaded QR of this canteen (only when it takes live payments).
+  final PaymentQr? qr;
+
+  /// The canteen this config belongs to (order-scoped endpoint only).
+  final Ref? canteen;
   final String canteenId;
   final PaymentMode mode;
   final String? upiVpa;
@@ -615,6 +732,39 @@ class CanteenPaymentConfig {
   final List<String> warnings;
 
   bool get isDemo => mode == PaymentMode.demo;
-  bool get liveReady => mode == PaymentMode.live && isActive && qrImageUrl != null && merchantName != null;
+  bool get liveReady => mode == PaymentMode.live && isActive && (qr != null || qrImageUrl != null) && merchantName != null;
   bool get incomplete => warnings.contains('LIVE_CONFIG_INCOMPLETE') || (mode == PaymentMode.live && !liveReady);
+}
+
+/// `GET /api/students/me/service`: the student's service area, its Day and
+/// Night canteens, and which one to show now.
+class StudentService {
+  const StudentService({
+    required this.hostel,
+    required this.serviceArea,
+    required this.canteens,
+    required this.current,
+    required this.unavailable,
+  });
+  factory StudentService.fromJson(Map<String, dynamic> j) => StudentService(
+    hostel: Ref.fromJson(_map(j['hostel'])),
+    serviceArea: Ref.fromJson(_map(j['serviceArea'])),
+    canteens: _list(j['canteens']).map(Canteen.fromJson).toList(),
+    current: j['current'] == null ? null : Canteen.fromJson(_map(j['current'])),
+    unavailable: j['unavailable'] as bool,
+  );
+  final Ref hostel;
+  final Ref serviceArea;
+  final List<Canteen> canteens;
+  final Canteen? current;
+
+  /// True when neither the Day nor the Night canteen can take an order now.
+  final bool unavailable;
+
+  Canteen? ofType(ServicePeriod type) {
+    for (final c in canteens) {
+      if (c.type == type) return c;
+    }
+    return null;
+  }
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ORDER_EVENT_NAMES, type AdminDashboard, type StaffOrder } from '@serve/contracts';
+import { ORDER_EVENT_NAMES, type StaffOrder } from '@serve/contracts';
 import {
   EmptyState,
   ErrorState,
@@ -15,23 +15,10 @@ import {
   useRealtime,
   useResource,
   useServerEvents,
+  AvailabilityTag,
+  CanteenTypeBadge,
 } from '@serve/web-shared';
 import { useAdminApi } from '../useAdminApi';
-
-function serviceTag(configured: boolean, enabled: boolean, open: boolean) {
-  if (!configured) return <Tag>Not set</Tag>;
-  if (!enabled) return <Tag>Off</Tag>;
-  return open ? <Tag tone="success">Open</Tag> : <Tag tone="warning">Closed</Tag>;
-}
-
-function acceptanceTag(row: AdminDashboard['canteenOverview'][number]) {
-  if (!row.isActive) return <Tag tone="danger">Inactive</Tag>;
-  return row.isAcceptingOrders ? (
-    <Tag tone="success">Accepting</Tag>
-  ) : (
-    <Tag tone="warning">Paused</Tag>
-  );
-}
 
 function party(order: StaffOrder) {
   if (order.channel === 'WALK_IN') {
@@ -107,8 +94,8 @@ export function DashboardPage() {
             ]}
           />
           <p className="muted small revenue-note">
-            Today’s revenue counts successful LIVE payments only. DEMO, pending, rejected,
-            cancelled, and refunded payments are excluded.
+            Today’s revenue counts successful live payments only. Test-mode, pending, rejected,
+            cancelled and refunded payments are excluded.
           </p>
 
           <div className="dashboard-columns three">
@@ -117,7 +104,7 @@ export function DashboardPage() {
               link={{ to: '/canteens', label: 'Manage canteens' }}
               rows={[
                 {
-                  label: 'Accepting orders',
+                  label: 'Taking orders',
                   value: d.canteens.acceptingOrders,
                   tag: <Tag tone="success">Open</Tag>,
                 },
@@ -126,9 +113,10 @@ export function DashboardPage() {
                   value: d.canteens.paused,
                   tag: d.canteens.paused ? <Tag tone="warning">Paused</Tag> : null,
                 },
-                { label: 'Inactive', value: d.canteens.inactive },
-                { label: 'Day services on', value: d.services.dayEnabled },
-                { label: 'Night services on', value: d.services.nightEnabled },
+                { label: 'Off duty', value: d.canteens.offDuty },
+                { label: 'Temporarily disabled', value: d.canteens.inactive },
+                { label: 'Day canteens', value: d.services.day },
+                { label: 'Night canteens', value: d.services.night },
               ]}
             />
             <SummaryPanel
@@ -162,21 +150,21 @@ export function DashboardPage() {
                 },
                 { label: 'Preparing', value: d.orders.preparing },
                 { label: 'Ready for pickup', value: d.orders.ready },
-                { label: 'Paid LIVE orders', value: d.today.orderCount },
+                { label: 'Paid live orders today', value: d.today.orderCount },
               ]}
             />
           </div>
 
           {d.payments.demo > 0 ? (
             <p className="notice notice-info" role="status">
-              {d.payments.demo} {d.payments.demo === 1 ? 'canteen is' : 'canteens are'} in DEMO
-              mode. That is expected while a canteen is used for testing, and those payments are not
-              real revenue.
+              {d.payments.demo} {d.payments.demo === 1 ? 'canteen is' : 'canteens are'} in test
+              mode, showing a placeholder QR until its official QR is uploaded. Test payments are
+              not revenue.
             </p>
           ) : null}
           {d.payments.incompleteLive > 0 ? (
             <p className="notice" role="alert">
-              {d.payments.incompleteLive} LIVE{' '}
+              {d.payments.incompleteLive} live{' '}
               {d.payments.incompleteLive === 1 ? 'canteen is' : 'canteens are'} missing official UPI
               or QR details.
               <Link to="/payments"> Review payments</Link>
@@ -198,10 +186,10 @@ export function DashboardPage() {
                   <thead>
                     <tr>
                       <th>Canteen</th>
-                      <th>Day</th>
-                      <th>Night</th>
-                      <th>Orders</th>
-                      <th>Status</th>
+                      <th>Service area</th>
+                      <th>Type</th>
+                      <th>Availability</th>
+                      <th>Payment QR</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -212,11 +200,21 @@ export function DashboardPage() {
                             {row.name}
                           </Link>
                         </td>
-                        <td>{serviceTag(row.dayConfigured, row.dayEnabled, row.dayOpen)}</td>
-                        <td>{serviceTag(row.nightConfigured, row.nightEnabled, row.nightOpen)}</td>
-                        <td>{acceptanceTag(row)}</td>
+                        <td className="muted">{row.serviceArea.name}</td>
                         <td>
-                          {row.isActive ? <Tag tone="success">Active</Tag> : <Tag>Inactive</Tag>}
+                          <CanteenTypeBadge type={row.type} />
+                        </td>
+                        <td>
+                          <AvailabilityTag state={row.state} />
+                        </td>
+                        <td>
+                          {row.paymentMode === 'LIVE' ? (
+                            <Tag tone="success">Live</Tag>
+                          ) : row.qrUploaded ? (
+                            <Tag tone="info">Uploaded · test mode</Tag>
+                          ) : (
+                            <Tag>Placeholder</Tag>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -271,7 +269,7 @@ export function DashboardPage() {
                       {!order.payment ? (
                         '—'
                       ) : order.payment.isSimulated ? (
-                        <Tag>DEMO</Tag>
+                        <Tag>Simulated</Tag>
                       ) : (
                         <Tag tone="success">LIVE</Tag>
                       )}

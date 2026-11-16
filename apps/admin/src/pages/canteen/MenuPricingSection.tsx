@@ -18,20 +18,25 @@ import {
   useResource,
   useServerEvents,
   useToast,
+  CanteenTypeBadge,
 } from '@serve/web-shared';
 import { useAdminApi } from '../../useAdminApi';
 import { PERIOD_LABEL } from '../../lib/warnings';
-
-const PERIODS: ServicePeriod[] = ['DAY', 'NIGHT'];
 
 function periodService(item: AdminMenuItem, period: ServicePeriod) {
   return item.services.find((service) => service.period === period);
 }
 
-export function MenuPricingSection({ canteenId }: { canteenId: string }) {
+export function MenuPricingSection({
+  canteenId,
+  canteenType,
+}: {
+  canteenId: string;
+  canteenType: ServicePeriod;
+}) {
   const api = useAdminApi();
   const { connectionEpoch } = useRealtime();
-  const [period, setPeriod] = useState<ServicePeriod>('NIGHT');
+  const period = canteenType;
   const catalogue = useResource(
     () => api.menuCatalogue(canteenId),
     [api, canteenId, connectionEpoch],
@@ -57,23 +62,10 @@ export function MenuPricingSection({ canteenId }: { canteenId: string }) {
         <div>
           <h2>Menu prices</h2>
           <p className="muted small">
-            One catalogue — Day and Night prices are separate. Items are not duplicated.
+            Prices students pay at this {PERIOD_LABEL[period].toLowerCase()} canteen.
           </p>
         </div>
-        <div className="segmented" role="tablist" aria-label="Price period">
-          {PERIODS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={period === value}
-              className={period === value ? 'active' : ''}
-              onClick={() => setPeriod(value)}
-            >
-              {PERIOD_LABEL[value]}
-            </button>
-          ))}
-        </div>
+        <CanteenTypeBadge type={period} />
       </div>
 
       {categories.length === 0 ? (
@@ -124,7 +116,7 @@ export function MenuPricingSection({ canteenId }: { canteenId: string }) {
                       </td>
                       <td>
                         <Button size="sm" variant="secondary" onClick={() => setEditing(item)}>
-                          Set prices
+                          Set price
                         </Button>
                       </td>
                     </tr>
@@ -138,6 +130,7 @@ export function MenuPricingSection({ canteenId }: { canteenId: string }) {
 
       {editing ? (
         <ItemServicesModal
+          period={period}
           item={editing}
           onClose={() => setEditing(null)}
           onSaved={async () => {
@@ -152,48 +145,40 @@ export function MenuPricingSection({ canteenId }: { canteenId: string }) {
 
 function ItemServicesModal({
   item,
+  period,
   onClose,
   onSaved,
 }: {
   item: AdminMenuItem;
+  period: ServicePeriod;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const api = useAdminApi();
   const toast = useToast();
-  const day = periodService(item, 'DAY');
-  const night = periodService(item, 'NIGHT');
-  const [dayPrice, setDayPrice] = useState(day ? paiseToRupeesInput(day.pricePaise) : '');
-  const [nightPrice, setNightPrice] = useState(night ? paiseToRupeesInput(night.pricePaise) : '');
-  const [dayAvailable, setDayAvailable] = useState(day?.isAvailable ?? true);
-  const [nightAvailable, setNightAvailable] = useState(night?.isAvailable ?? true);
+  const current = periodService(item, period);
+  const [price, setPrice] = useState(current ? paiseToRupeesInput(current.pricePaise) : '');
+  const [available, setAvailable] = useState(current?.isAvailable ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const local: Record<string, string> = {};
-    const services: MenuItemServiceConfig[] = [];
-    const dayPaise = dayPrice.trim() ? rupeesToPaise(dayPrice) : null;
-    const nightPaise = nightPrice.trim() ? rupeesToPaise(nightPrice) : null;
-    if (dayPrice.trim()) {
-      if (dayPaise === null || dayPaise <= 0) local.dayPrice = 'Enter a price greater than ₹0';
-      else services.push({ period: 'DAY', pricePaise: dayPaise, isAvailable: dayAvailable });
+    const paise = rupeesToPaise(price);
+    if (paise === null || paise <= 0) {
+      setErrors({ price: 'Enter a price greater than ₹0' });
+      return;
     }
-    if (nightPrice.trim()) {
-      if (nightPaise === null || nightPaise <= 0)
-        local.nightPrice = 'Enter a price greater than ₹0';
-      else services.push({ period: 'NIGHT', pricePaise: nightPaise, isAvailable: nightAvailable });
-    }
-    if (services.length === 0) local.dayPrice = 'Set at least one period price';
-    setErrors(local);
-    if (Object.keys(local).length > 0) return;
+    setErrors({});
     setBusy(true);
     setError(null);
     try {
+      const services: MenuItemServiceConfig[] = [
+        { period, pricePaise: paise, isAvailable: available },
+      ];
       await api.updateMenuItemServices(item.id, services);
-      toast(`Prices updated for ${item.name}`);
+      toast(`Price updated for ${item.name}`);
       await onSaved();
     } catch (err) {
       setErrors(fieldErrors(err));
@@ -204,7 +189,7 @@ function ItemServicesModal({
 
   return (
     <Modal
-      title={`Prices for ${item.name}`}
+      title={`Price for ${item.name}`}
       onClose={onClose}
       footer={
         <>
@@ -212,64 +197,31 @@ function ItemServicesModal({
             Cancel
           </Button>
           <Button type="submit" form="item-services-form" loading={busy}>
-            Save prices
+            Save price
           </Button>
         </>
       }
     >
       <form id="item-services-form" className="form" onSubmit={(e) => void submit(e)} noValidate>
         <FormError error={error} />
-        <p className="muted small">
-          Leave a price blank to keep that period unchanged. Empty Day or Night does not copy the
-          other period’s price.
-        </p>
-        <div className="form-row">
-          <Field
-            label="Day price (₹)"
-            error={errors.dayPrice}
-            hint={day ? undefined : 'Not configured'}
-          >
-            {(p) => (
-              <Input
-                {...p}
-                inputMode="decimal"
-                value={dayPrice}
-                onChange={(e) => setDayPrice(e.target.value)}
-                placeholder="Not set"
-              />
-            )}
-          </Field>
-          <Field
-            label="Night price (₹)"
-            error={errors.nightPrice}
-            hint={night ? undefined : 'Not configured'}
-          >
-            {(p) => (
-              <Input
-                {...p}
-                inputMode="decimal"
-                value={nightPrice}
-                onChange={(e) => setNightPrice(e.target.value)}
-                placeholder="Not set"
-              />
-            )}
-          </Field>
-        </div>
+        <Field label="Price (₹)" error={errors.price} hint={current ? undefined : 'Not set yet'}>
+          {(p) => (
+            <Input
+              {...p}
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="Not set"
+            />
+          )}
+        </Field>
         <label className="checkbox">
           <input
             type="checkbox"
-            checked={dayAvailable}
-            onChange={(e) => setDayAvailable(e.target.checked)}
+            checked={available}
+            onChange={(e) => setAvailable(e.target.checked)}
           />
-          Available during Day
-        </label>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={nightAvailable}
-            onChange={(e) => setNightAvailable(e.target.checked)}
-          />
-          Available during Night
+          Available to order
         </label>
       </form>
     </Modal>

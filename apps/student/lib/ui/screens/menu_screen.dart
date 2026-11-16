@@ -6,7 +6,6 @@ import '../../services/api/serve_api.dart';
 import '../../services/realtime/realtime_service.dart';
 import '../../state/canteen_selection.dart';
 import '../../state/cart_controller.dart';
-import '../cart_actions.dart';
 import '../../state/recently_viewed_controller.dart';
 import '../../theme/serve_layout.dart';
 import '../../theme/serve_theme.dart';
@@ -68,7 +67,10 @@ class _MenuScreenState extends State<MenuScreen> with WidgetsBindingObserver, Li
   void _onTabs() {
     final handed = _tabs.takeMenuSearch();
     if (handed == null) return;
-    _search.value = TextEditingValue(text: handed.query, selection: TextSelection.collapsed(offset: handed.query.length));
+    _search.value = TextEditingValue(
+      text: handed.query,
+      selection: TextSelection.collapsed(offset: handed.query.length),
+    );
     _setSearch(handed.query);
     if (handed.focus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,12 +98,11 @@ class _MenuScreenState extends State<MenuScreen> with WidgetsBindingObserver, Li
 
   Future<void> _load() async {
     final id = _canteenId;
-    final period = _period ?? ServicePeriod.night;
     if (id == null) return;
     final generation = ++_generation;
     setState(() => _error = null);
     try {
-      final menu = await context.read<ServeApi>().menu(id, period: period);
+      final menu = await context.read<ServeApi>().menu(id);
       if (!mounted || generation != _generation) return;
       context.read<CanteenSelection>().applyCanteen(menu.canteen);
       // Keep cart snapshots (names/prices shown in the cart) current.
@@ -273,7 +274,9 @@ class _MenuBody extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: ServeLayout.contentMax),
           child: CustomScrollView(
             slivers: [
-              SliverToBoxAdapter(child: _MenuIntro(menu: menu, compact: compact, padding: padding)),
+              SliverToBoxAdapter(
+                child: _MenuIntro(menu: menu, compact: compact, padding: padding),
+              ),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(padding, 0, padding, 12),
@@ -327,7 +330,9 @@ class _MenuBody extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 24),
-                              Expanded(child: _MenuResults(menu: menu, slice: slice, compact: compact, onPage: onPage)),
+                              Expanded(
+                                child: _MenuResults(menu: menu, slice: slice, compact: compact, onPage: onPage),
+                              ),
                             ],
                           )
                         : _MenuResults(menu: menu, slice: slice, compact: compact, onPage: onPage),
@@ -405,21 +410,8 @@ class _MenuIntro extends StatelessWidget {
               const SizedBox(height: 10),
               ServiceAvailabilityPills(canteen: menu.canteen),
               const SizedBox(height: 12),
-              ServicePeriodToggle(
-                value: menu.servicePeriod,
-                enabledPeriods: menu.canteen.supportedPeriods.isEmpty ? null : menu.canteen.supportedPeriods.toSet(),
-                onChanged: (next) async {
-                  if (!await confirmCartContextChange(context, canteenId: menu.canteen.id, period: next)) return;
-                  if (!context.mounted) return;
-                  context.read<CanteenSelection>().selectPeriod(next);
-                },
-              ),
-              if (menu.canteen.orderingBlockReason(menu.servicePeriod) != null) ...[
-                const SizedBox(height: 12),
-                NoticeBanner(
-                  message: menu.canteen.orderingBlockReason(menu.servicePeriod)!,
-                  icon: Icons.schedule_rounded,
-                ),
+              if (menu.canteen.blockReason != null) ...[
+                NoticeBanner(message: menu.canteen.blockReason!, icon: Icons.schedule_rounded),
               ] else if (!menu.canteen.acceptingOrders) ...[
                 const SizedBox(height: 12),
                 const NoticeBanner(
@@ -477,11 +469,7 @@ class _Toolbar extends StatelessWidget {
           Row(
             children: [
               if (showFilterButton) ...[
-                IconButton.outlined(
-                  tooltip: 'Filters',
-                  onPressed: onOpenFilters,
-                  icon: const Icon(Icons.tune_rounded),
-                ),
+                IconButton.outlined(tooltip: 'Filters', onPressed: onOpenFilters, icon: const Icon(Icons.tune_rounded)),
                 const SizedBox(width: 8),
               ],
               Expanded(child: sortControl),
@@ -550,10 +538,7 @@ class _SortControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InputDecorator(
-      decoration: const InputDecoration(
-        isDense: true,
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      ),
+      decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 2)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<MenuSort>(
           value: sort,
@@ -561,10 +546,22 @@ class _SortControl extends StatelessWidget {
           isExpanded: true,
           borderRadius: BorderRadius.circular(ServeSpace.radiusControl),
           items: const [
-            DropdownMenuItem(value: MenuSort.featured, child: Text('Featured', overflow: TextOverflow.ellipsis)),
-            DropdownMenuItem(value: MenuSort.nameAz, child: Text('Name A–Z', overflow: TextOverflow.ellipsis)),
-            DropdownMenuItem(value: MenuSort.priceLow, child: Text('Price: low to high', overflow: TextOverflow.ellipsis)),
-            DropdownMenuItem(value: MenuSort.priceHigh, child: Text('Price: high to low', overflow: TextOverflow.ellipsis)),
+            DropdownMenuItem(
+              value: MenuSort.featured,
+              child: Text('Featured', overflow: TextOverflow.ellipsis),
+            ),
+            DropdownMenuItem(
+              value: MenuSort.nameAz,
+              child: Text('Name A–Z', overflow: TextOverflow.ellipsis),
+            ),
+            DropdownMenuItem(
+              value: MenuSort.priceLow,
+              child: Text('Price: low to high', overflow: TextOverflow.ellipsis),
+            ),
+            DropdownMenuItem(
+              value: MenuSort.priceHigh,
+              child: Text('Price: high to low', overflow: TextOverflow.ellipsis),
+            ),
           ],
           onChanged: (value) {
             if (value != null) onSort(value);
@@ -599,7 +596,11 @@ class _ActiveFilterRow extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         for (final label in labels)
-          Chip(label: Text(label), visualDensity: VisualDensity.compact, side: const BorderSide(color: ServeColors.line)),
+          Chip(
+            label: Text(label),
+            visualDensity: VisualDensity.compact,
+            side: const BorderSide(color: ServeColors.line),
+          ),
         TextButton(onPressed: onClear, child: const Text('Clear filters')),
       ],
     );
@@ -624,10 +625,7 @@ class _MenuResults extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '${slice.from}–${slice.to} of ${slice.total} items',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            Text('${slice.from}–${slice.to} of ${slice.total} items', style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 12),
             GridView.builder(
               shrinkWrap: true,
@@ -715,7 +713,9 @@ class _MenuFooter extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(padding, 28, padding, 8),
       child: DecoratedBox(
-        decoration: const BoxDecoration(border: Border(top: BorderSide(color: ServeColors.line))),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: ServeColors.line)),
+        ),
         child: Padding(
           padding: const EdgeInsets.only(top: 18),
           child: Wrap(

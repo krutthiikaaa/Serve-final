@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   AdminCanteenDetail,
   AdminCanteenService,
@@ -16,13 +16,12 @@ import {
   Tag,
   errorMessage,
   useToast,
+  CanteenTypeBadge,
 } from '@serve/web-shared';
 import { TimeSelect } from '../../components/TimeSelect';
 import { useAdminApi } from '../../useAdminApi';
 import { WEEKDAYS, formatWindow } from '../../lib/time';
 import { OVERRIDE_LABEL, PERIOD_LABEL, serviceStatus } from '../../lib/warnings';
-
-const PERIODS: ServicePeriod[] = ['DAY', 'NIGHT'];
 
 type DayDraft = {
   enabled: boolean;
@@ -75,7 +74,8 @@ export function ServicesHoursSection({
 }) {
   const api = useAdminApi();
   const toast = useToast();
-  const [period, setPeriod] = useState<ServicePeriod>('NIGHT');
+  // A canteen serves exactly its own type (Day or Night): no period switching.
+  const period: ServicePeriod = detail.type;
   const service = (detail.services ?? []).find((row) => row.period === period);
   const [enabled, setEnabled] = useState(service?.isEnabled ?? false);
   const [override, setOverride] = useState<ScheduleOverride>(service?.override ?? 'AUTO');
@@ -89,11 +89,6 @@ export function ServicesHoursSection({
     setDays(draftsFrom(service));
     setError(null);
   }, [service, period, detail]);
-
-  const configuredPeriods = useMemo(
-    () => new Set((detail.services ?? []).map((row) => row.period)),
-    [detail.services],
-  );
 
   const patchDay = (weekday: number, patch: Partial<DayDraft>) => {
     setDays((current) => ({ ...current, [weekday]: { ...current[weekday]!, ...patch } }));
@@ -161,22 +156,8 @@ export function ServicesHoursSection({
   return (
     <section className="section">
       <div className="section-header">
-        <h2>Day and night services</h2>
-        <div className="segmented" role="tablist" aria-label="Service period">
-          {PERIODS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={period === value}
-              className={period === value ? 'active' : ''}
-              onClick={() => setPeriod(value)}
-            >
-              {PERIOD_LABEL[value]}
-              {configuredPeriods.has(value) ? null : <span className="muted"> · off</span>}
-            </button>
-          ))}
-        </div>
+        <h2>Service hours</h2>
+        <CanteenTypeBadge type={period} />
       </div>
 
       <div className="section-body">

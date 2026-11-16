@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { StaffCapability, StaffDetail, StaffStatus, StaffSummary } from '@serve/contracts';
 import {
+  ApiError,
   Button,
   EmptyState,
   ErrorState,
@@ -253,6 +254,13 @@ function StaffDetailModal({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  /** A canteen already has a dedicated account: confirm replacing it. */
+  const [replace, setReplace] = useState<{
+    canteenName: string;
+    holder: string;
+    action: () => Promise<unknown>;
+    message: string;
+  } | null>(null);
 
   useServerEvents(STAFF_EVENTS, () => void detail.reload());
 
@@ -263,10 +271,43 @@ function StaffDetailModal({
       await action();
       toast(message);
       await detail.reload();
+      await canteens.reload();
       onChanged();
       return true;
     } catch (err) {
       setError(err);
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Run an assignment; if the canteen has an account, ask before replacing it. */
+  const assignWithReplace = async (
+    key: string,
+    canteenName: string,
+    first: () => Promise<unknown>,
+    replacing: () => Promise<unknown>,
+    message: string,
+  ) => {
+    setBusy(key);
+    setError(null);
+    try {
+      await first();
+      toast(message);
+      await detail.reload();
+      await canteens.reload();
+      onChanged();
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'CANTEEN_HAS_STAFF_ACCOUNT') {
+        const holder =
+          (err.details as { staff?: { email?: string } } | undefined)?.staff?.email ??
+          'another account';
+        setReplace({ canteenName, holder, action: replacing, message });
+      } else {
+        setError(err);
+      }
       return false;
     } finally {
       setBusy(null);
@@ -300,7 +341,7 @@ function StaffDetailModal({
             <dd>
               <StaffStatusTag status={s.status} />
             </dd>
-            <dt>Primary canteen</dt>
+            <dt>Canteen</dt>
             <dd>{s.canteen?.name ?? '—'}</dd>
             <dt>Joined</dt>
             <dd>{formatDateTime(s.createdAt)}</dd>
@@ -320,9 +361,11 @@ function StaffDetailModal({
                   loading={busy === 'approve'}
                   disabled={!!busy}
                   onClick={() =>
-                    void run(
+                    void assignWithReplace(
                       'approve',
+                      pending.requestedCanteen.name,
                       () => api.approveRequest(pending.id),
+                      () => api.approveRequest(pending.id, undefined, true),
                       `${s.name} assigned to ${pending.requestedCanteen.name}`,
                     )
                   }
@@ -349,13 +392,17 @@ function StaffDetailModal({
           ) : null}
 
           <div className="assign-row">
-            <Field label={s.status === 'APPROVED' ? 'Move to canteen' : 'Assign to canteen'}>
+            <Field
+              label={s.status === 'APPROVED' ? 'Move this account to' : 'Dedicate this account to'}
+              hint="One account per canteen. Day and Night canteens have separate accounts."
+            >
               {(p) => (
                 <Select {...p} value={canteenId} onChange={(e) => setCanteenId(e.target.value)}>
                   <option value="">Select an active canteen</option>
                   {assignable.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} · {c.type === 'DAY' ? 'Day' : 'Night'}
+                      {c.staffAccount ? ` (assigned to ${c.staffAccount.email})` : ''}
                     </option>
                   ))}
                 </Select>
@@ -367,9 +414,11 @@ function StaffDetailModal({
               onClick={async () => {
                 const target = assignable.find((c) => c.id === canteenId);
                 if (
-                  await run(
+                  await assignWithReplace(
                     'assign',
+                    target?.name ?? 'This canteen',
                     () => api.assignStaff(s.id, canteenId),
+                    () => api.assignStaff(s.id, canteenId, true),
                     `${s.name} assigned to ${target?.name ?? 'canteen'}`,
                   )
                 )
@@ -449,6 +498,31 @@ function StaffDetailModal({
               )}
             </div>
           ) : null}
+        </div>
+      ) : null}
+      {replace ? (
+        <div className="callout" role="alertdialog" aria-label="Replace staff account">
+          <p>
+            <strong>{replace.canteenName}</strong> already has a dedicated account ({replace.holder}
+            ). Replacing it removes that account’s access immediately.
+          </p>
+          <div className="row-actions start">
+            <Button size="sm" variant="secondary" onClick={() => setReplace(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              loading={busy === 'replace'}
+              onClick={() => {
+                const { action, message } = replace;
+                setReplace(null);
+                void run('replace', action, message);
+              }}
+            >
+              Replace account
+            </Button>
+          </div>
         </div>
       ) : null}
     </Modal>

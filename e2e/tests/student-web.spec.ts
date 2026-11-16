@@ -65,7 +65,7 @@ test('student registers, orders, pays and watches the order become ready live', 
 
   await test.step('switching canteens asks before clearing the cart', async () => {
     await page.getByRole('button', { name: 'Change' }).click();
-    await page.getByRole('button', { name: /^Vedavathi Night Canteen/ }).click();
+    await page.getByRole('button', { name: /^Ganga A & Ganga B Night Canteen/ }).click();
     await expect(
       page.getByText(
         'Your cart contains items from another canteen. Switching canteens will clear your current cart.',
@@ -77,7 +77,7 @@ test('student registers, orders, pays and watches the order become ready live', 
   });
 
   let orderNumber = '';
-  await test.step('checkout leaves payment pending in DEMO mode', async () => {
+  await test.step('checkout leaves payment pending in test mode', async () => {
     await page.getByRole('button', { name: 'Cart, 2' }).click();
     await page.getByRole('button', { name: 'Checkout' }).click();
     await page.getByRole('button', { name: 'Place order' }).click();
@@ -91,12 +91,13 @@ test('student registers, orders, pays and watches the order become ready live', 
     orderNumber = amountLine?.match(/SV\d+/)?.[0] ?? '';
     expect(orderNumber).toMatch(/^SV\d+$/);
     await page.getByRole('textbox', { name: 'Optional' }).fill('E2EDEMOUTR1');
-    await page.getByRole('button', { name: 'Save demo reference' }).click();
+    await page.getByRole('button', { name: 'Save reference' }).click();
     await expect(page.getByText(/still pending cashier confirmation/i)).toBeVisible({
       timeout: 15_000,
     });
     await page.getByRole('button', { name: 'Track this order' }).click();
-    await expect(page.getByText('Order received').first()).toBeVisible({ timeout: 15_000 });
+    // Unpaid orders read "Order placed" until the cashier confirms payment.
+    await expect(page.getByText('Order placed').first()).toBeVisible({ timeout: 15_000 });
   });
 
   await test.step('cashier confirms DEMO payment; kitchen progresses live', async () => {

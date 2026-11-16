@@ -21,6 +21,7 @@ const student: Principal = {
   name: 'S',
   isActive: true,
   hostelId: 'h1',
+  serviceAreaId: 'a1',
   defaultCanteenId: 'c1',
 };
 const staff = (

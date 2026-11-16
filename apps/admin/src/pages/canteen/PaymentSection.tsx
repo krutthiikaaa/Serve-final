@@ -78,21 +78,22 @@ export function PaymentSection({ canteenId }: { canteenId: string }) {
         <div className="section-body">
           {row.mode === 'DEMO' ? (
             <div className="notice" role="status">
-              DEMO mode is active. This canteen’s QR is a placeholder and is not payable.
+              Test mode is active. Students see a placeholder QR marked DEMO, which is not payable.
             </div>
           ) : null}
           {row.warnings.includes('LIVE_CONFIG_INCOMPLETE') ? (
             <div className="notice" role="status">
-              LIVE mode needs a valid UPI ID, merchant name, and official QR before it can be used.
+              Live payments need a valid UPI ID, merchant name and an uploaded QR before they can be
+              used.
             </div>
           ) : null}
           <dl className="detail-grid">
             <dt>Mode</dt>
             <dd>
               {row.mode === 'LIVE' ? (
-                <Tag tone="success">LIVE</Tag>
+                <Tag tone="success">Live</Tag>
               ) : (
-                <Tag tone="warning">DEMO</Tag>
+                <Tag tone="warning">Test mode</Tag>
               )}
             </dd>
             <dt>Status</dt>
@@ -190,22 +191,19 @@ function PaymentForm({
         <FormError error={error} />
         {mode === 'DEMO' ? (
           <div className="notice" role="status">
-            DEMO mode uses a non-payable placeholder QR. LIVE requires official UPI, merchant and QR
-            details.
+            Test mode shows students a non-payable placeholder QR. Live payments need the official
+            UPI ID, merchant name and QR.
           </div>
         ) : null}
-        <Field
-          label="Payment mode"
-          hint="LIVE is per canteen and never copies another canteen’s details."
-        >
+        <Field label="Payment mode" hint="Set per canteen; never copied from another canteen.">
           {(p) => (
             <Select
               {...p}
               value={mode}
               onChange={(e) => setMode(e.target.value as 'DEMO' | 'LIVE')}
             >
-              <option value="DEMO">DEMO</option>
-              <option value="LIVE">LIVE</option>
+              <option value="DEMO">Test mode</option>
+              <option value="LIVE">Live payments</option>
             </Select>
           )}
         </Field>
@@ -227,7 +225,7 @@ function PaymentForm({
         <Field
           label="QR image URL"
           error={errors.qrImageUrl}
-          hint="Official https URL only. Demo placeholders are generated separately and are not stored here."
+          hint="Optional: an official https URL. Prefer uploading the QR image in Payment QR above."
         >
           {(p) => (
             <Input

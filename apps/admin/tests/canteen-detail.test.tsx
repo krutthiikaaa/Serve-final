@@ -13,6 +13,17 @@ import {
 } from './fixtures';
 
 function renderDetail(api: ReturnType<typeof fakeAdminApi>, canteenId: string) {
+  // Sections that are not under test get neutral data.
+  if (!api.serviceAreas.getMockImplementation()) api.serviceAreas.mockResolvedValue([]);
+  if (!api.qr.getMockImplementation()) {
+    api.qr.mockImplementation(async (id) => ({
+      canteen: { id, name: 'Canteen', type: 'NIGHT' },
+      mode: 'DEMO',
+      studentSees: 'PLACEHOLDER',
+      active: null,
+      history: [],
+    }));
+  }
   return renderAdmin(
     <Routes>
       <Route path="/canteens/:id" element={<CanteenDetailPage />} />
@@ -90,11 +101,11 @@ describe('canteen service and hours configuration', () => {
     );
   });
 
-  it('creates a missing DAY service through the admin services API', async () => {
+  it('configures only the canteen’s own service (no Day/Night switching)', async () => {
     const api = fakeAdminApi();
-    const listed = adminCanteen('Vedavathi Night Canteen');
-    api.canteen.mockResolvedValue(adminCanteenDetail(listed));
-    api.liveCanteen.mockResolvedValue(publicCanteen(listed));
+    const listed = adminCanteen('Vedavathi Day Canteen');
+    api.canteen.mockResolvedValue(adminCanteenDetail(listed, { services: [] }));
+    api.liveCanteen.mockResolvedValue(publicCanteen(listed, { services: [] }));
     api.menuCatalogue.mockResolvedValue([]);
     api.paymentConfig.mockResolvedValue(null);
     api.updateCanteenServices.mockResolvedValue({
@@ -104,12 +115,8 @@ describe('canteen service and hours configuration', () => {
     });
 
     renderDetail(api, listed.id);
-    await userEvent.click(
-      within(await screen.findByRole('tablist', { name: 'Service period' })).getByRole('tab', {
-        name: /Day/,
-      }),
-    );
     await userEvent.click(await screen.findByRole('button', { name: 'Add Day service' }));
+    expect(screen.queryByRole('tablist', { name: 'Service period' })).not.toBeInTheDocument();
     expect(api.updateCanteenServices).toHaveBeenCalledWith(listed.id, [
       { period: 'DAY', isEnabled: true, override: 'AUTO' },
     ]);
@@ -117,7 +124,7 @@ describe('canteen service and hours configuration', () => {
 });
 
 describe('menu service pricing', () => {
-  it('shows unconfigured period prices and saves DAY without changing NIGHT unless typed', async () => {
+  it('shows a missing price and saves the canteen’s own period price', async () => {
     const api = fakeAdminApi();
     const listed = adminCanteen('Vedavathi Night Canteen');
     const itemId = uuid();
@@ -147,7 +154,7 @@ describe('menu service pricing', () => {
             availability: 'AVAILABLE',
             isOrderable: true,
             updatedAt: '2026-10-06T18:00:00.000Z',
-            services: [{ period: 'NIGHT', pricePaise: 4500, isAvailable: true }],
+            services: [],
           },
         ],
       },
@@ -158,32 +165,24 @@ describe('menu service pricing', () => {
       name: 'Egg Roll',
       pricePaise: 4500,
       isAvailable: true,
-      services: [
-        { period: 'DAY', pricePaise: 4000, isAvailable: true },
-        { period: 'NIGHT', pricePaise: 4500, isAvailable: true },
-      ],
+      services: [{ period: 'NIGHT', pricePaise: 4000, isAvailable: true }],
     });
 
     renderDetail(api, listed.id);
-    await userEvent.click(
-      within(await screen.findByRole('tablist', { name: 'Price period' })).getByRole('tab', {
-        name: 'Day',
-      }),
-    );
+    expect(screen.queryByRole('tablist', { name: 'Price period' })).not.toBeInTheDocument();
     expect(await screen.findByText('Not configured')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Set prices' }));
-    const dialog = screen.getByRole('dialog', { name: 'Prices for Egg Roll' });
-    await userEvent.type(within(dialog).getByLabelText('Day price (₹)'), '40');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save prices' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Set price' }));
+    const dialog = screen.getByRole('dialog', { name: 'Price for Egg Roll' });
+    await userEvent.type(within(dialog).getByLabelText('Price (₹)'), '40');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save price' }));
     await waitFor(() =>
       expect(api.updateMenuItemServices).toHaveBeenCalledWith(itemId, [
-        { period: 'DAY', pricePaise: 4000, isAvailable: true },
-        { period: 'NIGHT', pricePaise: 4500, isAvailable: true },
+        { period: 'NIGHT', pricePaise: 4000, isAvailable: true },
       ]),
     );
   });
 
-  it('shows DAY and NIGHT prices for inactive items instead of Not configured', async () => {
+  it('shows the canteen’s own price for inactive items instead of Not configured', async () => {
     const api = fakeAdminApi();
     const listed = adminCanteen('Vedavathi Night Canteen');
     const itemId = uuid();
@@ -226,14 +225,8 @@ describe('menu service pricing', () => {
     expect(await screen.findByText('Retired Roll')).toBeInTheDocument();
     expect(screen.getByText('₹40')).toBeInTheDocument();
     expect(screen.queryByText('Not configured')).not.toBeInTheDocument();
-    await userEvent.click(
-      within(screen.getByRole('tablist', { name: 'Price period' })).getByRole('tab', {
-        name: 'Day',
-      }),
-    );
-    expect(await screen.findByText('₹30')).toBeInTheDocument();
-    expect(screen.getByText('Unavailable')).toBeInTheDocument();
-    expect(screen.queryByText('Not configured')).not.toBeInTheDocument();
+    // A Night canteen never shows its dormant Day price.
+    expect(screen.queryByText('₹30')).not.toBeInTheDocument();
   });
 });
 
@@ -258,6 +251,7 @@ describe('UPI payment configuration', () => {
         svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
         warning: 'DEMO ONLY — NOT PAYABLE',
       },
+      qr: null,
       warnings: ['DEMO_MODE_ACTIVE'],
       updatedAt: '2026-10-06T18:00:00.000Z',
     });
@@ -275,12 +269,13 @@ describe('UPI payment configuration', () => {
         svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
         warning: 'DEMO ONLY — NOT PAYABLE',
       },
+      qr: null,
       warnings: ['DEMO_MODE_ACTIVE'],
       updatedAt: '2026-10-06T18:00:00.000Z',
     });
 
     renderDetail(api, listed.id);
-    expect(await screen.findByText(/DEMO mode is active/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Test mode is active/i)).toBeInTheDocument();
     expect(screen.getAllByText(/DEMO ONLY — NOT PAYABLE/).length).toBeGreaterThan(0);
     const paymentSection = screen.getByRole('heading', { name: 'UPI payments' }).closest('section');
     expect(paymentSection).toBeTruthy();

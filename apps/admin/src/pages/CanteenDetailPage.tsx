@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  AvailabilityTag,
   Button,
+  CanteenTypeBadge,
   EmptyState,
   ErrorState,
   IconEdit,
@@ -19,6 +21,7 @@ import { ConfigurationWarnings } from '../components/ConfigurationWarnings';
 import { CanteenFormModal, CanteenStatus } from './CanteensPage';
 import { MenuPricingSection } from './canteen/MenuPricingSection';
 import { PaymentSection } from './canteen/PaymentSection';
+import { QrSection } from './canteen/QrSection';
 import { ServicesHoursSection } from './canteen/ServicesHoursSection';
 import { StaffStatusTag } from './StaffPage';
 
@@ -29,17 +32,18 @@ export function CanteenDetailPage() {
   const { connectionEpoch } = useRealtime();
   const canteen = useResource(() => api.canteen(id), [api, id, connectionEpoch]);
   const live = useResource(() => api.liveCanteen(id), [api, id, connectionEpoch]);
+  const areas = useResource(() => api.serviceAreas(), [api, connectionEpoch]);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useServerEvent('canteen.status_changed', (data) => {
-    if (data.canteenId === id) void canteen.reload();
+    if (data.canteenId === id) {
+      void canteen.reload();
+      void live.reload();
+    }
   });
 
-  const toggle = async (
-    patch: { isActive?: boolean; isAcceptingOrders?: boolean },
-    message: string,
-  ) => {
+  const toggle = async (patch: { isActive?: boolean; isPaused?: boolean }, message: string) => {
     setBusy(true);
     try {
       await api.updateCanteen(id, patch);
@@ -65,12 +69,21 @@ export function CanteenDetailPage() {
             <Link to="/canteens">Canteens</Link> /
           </p>
           <h1>{c.name}</h1>
-          <p>
-            {[c.location, c.openingHours].filter(Boolean).join(' · ') || 'No location or hours set'}
+          <p className="title-meta">
+            <CanteenTypeBadge type={c.type} />
+            <span>{c.serviceArea.name}</span>
+            <span className="muted">
+              {[c.location, c.openingHours].filter(Boolean).join(' · ') ||
+                'No location or hours set'}
+            </span>
           </p>
         </div>
         <div className="header-actions">
-          <CanteenStatus canteen={c} />
+          {live.data ? (
+            <AvailabilityTag state={live.data.availability.state} />
+          ) : (
+            <CanteenStatus canteen={c} />
+          )}
           <Button
             variant="secondary"
             icon={<IconEdit width={16} height={16} />}
@@ -80,18 +93,22 @@ export function CanteenDetailPage() {
           </Button>
           {c.isActive ? (
             <>
-              <Button
-                variant="secondary"
-                loading={busy}
-                onClick={() =>
-                  void toggle(
-                    { isAcceptingOrders: !c.isAcceptingOrders },
-                    c.isAcceptingOrders ? 'Order-taking paused' : 'Accepting orders',
-                  )
-                }
-              >
-                {c.isAcceptingOrders ? 'Pause orders' : 'Resume orders'}
-              </Button>
+              {/* Pause is separate from being on duty (which the area's schedule or
+                  switch decides on the Canteens page); the schedule never lifts it. */}
+              {c.isPaused || c.isAcceptingOrders ? (
+                <Button
+                  variant="secondary"
+                  loading={busy}
+                  onClick={() =>
+                    void toggle(
+                      { isPaused: !c.isPaused },
+                      c.isPaused ? 'Pause lifted' : 'Order-taking paused',
+                    )
+                  }
+                >
+                  {c.isPaused ? 'Resume orders' : 'Pause orders'}
+                </Button>
+              ) : null}
               <Button
                 variant="danger"
                 disabled={busy}
@@ -135,7 +152,7 @@ export function CanteenDetailPage() {
       <div className="dashboard-columns">
         <section className="section">
           <div className="section-header">
-            <h2>Hostels</h2>
+            <h2>Hostels in {c.serviceArea.name}</h2>
           </div>
           {c.hostels.length === 0 ? (
             <EmptyState title="No hostels mapped" />
@@ -151,32 +168,36 @@ export function CanteenDetailPage() {
         </section>
         <section className="section">
           <div className="section-header">
-            <h2>Staff</h2>
+            <h2>Staff account</h2>
             <Link to="/staff" className="btn btn-ghost btn-sm">
-              Manage staff
+              Manage accounts
             </Link>
           </div>
-          {c.staff.length === 0 ? (
+          {c.staff.filter((s) => s.status === 'APPROVED').length === 0 ? (
             <EmptyState
-              title="No staff assigned"
-              body="Approve a staff request or assign staff from the Staff page."
+              title="No staff account assigned"
+              body="Each canteen has one dedicated staff login. Assign it from the Staff page."
             />
           ) : (
             <ul className="plain-list">
-              {c.staff.map((s) => (
-                <li key={s.id}>
-                  <span>
-                    <strong>{s.name}</strong> <span className="muted small">{s.email}</span>
-                  </span>
-                  <StaffStatusTag status={s.status} />
-                </li>
-              ))}
+              {c.staff
+                .filter((s) => s.status === 'APPROVED')
+                .map((s) => (
+                  <li key={s.id}>
+                    <span>
+                      <strong>{s.name}</strong> <span className="muted small">{s.email}</span>
+                    </span>
+                    <StaffStatusTag status={s.status} />
+                  </li>
+                ))}
             </ul>
           )}
         </section>
       </div>
 
-      <MenuPricingSection canteenId={id} />
+      <MenuPricingSection canteenId={id} canteenType={c.type} />
+
+      <QrSection canteenId={id} canteenName={c.name} />
 
       <PaymentSection canteenId={id} />
 
@@ -224,6 +245,7 @@ export function CanteenDetailPage() {
       {editing ? (
         <CanteenFormModal
           canteen={c}
+          areas={areas.data ?? []}
           onClose={() => setEditing(false)}
           onSaved={(saved) => {
             setEditing(false);
