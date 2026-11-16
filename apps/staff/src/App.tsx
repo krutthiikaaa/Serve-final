@@ -68,8 +68,18 @@ function AccountGate() {
   const { status, me, user, error, api, getToken, refreshMe, signOut } = useAuth();
   const client = useMemo(() => staffApi(api), [api]);
 
-  if (status === 'initializing' || status === 'loadingAccount' || (user && !me && status !== 'error')) {
-    ssoLog('guard', { audience: 'STAFF', status, hasUser: Boolean(user), hasMe: false, destination: 'loading' });
+  if (
+    status === 'initializing' ||
+    status === 'loadingAccount' ||
+    (user && !me && status !== 'error')
+  ) {
+    ssoLog('guard', {
+      audience: 'STAFF',
+      status,
+      hasUser: Boolean(user),
+      hasMe: false,
+      destination: 'loading',
+    });
     return <Spinner label="Loading your account" />;
   }
 

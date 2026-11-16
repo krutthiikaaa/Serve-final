@@ -42,7 +42,7 @@ function sanitize(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, nested]) => {
         if (SENSITIVE_KEYS.has(key)) {
-          return [`${key}Set`, nested != null && nested !== ''];
+          return [`${key}Set`, nested !== null && nested !== undefined && nested !== ''];
         }
         return [key, sanitize(nested)];
       }),

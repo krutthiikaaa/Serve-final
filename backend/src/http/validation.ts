@@ -51,20 +51,27 @@ export const imageUrl = z
 
 /** Public HTTPS URL. Rejects http, file, localhost, and frontend asset paths. */
 export const httpsUrl = z
-  .url({ protocol: /^https$/, hostname: /^([a-z0-9-]+\.)+[a-z]{2,}$/i, error: 'Must be a public https URL' })
+  .url({
+    protocol: /^https$/,
+    hostname: /^([a-z0-9-]+\.)+[a-z]{2,}$/i,
+    error: 'Must be a public https URL',
+  })
   .max(2048)
-  .refine((value) => {
-    try {
-      const url = new URL(value);
-      if (url.protocol !== 'https:') return false;
-      const host = url.hostname.toLowerCase();
-      if (host === 'localhost' || host.endsWith('.local') || host === '127.0.0.1') return false;
-      if (url.pathname.includes('/assets/')) return false;
-      return true;
-    } catch {
-      return false;
-    }
-  }, { error: 'Must be a public https URL, not a local or frontend asset path' });
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value);
+        if (url.protocol !== 'https:') return false;
+        const host = url.hostname.toLowerCase();
+        if (host === 'localhost' || host.endsWith('.local') || host === '127.0.0.1') return false;
+        if (url.pathname.includes('/assets/')) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { error: 'Must be a public https URL, not a local or frontend asset path' },
+  );
 
 /**
  * UPI VPA (VPA@psp). Accepts typical handles without assuming a specific bank.

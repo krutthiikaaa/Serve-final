@@ -191,9 +191,11 @@ describe('admin staff assignment API', () => {
         expect.objectContaining({ canteenId: yn.id, capabilities: ['PAUSE'] }),
       ]),
     );
-    expect(res.body.data.assignments.every((row: { capabilities: string[] }) => !row.capabilities.includes('CASHIER'))).toBe(
-      true,
-    );
+    expect(
+      res.body.data.assignments.every(
+        (row: { capabilities: string[] }) => !row.capabilities.includes('CASHIER'),
+      ),
+    ).toBe(true);
 
     const row = await prisma.staff.findUniqueOrThrow({ where: { id: staff.id } });
     expect(row.canteenId).toBe(yn.id);
@@ -202,9 +204,11 @@ describe('admin staff assignment API', () => {
       { canteenId: yn.id, capabilities: ['KITCHEN'] },
     ]).expect(200);
     expect(removed.body.data.assignments).toHaveLength(1);
-    expect(await prisma.staffCanteenAssignment.findUnique({
-      where: { staffId_canteenId: { staffId: staff.id, canteenId: kg.id } },
-    })).toBeNull();
+    expect(
+      await prisma.staffCanteenAssignment.findUnique({
+        where: { staffId_canteenId: { staffId: staff.id, canteenId: kg.id } },
+      }),
+    ).toBeNull();
   });
 
   it('rejects a primary canteen that is missing from the assignment list', async () => {

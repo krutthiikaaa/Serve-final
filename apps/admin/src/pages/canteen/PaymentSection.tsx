@@ -89,15 +89,15 @@ export function PaymentSection({ canteenId }: { canteenId: string }) {
           <dl className="detail-grid">
             <dt>Mode</dt>
             <dd>
-              {row.mode === 'LIVE' ? <Tag tone="success">LIVE</Tag> : <Tag tone="warning">DEMO</Tag>}
+              {row.mode === 'LIVE' ? (
+                <Tag tone="success">LIVE</Tag>
+              ) : (
+                <Tag tone="warning">DEMO</Tag>
+              )}
             </dd>
             <dt>Status</dt>
             <dd>
-              {row.isActive ? (
-                <Tag tone="success">Active</Tag>
-              ) : (
-                <Tag tone="neutral">Inactive</Tag>
-              )}
+              {row.isActive ? <Tag tone="success">Active</Tag> : <Tag tone="neutral">Inactive</Tag>}
             </dd>
             <dt>UPI ID</dt>
             <dd>{row.upiVpa ?? <span className="muted">Not set</span>}</dd>
@@ -118,7 +118,9 @@ export function PaymentSection({ canteenId }: { canteenId: string }) {
                 alt={row.demoQr.warning}
                 src={`data:image/svg+xml;utf8,${encodeURIComponent(row.demoQr.svg)}`}
               />
-              <p className="muted small">{row.demoQr.warning}. This is not an official university QR code.</p>
+              <p className="muted small">
+                {row.demoQr.warning}. This is not an official university QR code.
+              </p>
             </div>
           ) : null}
         </div>
@@ -188,10 +190,14 @@ function PaymentForm({
         <FormError error={error} />
         {mode === 'DEMO' ? (
           <div className="notice" role="status">
-            DEMO mode uses a non-payable placeholder QR. LIVE requires official UPI, merchant and QR details.
+            DEMO mode uses a non-payable placeholder QR. LIVE requires official UPI, merchant and QR
+            details.
           </div>
         ) : null}
-        <Field label="Payment mode" hint="LIVE is per canteen and never copies another canteen’s details.">
+        <Field
+          label="Payment mode"
+          hint="LIVE is per canteen and never copies another canteen’s details."
+        >
           {(p) => (
             <Select
               {...p}

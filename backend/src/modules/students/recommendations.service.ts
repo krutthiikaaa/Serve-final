@@ -74,22 +74,20 @@ export function createRecommendationsService(
       const night = canteen.services.find((service) => service.period === DEFAULT_SERVICE_PERIOD);
       const takesOrders = serviceAvailability(canteen, night, clock()).open;
       const dto = (items: Awaited<ReturnType<typeof itemsByIds>>) =>
-        items
-          .slice(0, LIMIT)
-          .flatMap((item) => {
-            const period = item.services[0];
-            if (!period) return [];
-            return [
-              toMenuItemDto(
-                {
-                  ...item,
-                  pricePaise: period.pricePaise,
-                  isAvailable: item.isAvailable && period.isAvailable,
-                },
-                { categoryActive: true, canteenTakesOrders: takesOrders },
-              ),
-            ];
-          });
+        items.slice(0, LIMIT).flatMap((item) => {
+          const period = item.services[0];
+          if (!period) return [];
+          return [
+            toMenuItemDto(
+              {
+                ...item,
+                pricePaise: period.pricePaise,
+                isAvailable: item.isAvailable && period.isAvailable,
+              },
+              { categoryActive: true, canteenTakesOrders: takesOrders },
+            ),
+          ];
+        });
 
       const mine = await itemsByIds(await topItemIds(canteenId, student.id), canteenId);
       if (mine.length > 0) return { basis: 'MOST_ORDERED' as const, items: dto(mine) };

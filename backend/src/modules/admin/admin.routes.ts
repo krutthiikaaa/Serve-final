@@ -117,7 +117,9 @@ const menuItemServicesBody = z.strictObject({
     )
     .min(1, { error: 'Provide at least one service price' }),
 });
-const nullableHttpsUrl = z.union([z.literal('').transform(() => null), httpsUrl, z.null()]).optional();
+const nullableHttpsUrl = z
+  .union([z.literal('').transform(() => null), httpsUrl, z.null()])
+  .optional();
 const nullableUpiVpa = z.union([z.literal('').transform(() => null), upiVpa, z.null()]).optional();
 const paymentConfigBody = z.strictObject({
   mode: z.enum(['DEMO', 'LIVE']).optional(),
@@ -155,7 +157,7 @@ export function createAdminRouter(ctx: AppContext, services: Services): Router {
   router.get('/reports', async (req, res) => {
     res.json({ data: await admin.reports(parse(reportQuery, req.query)) });
   });
-  router.get('/settings', async (_req, res) => {
+  router.get('/settings', (_req, res) => {
     res.json({ data: admin.settings() });
   });
 

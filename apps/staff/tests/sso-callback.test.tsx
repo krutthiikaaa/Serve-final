@@ -39,7 +39,11 @@ function renderCallback({
               getToken: async () => 'should-not-be-sent',
               fetchImpl:
                 fetchImpl ??
-                (async () => new Response('{}', { status: 599, headers: { 'Content-Type': 'application/json' } })),
+                (async () =>
+                  new Response('{}', {
+                    status: 599,
+                    headers: { 'Content-Type': 'application/json' },
+                  })),
             }),
             signInWithCustomToken: async (token: string) => {
               if (signInWithCustomToken) await signInWithCustomToken(token);
@@ -90,12 +94,16 @@ describe('staff SSO callback', () => {
     });
     expect(screen.getByText('Completing sign-in')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument();
-    await waitFor(() => expect(signInWithCustomToken).toHaveBeenCalledWith('firebase-custom-token'));
+    await waitFor(() =>
+      expect(signInWithCustomToken).toHaveBeenCalledWith('firebase-custom-token'),
+    );
     expect(
       fetchImpl.mock.calls.filter((call) => String(call[0]).includes('/auth/sso/exchange')),
     ).toHaveLength(1);
     await waitFor(() =>
-      expect(screen.getByRole('complementary', { name: 'Staff dashboard navigation' })).toBeInTheDocument(),
+      expect(
+        screen.getByRole('complementary', { name: 'Staff dashboard navigation' }),
+      ).toBeInTheDocument(),
     );
     expect(screen.getByRole('link', { name: 'Orders' })).toBeInTheDocument();
     expect(screen.getAllByText('Krishna & Godavari Night Canteen').length).toBeGreaterThan(0);
@@ -127,7 +135,9 @@ describe('staff SSO callback', () => {
     await waitFor(() => expect(waitForAuthReady).toHaveBeenCalled());
     expect(fetchImpl).not.toHaveBeenCalled();
     release();
-    await waitFor(() => expect(signInWithCustomToken).toHaveBeenCalledWith('after-auth-ready-token'));
+    await waitFor(() =>
+      expect(signInWithCustomToken).toHaveBeenCalledWith('after-auth-ready-token'),
+    );
     expect(fetchImpl).toHaveBeenCalled();
   });
 
@@ -154,7 +164,9 @@ describe('staff SSO callback', () => {
       fetchImpl.mock.calls.filter((call) => String(call[0]).includes('/auth/sso/exchange')),
     ).toHaveLength(1);
     await waitFor(() =>
-      expect(screen.getByRole('complementary', { name: 'Staff dashboard navigation' })).toBeInTheDocument(),
+      expect(
+        screen.getByRole('complementary', { name: 'Staff dashboard navigation' }),
+      ).toBeInTheDocument(),
     );
   });
 
@@ -184,13 +196,18 @@ describe('staff SSO callback', () => {
       async () =>
         new Response(
           JSON.stringify({
-            error: { code: 'SSO_CODE_INVALID', message: 'This sign-in link is invalid or has expired.' },
+            error: {
+              code: 'SSO_CODE_INVALID',
+              message: 'This sign-in link is invalid or has expired.',
+            },
           }),
           { status: 401, headers: { 'Content-Type': 'application/json' } },
         ),
     );
     renderCallback({ path: '/sso/callback?code=already-used-or-expiredxx', fetchImpl });
-    expect(await screen.findByText('This sign-in link is invalid or has expired.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('This sign-in link is invalid or has expired.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Return to SERVE' })).toBeInTheDocument();
   });
 });

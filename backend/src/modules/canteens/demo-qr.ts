@@ -65,5 +65,5 @@ function finderFamily(x: number, y: number, n: number): boolean {
 function moduleOn(x: number, y: number, n: number, digest: Buffer): boolean {
   if (finderFamily(x, y, n)) return true;
   const i = (y * n + x) % (digest.length * 8);
-  return ((digest[Math.floor(i / 8)]! >> i % 8) & 1) === 1;
+  return ((digest[Math.floor(i / 8)]! >> (i % 8)) & 1) === 1;
 }

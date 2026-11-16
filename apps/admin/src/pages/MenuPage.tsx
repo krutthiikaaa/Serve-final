@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { AdminMenuCategory, AdminMenuItem, MenuItemServiceConfig, ServicePeriod } from '@serve/contracts';
+import type {
+  AdminMenuCategory,
+  AdminMenuItem,
+  MenuItemServiceConfig,
+  ServicePeriod,
+} from '@serve/contracts';
 import {
   Button,
   EmptyState,
@@ -66,7 +71,12 @@ export function MenuPage() {
     [api, canteenId, connectionEpoch],
   );
   useServerEvents(
-    ['menu.item_updated', 'menu.item_price_changed', 'menu.item_availability_changed', 'menu.category_updated'] as const,
+    [
+      'menu.item_updated',
+      'menu.item_price_changed',
+      'menu.item_availability_changed',
+      'menu.category_updated',
+    ] as const,
     () => {
       if (canteenId) void catalogue.reload();
     },
@@ -162,7 +172,12 @@ export function MenuPage() {
             placeholder="Item name"
           />
         </label>
-        <Button variant="secondary" size="sm" disabled={!canteenId} onClick={() => setAddingCategory(true)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!canteenId}
+          onClick={() => setAddingCategory(true)}
+        >
           Add category
         </Button>
         {selectedCategory ? (
@@ -217,7 +232,9 @@ export function MenuPage() {
                   <tr key={item.id} className={item.isActive ? undefined : 'row-muted'}>
                     <td>
                       <span className="item-name">{item.name}</span>
-                      {item.description ? <div className="muted small">{item.description}</div> : null}
+                      {item.description ? (
+                        <div className="muted small">{item.description}</div>
+                      ) : null}
                       {!item.isActive ? <Tag>Inactive</Tag> : null}
                     </td>
                     <td>{category.name}</td>
@@ -238,7 +255,13 @@ export function MenuPage() {
                             void api
                               .updateMenuItem(item.id, { isActive: !item.isActive })
                               .then(() => catalogue.reload())
-                              .then(() => toast(item.isActive ? `${item.name} deactivated` : `${item.name} activated`))
+                              .then(() =>
+                                toast(
+                                  item.isActive
+                                    ? `${item.name} deactivated`
+                                    : `${item.name} activated`,
+                                ),
+                              )
                               .catch((err: unknown) => toast(errorMessage(err), 'error'))
                           }
                         >
@@ -343,7 +366,12 @@ function CategoryModal({
         <FormError error={error} />
         <Field label="Name">
           {(props) => (
-            <Input {...props} value={name} onChange={(event) => setName(event.target.value)} required />
+            <Input
+              {...props}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
           )}
         </Field>
       </form>
@@ -391,7 +419,8 @@ function ItemModal({
       else services.push({ period: 'DAY', pricePaise: dayPaise, isAvailable: dayAvailable });
     }
     if (nightPrice.trim()) {
-      if (nightPaise === null || nightPaise <= 0) local.nightPrice = 'Enter a price greater than ₹0';
+      if (nightPaise === null || nightPaise <= 0)
+        local.nightPrice = 'Enter a price greater than ₹0';
       else services.push({ period: 'NIGHT', pricePaise: nightPaise, isAvailable: nightAvailable });
     }
     if (!item && (nightPaise === null || nightPaise <= 0)) {
@@ -446,7 +475,12 @@ function ItemModal({
         </>
       }
     >
-      <form id="menu-item-form" className="form" onSubmit={(event) => void submit(event)} noValidate>
+      <form
+        id="menu-item-form"
+        className="form"
+        onSubmit={(event) => void submit(event)}
+        noValidate
+      >
         <FormError error={error} />
         <Field label="Name" error={errors.name}>
           {(props) => (
@@ -455,7 +489,11 @@ function ItemModal({
         </Field>
         <Field label="Category" error={errors.categoryId}>
           {(props) => (
-            <Select {...props} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+            <Select
+              {...props}
+              value={categoryId}
+              onChange={(event) => setCategoryId(event.target.value)}
+            >
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -474,7 +512,11 @@ function ItemModal({
           )}
         </Field>
         <div className="form-row">
-          <Field label="Day price (₹)" error={errors.dayPrice} hint={day ? undefined : 'Not configured'}>
+          <Field
+            label="Day price (₹)"
+            error={errors.dayPrice}
+            hint={day ? undefined : 'Not configured'}
+          >
             {(props) => (
               <Input
                 {...props}

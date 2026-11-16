@@ -84,7 +84,10 @@ test('student registers, orders, pays and watches the order become ready live', 
     await expect(page.getByRole('heading', { name: 'Payment' })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('DEMO ONLY — NOT PAYABLE').first()).toBeVisible();
     await expect(page.getByText(/PAYMENT PENDING/)).toBeVisible();
-    const amountLine = await page.getByText(/Order SV\d+/).first().textContent();
+    const amountLine = await page
+      .getByText(/Order SV\d+/)
+      .first()
+      .textContent();
     orderNumber = amountLine?.match(/SV\d+/)?.[0] ?? '';
     expect(orderNumber).toMatch(/^SV\d+$/);
     await page.getByRole('textbox', { name: 'Optional' }).fill('E2EDEMOUTR1');
@@ -103,7 +106,7 @@ test('student registers, orders, pays and watches the order become ready live', 
     );
     const unpaid = pending.body.data.find((o) => o.orderNumber === orderNumber);
     expect(unpaid, `pending DEMO order ${orderNumber}`).toBeTruthy();
-    expect(unpaid!.student.name).toBe(name);
+    expect(unpaid!.student?.name).toBe(name);
     await staff.data(
       'POST',
       `/staff/orders/${unpaid!.id}/confirm-demo-payment?canteenId=${canteen.id}`,

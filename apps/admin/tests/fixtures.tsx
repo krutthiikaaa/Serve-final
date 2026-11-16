@@ -28,15 +28,23 @@ export const uuid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, 
 const at = '2026-10-06T18:00:00.000Z';
 
 export function publicCanteen(
-  canteen: Pick<AdminCanteen, 'id' | 'name' | 'slug' | 'location' | 'openingHours' | 'isActive' | 'isAcceptingOrders' | 'status'>,
+  canteen: Pick<
+    AdminCanteen,
+    | 'id'
+    | 'name'
+    | 'slug'
+    | 'location'
+    | 'openingHours'
+    | 'isActive'
+    | 'isAcceptingOrders'
+    | 'status'
+  >,
   overrides: Partial<PublicCanteen> = {},
 ): PublicCanteen {
   return {
     ...canteen,
     supportedPeriods: ['NIGHT'],
-    services: [
-      { period: 'NIGHT', isEnabled: true, override: 'FORCE_OPEN', isOpenNow: true },
-    ],
+    services: [{ period: 'NIGHT', isEnabled: true, override: 'FORCE_OPEN', isOpenNow: true }],
     configurationWarnings: [],
     ...overrides,
   };

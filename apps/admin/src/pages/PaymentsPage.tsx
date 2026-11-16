@@ -41,7 +41,10 @@ export function PaymentsPage() {
           />
           <section className="section">
             {overview.data.canteens.length === 0 ? (
-              <EmptyState title="No canteens yet" body="Payment configuration appears here after a canteen is created." />
+              <EmptyState
+                title="No canteens yet"
+                body="Payment configuration appears here after a canteen is created."
+              />
             ) : (
               <div className="table-wrap">
                 <table className="table">

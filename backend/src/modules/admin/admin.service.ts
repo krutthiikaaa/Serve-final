@@ -91,59 +91,59 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
         cashiers,
         assignmentCount,
       ] = await Promise.all([
-          prisma.canteen.findMany({
-            select: {
-              id: true,
-              name: true,
-              isActive: true,
-              isAcceptingOrders: true,
-              services: { select: canteenServiceSelect },
-              paymentConfig: {
-                select: {
-                  mode: true,
-                  upiVpa: true,
-                  merchantName: true,
-                  qrImageUrl: true,
-                  qrStorageKey: true,
-                },
+        prisma.canteen.findMany({
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+            isAcceptingOrders: true,
+            services: { select: canteenServiceSelect },
+            paymentConfig: {
+              select: {
+                mode: true,
+                upiVpa: true,
+                merchantName: true,
+                qrImageUrl: true,
+                qrStorageKey: true,
               },
             },
-            orderBy: { name: 'asc' },
-          }),
-          prisma.canteenChangeRequest.count({ where: { status: 'PENDING' } }),
-          prisma.staff.groupBy({ by: ['status'], _count: { _all: true } }),
-          prisma.order.groupBy({
-            by: ['status'],
-            where: { status: { in: ['PAYMENT_CONFIRMED', 'PREPARING', 'READY'] } },
-            _count: { _all: true },
-          }),
-          prisma.order.aggregate({
-            where: {
-              paidAt: { gte: since },
-              status: { notIn: ['PLACED', 'CANCELLED'] },
-              payment: realPayment,
-            },
-            _count: { _all: true },
-            _sum: { totalPaise: true },
-          }),
-          prisma.order.groupBy({
-            by: ['status'],
-            where: { createdAt: { gte: since } },
-            _count: { _all: true },
-          }),
-          prisma.order.groupBy({
-            by: ['channel'],
-            where: { createdAt: { gte: since } },
-            _count: { _all: true },
-          }),
-          prisma.staff.count({
-            where: {
-              status: 'APPROVED',
-              assignments: { some: { capabilities: { some: { capability: 'CASHIER' } } } },
-            },
-          }),
-          prisma.staffCanteenAssignment.count(),
-        ]);
+          },
+          orderBy: { name: 'asc' },
+        }),
+        prisma.canteenChangeRequest.count({ where: { status: 'PENDING' } }),
+        prisma.staff.groupBy({ by: ['status'], _count: { _all: true } }),
+        prisma.order.groupBy({
+          by: ['status'],
+          where: { status: { in: ['PAYMENT_CONFIRMED', 'PREPARING', 'READY'] } },
+          _count: { _all: true },
+        }),
+        prisma.order.aggregate({
+          where: {
+            paidAt: { gte: since },
+            status: { notIn: ['PLACED', 'CANCELLED'] },
+            payment: realPayment,
+          },
+          _count: { _all: true },
+          _sum: { totalPaise: true },
+        }),
+        prisma.order.groupBy({
+          by: ['status'],
+          where: { createdAt: { gte: since } },
+          _count: { _all: true },
+        }),
+        prisma.order.groupBy({
+          by: ['channel'],
+          where: { createdAt: { gte: since } },
+          _count: { _all: true },
+        }),
+        prisma.staff.count({
+          where: {
+            status: 'APPROVED',
+            assignments: { some: { capabilities: { some: { capability: 'CASHIER' } } } },
+          },
+        }),
+        prisma.staffCanteenAssignment.count(),
+      ]);
       const staffCount = (status: StaffStatus) =>
         staffByStatus.find((row) => row.status === status)?._count._all ?? 0;
       const activeCount = (status: string) =>
@@ -158,10 +158,8 @@ export function createAdminService(prisma: PrismaClient, events: EventPublisher,
       );
       const channelCount = (channel: 'APP' | 'WALK_IN') =>
         todayByChannel.find((row) => row.channel === channel)?._count._all ?? 0;
-      const periodService = (
-        canteen: (typeof canteenRows)[number],
-        period: 'DAY' | 'NIGHT',
-      ) => canteen.services.find((service) => service.period === period);
+      const periodService = (canteen: (typeof canteenRows)[number], period: 'DAY' | 'NIGHT') =>
+        canteen.services.find((service) => service.period === period);
       let demo = 0;
       let live = 0;
       let incompleteLive = 0;

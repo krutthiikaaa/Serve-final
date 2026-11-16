@@ -217,10 +217,7 @@ describe('availability priority', () => {
     const result = evaluateServiceAvailability({
       canteen: accepting,
       service: enabledAuto,
-      schedules: [
-        overnightMon,
-        { weekday: 2, opensAtMinutes: 2 * 60, closesAtMinutes: 14 * 60 },
-      ],
+      schedules: [overnightMon, { weekday: 2, opensAtMinutes: 2 * 60, closesAtMinutes: 14 * 60 }],
       now: tuesday(1),
     });
     expect(result).toMatchObject({ open: false, code: 'SERVICE_SCHEDULE_NOT_CONFIGURED' });

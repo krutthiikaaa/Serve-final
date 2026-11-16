@@ -36,7 +36,8 @@ export interface PricedCart {
   currency: 'INR';
 }
 
-export type CartIssueReason = 'NOT_IN_CANTEEN' | 'INACTIVE' | 'UNAVAILABLE' | 'PERIOD_PRICE_MISSING';
+export type CartIssueReason =
+  'NOT_IN_CANTEEN' | 'INACTIVE' | 'UNAVAILABLE' | 'PERIOD_PRICE_MISSING';
 
 export interface CartIssue {
   menuItemId: string;

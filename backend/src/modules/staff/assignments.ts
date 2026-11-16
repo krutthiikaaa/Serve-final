@@ -3,9 +3,18 @@ import type { PrismaClient } from '../../lib/prisma.js';
 import { NotFoundError, ValidationError } from '../../lib/errors.js';
 
 /** Capabilities granted by the existing approve/assign flows. Never includes CASHIER. */
-export const OPERATING_CAPABILITIES = ['KITCHEN', 'MENU', 'PAUSE'] as const satisfies readonly StaffCapability[];
+export const OPERATING_CAPABILITIES = [
+  'KITCHEN',
+  'MENU',
+  'PAUSE',
+] as const satisfies readonly StaffCapability[];
 
-export const STAFF_CAPABILITIES = ['KITCHEN', 'MENU', 'PAUSE', 'CASHIER'] as const satisfies readonly StaffCapability[];
+export const STAFF_CAPABILITIES = [
+  'KITCHEN',
+  'MENU',
+  'PAUSE',
+  'CASHIER',
+] as const satisfies readonly StaffCapability[];
 
 export type StaffCapabilityName = (typeof STAFF_CAPABILITIES)[number];
 

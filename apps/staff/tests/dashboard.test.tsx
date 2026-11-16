@@ -2,7 +2,15 @@ import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { DashboardPage } from '../src/pages/DashboardPage';
-import { CANTEEN_ID, canteen, dashboard, fakeStaffApi, meStaff, order, renderStaff } from './fixtures';
+import {
+  CANTEEN_ID,
+  canteen,
+  dashboard,
+  fakeStaffApi,
+  meStaff,
+  order,
+  renderStaff,
+} from './fixtures';
 
 describe('staff dashboard', () => {
   it('shows the counters returned by the backend', async () => {
@@ -58,7 +66,12 @@ describe('staff dashboard', () => {
         assignments: [
           {
             canteenId: CANTEEN_ID,
-            canteen: { id: CANTEEN_ID, name: canteen.name, isActive: true, isAcceptingOrders: true },
+            canteen: {
+              id: CANTEEN_ID,
+              name: canteen.name,
+              isActive: true,
+              isAcceptingOrders: true,
+            },
             capabilities: ['CASHIER'],
           },
         ],

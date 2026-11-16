@@ -5,10 +5,7 @@ import type { Clock } from '../../lib/time.js';
 import { systemClock } from '../../lib/time.js';
 import type { Principal } from '../auth/principal.js';
 import { categorySelect, menuItemSelect, toCategoryDto, toMenuItemDto } from '../menu/menu.dto.js';
-import {
-  DEFAULT_SERVICE_PERIOD,
-  type ServicePeriod,
-} from './availability.js';
+import { DEFAULT_SERVICE_PERIOD, type ServicePeriod } from './availability.js';
 import {
   canteenSelect,
   serviceAvailability,

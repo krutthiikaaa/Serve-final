@@ -116,7 +116,11 @@ export function createCashierService(
             ? `DEMO transaction recorded. Order #${fresh.orderNumber} is not a real payment.`
             : `Payment received. Order #${fresh.orderNumber} has been sent to the canteen.`,
           orderId: fresh.id,
-          data: { orderNumber: fresh.orderNumber, status: fresh.status, simulated: input.simulated },
+          data: {
+            orderNumber: fresh.orderNumber,
+            status: fresh.status,
+            simulated: input.simulated,
+          },
         });
       }
       return fresh;

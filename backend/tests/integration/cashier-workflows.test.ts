@@ -242,7 +242,9 @@ describe('walk-in POS', () => {
       .get('/api/staff/sales?channel=WALK_IN&method=CASH')
       .set(bearer(cashier.token))
       .expect(200);
-    expect(history.body.data.map((row: { id: string }) => row.id)).toContain(sale.body.data.order.id);
+    expect(history.body.data.map((row: { id: string }) => row.id)).toContain(
+      sale.body.data.order.id,
+    );
 
     await request(app)
       .post('/api/staff/pos/demo-sales')

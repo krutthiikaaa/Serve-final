@@ -101,7 +101,9 @@ export function adminApi(api: ApiClient) {
     updateCanteen: (id: string, body: Partial<CanteenInput>) =>
       api.data<Canteen>('PATCH', `/admin/canteens/${id}`, { body }),
     updateCanteenServices: (id: string, services: ServiceConfigInput[]) =>
-      api.data<CanteenConfigResult>('PUT', `/admin/canteens/${id}/services`, { body: { services } }),
+      api.data<CanteenConfigResult>('PUT', `/admin/canteens/${id}/services`, {
+        body: { services },
+      }),
     updateCanteenSchedule: (
       id: string,
       period: ServicePeriod,

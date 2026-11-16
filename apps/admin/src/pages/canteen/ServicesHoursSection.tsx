@@ -103,9 +103,7 @@ export function ServicesHoursSection({
     setBusy('service');
     setError(null);
     try {
-      await api.updateCanteenServices(canteenId, [
-        { period, isEnabled: enabled, override },
-      ]);
+      await api.updateCanteenServices(canteenId, [{ period, isEnabled: enabled, override }]);
       await onUpdated();
       toast(`${PERIOD_LABEL[period]} service saved`);
     } catch (err) {
@@ -149,9 +147,7 @@ export function ServicesHoursSection({
     setBusy('create');
     setError(null);
     try {
-      await api.updateCanteenServices(canteenId, [
-        { period, isEnabled: true, override: 'AUTO' },
-      ]);
+      await api.updateCanteenServices(canteenId, [{ period, isEnabled: true, override: 'AUTO' }]);
       await onUpdated();
       toast(`${PERIOD_LABEL[period]} service added`);
     } catch (err) {
@@ -177,9 +173,7 @@ export function ServicesHoursSection({
               onClick={() => setPeriod(value)}
             >
               {PERIOD_LABEL[value]}
-              {configuredPeriods.has(value) ? null : (
-                <span className="muted"> · off</span>
-              )}
+              {configuredPeriods.has(value) ? null : <span className="muted"> · off</span>}
             </button>
           ))}
         </div>
@@ -238,7 +232,11 @@ export function ServicesHoursSection({
             </Field>
 
             <div className="row-actions start">
-              <Button loading={busy === 'service'} disabled={!!busy} onClick={() => void saveService()}>
+              <Button
+                loading={busy === 'service'}
+                disabled={!!busy}
+                onClick={() => void saveService()}
+              >
                 Save service
               </Button>
             </div>
@@ -284,7 +282,9 @@ export function ServicesHoursSection({
                           <TimeSelect
                             aria-label={`${day.label} closing time`}
                             value={draft.closesAtMinutes}
-                            onChange={(closesAtMinutes) => patchDay(day.weekday, { closesAtMinutes })}
+                            onChange={(closesAtMinutes) =>
+                              patchDay(day.weekday, { closesAtMinutes })
+                            }
                           />
                         </td>
                         <td className="muted small">

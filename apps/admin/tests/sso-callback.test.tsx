@@ -37,7 +37,11 @@ function renderCallback({
               getToken: async () => null,
               fetchImpl:
                 fetchImpl ??
-                (async () => new Response('{}', { status: 599, headers: { 'Content-Type': 'application/json' } })),
+                (async () =>
+                  new Response('{}', {
+                    status: 599,
+                    headers: { 'Content-Type': 'application/json' },
+                  })),
             }),
             signInWithCustomToken: async (token: string) => {
               if (signInWithCustomToken) await signInWithCustomToken(token);
@@ -85,7 +89,9 @@ describe('admin SSO callback', () => {
     expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument();
     await waitFor(() => expect(signInWithCustomToken).toHaveBeenCalledWith('admin-custom-token'));
     await waitFor(() =>
-      expect(screen.getByRole('complementary', { name: 'Admin portal navigation' })).toBeInTheDocument(),
+      expect(
+        screen.getByRole('complementary', { name: 'Admin portal navigation' }),
+      ).toBeInTheDocument(),
     );
     const sidebar = within(screen.getByRole('complementary', { name: 'Admin portal navigation' }));
     expect(sidebar.getByRole('link', { name: /^Dashboard/ })).toBeInTheDocument();
@@ -102,7 +108,9 @@ describe('admin SSO callback', () => {
         </FakeAuthProvider>
       </ToastProvider>,
     );
-    expect(screen.getByRole('complementary', { name: 'Admin portal navigation' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('complementary', { name: 'Admin portal navigation' }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument();
   });
 
@@ -129,7 +137,9 @@ describe('admin SSO callback', () => {
       fetchImpl.mock.calls.filter((call) => String(call[0]).includes('/auth/sso/exchange')),
     ).toHaveLength(1);
     await waitFor(() =>
-      expect(screen.getByRole('complementary', { name: 'Admin portal navigation' })).toBeInTheDocument(),
+      expect(
+        screen.getByRole('complementary', { name: 'Admin portal navigation' }),
+      ).toBeInTheDocument(),
     );
   });
 

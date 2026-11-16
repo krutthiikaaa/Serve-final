@@ -59,7 +59,9 @@ export function ReportsPage() {
       <div className="page-header">
         <div>
           <h1>Reports & Analytics</h1>
-          <p>Successful LIVE sales are the only real revenue. DEMO sales are shown apart from them.</p>
+          <p>
+            Successful LIVE sales are the only real revenue. DEMO sales are shown apart from them.
+          </p>
         </div>
       </div>
 
@@ -216,7 +218,12 @@ function ReportBody({ report }: { report: AdminReport }) {
         />
       ) : (
         <div className="chart-grid">
-          <Chart title="Sales over time" rows={salesBars} scroll emptyLabel="No LIVE sales in this range." />
+          <Chart
+            title="Sales over time"
+            rows={salesBars}
+            scroll
+            emptyLabel="No LIVE sales in this range."
+          />
           <Chart
             title="Canteen-wise sales"
             rows={report.byCanteen.map((row) => ({

@@ -35,7 +35,10 @@ function exchangeAuthorizationCode(
     .catch((err) => {
       ssoLog('exchange failed', {
         audience,
-        status: err instanceof Object && 'status' in err ? (err as { status: unknown }).status : undefined,
+        status:
+          err instanceof Object && 'status' in err
+            ? (err as { status: unknown }).status
+            : undefined,
       });
       throw err;
     });
@@ -60,7 +63,10 @@ export function SsoCallbackPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    ssoLog('callback mounted', { audience, hasCode: (params.get('code')?.trim().length ?? 0) >= 16 });
+    ssoLog('callback mounted', {
+      audience,
+      hasCode: (params.get('code')?.trim().length ?? 0) >= 16,
+    });
   }, [audience, params]);
 
   useEffect(() => {

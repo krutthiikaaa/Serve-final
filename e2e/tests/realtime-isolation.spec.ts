@@ -32,7 +32,7 @@ test('order events reach only the right staff, student and admins', async () => 
     'order.payment_confirmed',
     (d) => d.order.id === order.id,
   );
-  expect(staffView.order.student.name).toBe('Buyer');
+  expect(staffView.order.student?.name).toBe('Buyer');
   await adminSocket.waitFor<OrderEventData<StaffOrder>>(
     'order.payment_confirmed',
     (d) => d.order.id === order.id,

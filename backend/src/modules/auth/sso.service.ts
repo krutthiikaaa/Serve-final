@@ -48,7 +48,10 @@ export function assertDashboardAccess(principal: Principal | null, audience: Sso
   }
   if (audience === 'STAFF') {
     if (principal.role !== 'STAFF') {
-      throw new ForbiddenError('You do not have permission to perform this action', 'FORBIDDEN_ROLE');
+      throw new ForbiddenError(
+        'You do not have permission to perform this action',
+        'FORBIDDEN_ROLE',
+      );
     }
     if (principal.status !== 'APPROVED' || !principal.canteenId) {
       throw new ForbiddenError(

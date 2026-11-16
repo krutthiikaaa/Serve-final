@@ -83,9 +83,7 @@ describe('period menu and pricing', () => {
     const dayItems = dayMenu.body.data.categories.flatMap(
       (category: { items: { name: string; pricePaise: number }[] }) => category.items,
     );
-    expect(dayItems).toEqual([
-      expect.objectContaining({ name: 'Coffee', pricePaise: 2_000 }),
-    ]);
+    expect(dayItems).toEqual([expect.objectContaining({ name: 'Coffee', pricePaise: 2_000 })]);
     expect(dayItems.some((item: { name: string }) => item.name === 'Veg Grilled Sandwich')).toBe(
       false,
     );
@@ -226,26 +224,16 @@ describe('availability gates on quote and order', () => {
 
     await prisma.canteen.update({ where: { id: kg.id }, data: { isActive: false } });
     expect(
-      (
-        await request(app)
-          .post('/api/cart/quote')
-          .set(bearer(student.token))
-          .send(body)
-          .expect(409)
-      ).body.error.code,
+      (await request(app).post('/api/cart/quote').set(bearer(student.token)).send(body).expect(409))
+        .body.error.code,
     ).toBe('CANTEEN_INACTIVE');
     await prisma.canteen.update({
       where: { id: kg.id },
       data: { isActive: true, isAcceptingOrders: false },
     });
     expect(
-      (
-        await request(app)
-          .post('/api/cart/quote')
-          .set(bearer(student.token))
-          .send(body)
-          .expect(409)
-      ).body.error.code,
+      (await request(app).post('/api/cart/quote').set(bearer(student.token)).send(body).expect(409))
+        .body.error.code,
     ).toBe('CANTEEN_NOT_ACCEPTING_ORDERS');
     await prisma.canteen.update({ where: { id: kg.id }, data: { isAcceptingOrders: true } });
 
@@ -254,13 +242,8 @@ describe('availability gates on quote and order', () => {
       data: { isEnabled: false, override: 'FORCE_OPEN' },
     });
     expect(
-      (
-        await request(app)
-          .post('/api/cart/quote')
-          .set(bearer(student.token))
-          .send(body)
-          .expect(409)
-      ).body.error.code,
+      (await request(app).post('/api/cart/quote').set(bearer(student.token)).send(body).expect(409))
+        .body.error.code,
     ).toBe('SERVICE_DISABLED');
 
     await prisma.canteenService.update({
@@ -268,13 +251,8 @@ describe('availability gates on quote and order', () => {
       data: { isEnabled: true, override: 'FORCE_CLOSED' },
     });
     expect(
-      (
-        await request(app)
-          .post('/api/cart/quote')
-          .set(bearer(student.token))
-          .send(body)
-          .expect(409)
-      ).body.error.code,
+      (await request(app).post('/api/cart/quote').set(bearer(student.token)).send(body).expect(409))
+        .body.error.code,
     ).toBe('SERVICE_CLOSED');
 
     await prisma.canteenService.update({
@@ -282,13 +260,8 @@ describe('availability gates on quote and order', () => {
       data: { override: 'AUTO' },
     });
     expect(
-      (
-        await request(app)
-          .post('/api/cart/quote')
-          .set(bearer(student.token))
-          .send(body)
-          .expect(409)
-      ).body.error.code,
+      (await request(app).post('/api/cart/quote').set(bearer(student.token)).send(body).expect(409))
+        .body.error.code,
     ).toBe('SERVICE_SCHEDULE_NOT_CONFIGURED');
     const warned = await request(app)
       .get(`/api/canteens/${kg.id}`)

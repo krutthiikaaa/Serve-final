@@ -466,8 +466,8 @@ function CancelOrderModal({
     >
       <div className="form">
         <p>
-          {order.student?.name ?? 'The student'} paid {formatRupees(order.totalPaise)}. Cancelling refunds the payment
-          and notifies the student. This cannot be undone.
+          {order.student?.name ?? 'The student'} paid {formatRupees(order.totalPaise)}. Cancelling
+          refunds the payment and notifies the student. This cannot be undone.
         </p>
         <Field label="Reason (shown to the student)" hint="For example: item ran out">
           {(p) => (

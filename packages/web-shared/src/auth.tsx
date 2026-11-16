@@ -159,7 +159,17 @@ export function AuthProvider({
       signUp,
       signOut,
     }),
-    [state, api, getToken, loadMe, waitForAuthReady, signIn, signInWithCustomToken, signUp, signOut],
+    [
+      state,
+      api,
+      getToken,
+      loadMe,
+      waitForAuthReady,
+      signIn,
+      signInWithCustomToken,
+      signUp,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

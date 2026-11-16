@@ -62,7 +62,10 @@ const posCanteen: Menu['canteen'] = {
   configurationWarnings: [],
 };
 
-function stubCashier(api: ReturnType<typeof fakeStaffApi>, payConfig: CanteenPaymentConfig = demoPayConfig) {
+function stubCashier(
+  api: ReturnType<typeof fakeStaffApi>,
+  payConfig: CanteenPaymentConfig = demoPayConfig,
+) {
   api.pendingPayments.mockResolvedValue({ data: [], nextCursor: null });
   api.paymentConfig.mockResolvedValue(payConfig);
   api.sales.mockResolvedValue({ data: [], nextCursor: null });
@@ -84,7 +87,13 @@ function stubCashier(api: ReturnType<typeof fakeStaffApi>, payConfig: CanteenPay
         category('Snacks', [{ name: 'Veg Sandwich', pricePaise: 6_000 }]),
         category('Beverages', [
           { name: 'Hot Tea', pricePaise: 2_000 },
-          { name: 'Filter Coffee', pricePaise: 2_500, isAvailable: false, availability: 'UNAVAILABLE', isOrderable: false },
+          {
+            name: 'Filter Coffee',
+            pricePaise: 2_500,
+            isAvailable: false,
+            availability: 'UNAVAILABLE',
+            isOrderable: false,
+          },
         ]),
         category('Empty night', []),
       ],
@@ -189,7 +198,9 @@ describe('cashier workflows', () => {
         createdAt: '2026-10-06T19:00:00.000Z',
         paidAt: '2026-10-06T19:00:00.000Z',
         servicePeriod: 'NIGHT',
-        items: [{ itemName: 'Veg Sandwich', quantity: 2, unitPricePaise: 6_000, lineTotalPaise: 12_000 }],
+        items: [
+          { itemName: 'Veg Sandwich', quantity: 2, unitPricePaise: 6_000, lineTotalPaise: 12_000 },
+        ],
         totalPaise: 12_000,
         currency: 'INR',
         paymentMethod: 'CASH',
@@ -274,7 +285,9 @@ describe('cashier workflows', () => {
         createdAt: '2026-10-06T19:00:00.000Z',
         paidAt: '2026-10-06T19:00:00.000Z',
         servicePeriod: 'NIGHT',
-        items: [{ itemName: 'Veg Sandwich', quantity: 1, unitPricePaise: 6_000, lineTotalPaise: 6_000 }],
+        items: [
+          { itemName: 'Veg Sandwich', quantity: 1, unitPricePaise: 6_000, lineTotalPaise: 6_000 },
+        ],
         totalPaise: 6_000,
         currency: 'INR',
         paymentMethod: 'UPI',
@@ -296,7 +309,9 @@ describe('cashier workflows', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.queryByText('serve-test@okaxis')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Complete bill' }));
-    expect(screen.getByText(/Confirm only after the credit appears on the merchant account/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Confirm only after the credit appears on the merchant account/),
+    ).toBeInTheDocument();
     expect(api.completeWalkIn).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'UPI credit verified' }));
     await waitFor(() =>
@@ -319,10 +334,15 @@ describe('cashier workflows', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'Walk-in POS' }));
 
     const categories = await screen.findByRole('toolbar', { name: 'Menu categories' });
-    expect(within(categories).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(categories).getByRole('button', { name: 'All' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     expect(within(categories).getByRole('button', { name: 'Snacks' })).toBeInTheDocument();
     expect(within(categories).getByRole('button', { name: 'Beverages' })).toBeInTheDocument();
-    expect(within(categories).queryByRole('button', { name: 'Empty night' })).not.toBeInTheDocument();
+    expect(
+      within(categories).queryByRole('button', { name: 'Empty night' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText('Veg Sandwich')).toBeInTheDocument();
     expect(screen.getByText('Hot Tea')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Filter Coffee' })).toBeDisabled();
@@ -491,7 +511,9 @@ describe('cashier workflows', () => {
 
     api.sales.mockRejectedValue(new Error('Sales lookup failed'));
     await userEvent.selectOptions(screen.getByLabelText('Channel'), 'APP');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Something went wrong. Please try again.',
+    );
     expect(screen.getByLabelText('Payment method')).toBeInTheDocument();
   });
 });
