@@ -131,3 +131,4 @@ export const IconWifiOff = make([
   'M5 13a10 10 0 0 1 5.24-2.76',
   'M12 20h.01',
 ]);
+export const IconMenu = make(['M4 6h16', 'M4 12h16', 'M4 18h16']);

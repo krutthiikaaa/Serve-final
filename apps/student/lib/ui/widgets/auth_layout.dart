@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../theme/serve_theme.dart';
@@ -31,9 +29,9 @@ class AuthSplitLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // At least the viewport tall; taller (and scrolling) when the content
-    // needs it, e.g. with large text.
-    final minHeight = math.max(constraints.maxHeight, AuthLayout.panelMinHeight);
+    // Match the viewport on short phones; grow with content when needed.
+    // Do not force [panelMinHeight] below the viewport — that caused empty scroll.
+    final minHeight = constraints.maxHeight;
     return SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       child: Center(
