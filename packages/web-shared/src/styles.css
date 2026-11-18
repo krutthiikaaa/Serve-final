@@ -435,8 +435,7 @@ a {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   min-height: 68px;
   padding: 12px 32px;
   border-bottom: 1px solid var(--line);
@@ -446,10 +445,26 @@ a {
   top: 0;
   z-index: 5;
 }
+.topbar-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.shell-nav-toggle {
+  display: none;
+  flex: none;
+}
+.shell-backdrop {
+  display: none;
+}
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: none;
 }
 .page {
   padding: 28px 32px 56px;
@@ -993,6 +1008,100 @@ textarea.input {
   }
   .form-row {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Phone / small tablet: off-canvas drawer instead of a permanent icon rail. */
+@media (max-width: 720px) {
+  :root {
+    --sidebar-w: 0px;
+  }
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .shell-nav-toggle {
+    display: inline-grid;
+  }
+  .shell-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background: rgba(17, 17, 17, 0.4);
+    cursor: pointer;
+  }
+  .shell-backdrop[hidden] {
+    display: none;
+  }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 40;
+    width: min(280px, 86vw);
+    height: 100vh;
+    height: 100dvh;
+    padding: 20px 14px;
+    border-right: 1px solid var(--line);
+    box-shadow: var(--shadow-pop);
+    transform: translateX(-105%);
+    transition: transform 0.18s ease;
+  }
+  .shell-nav-open .sidebar {
+    transform: translateX(0);
+  }
+  .nav a span,
+  .nav button span,
+  .sidebar-context,
+  .product-badge,
+  .nav-count {
+    display: revert;
+  }
+  .sidebar-context {
+    display: block;
+  }
+  .sidebar-brand {
+    align-items: flex-start;
+    padding: 0 8px;
+  }
+  .nav a,
+  .nav button {
+    justify-content: flex-start;
+  }
+  .page,
+  .topbar {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .page {
+    padding-top: 20px;
+    padding-bottom: 40px;
+  }
+  .modal-backdrop {
+    padding: 12px;
+    align-items: end;
+  }
+  .modal {
+    width: 100%;
+    max-height: min(92dvh, calc(100vh - 24px));
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .toasts {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+  .toast {
+    max-width: none;
+  }
+  .kpis {
+    grid-template-columns: 1fr;
+  }
+  .kpi-value {
+    font-size: 24px;
   }
 }
 

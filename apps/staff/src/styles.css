@@ -448,4 +448,40 @@
   .history-filters .field {
     max-width: none;
   }
+  .menu-table,
+  .history-table {
+    min-width: 0;
+  }
+  .menu-table .col-actions {
+    width: 140px;
+  }
+  .pos-menu-table .col-price,
+  .pos-menu-table .col-add {
+    width: 72px;
+  }
+  .pos-qty-btn.btn {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+  .order-card-actions {
+    flex-wrap: wrap;
+  }
+  .order-detail-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .board-column {
+    min-height: 0;
+  }
+  .pos-method {
+    grid-template-columns: 1fr;
+  }
+  .pos-bill-line {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
 }
