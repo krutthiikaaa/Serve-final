@@ -55,6 +55,57 @@ void main() {
     await auth.restore();
     expect(auth.status, AuthStatus.signedOut);
     expect(store.value, isNull);
+    // The student had been signed in on this device: say why they are back.
+    expect(auth.signInError, AuthController.sessionExpiredMessage);
+  });
+
+  test('a session that ends mid-use (any 401 / realtime auth.expired) signs out with the reason', () async {
+    await auth.signInWithGoogle();
+    expect(auth.status, AuthStatus.ready);
+    me = () => throw const ApiException(401, 'AUTH_REQUIRED', 'x');
+    await auth.sessionEnded();
+    expect(auth.status, AuthStatus.signedOut);
+    expect(auth.me, isNull);
+    expect(await auth.sessionToken(), isNull);
+    expect(store.value, isNull);
+    expect(auth.signInError, 'Your session expired. Please sign in again.');
+  });
+
+  test('a burst of 401s re-checks the session once', () async {
+    await auth.signInWithGoogle();
+    var checks = 0;
+    me = () {
+      checks++;
+      throw const ApiException(401, 'AUTH_REQUIRED', 'x');
+    };
+    await Future.wait([auth.sessionEnded(), auth.sessionEnded(), auth.sessionEnded()]);
+    expect(checks, 1);
+    expect(auth.status, AuthStatus.signedOut);
+  });
+
+  test('a 401 that was only a hiccup keeps a still-valid session', () async {
+    await auth.signInWithGoogle();
+    await auth.sessionEnded();
+    expect(auth.status, AuthStatus.ready);
+    expect(auth.signInError, isNull);
+  });
+
+  test('a deliberate sign-out shows no "session expired" message', () async {
+    await auth.signInWithGoogle();
+    await auth.signOut();
+    expect(auth.status, AuthStatus.signedOut);
+    expect(auth.signInError, isNull);
+    // A late 401 after sign-out changes nothing.
+    await auth.sessionEnded();
+    expect(auth.signInError, isNull);
+  });
+
+  test('web: no cookie on first visit is just signed out, without a message', () async {
+    final web = AuthController(client: google, store: store, isWeb: true)
+      ..attach(() async => throw const ApiException(401, 'AUTH_REQUIRED', 'x'));
+    await web.restore();
+    expect(web.status, AuthStatus.signedOut);
+    expect(web.signInError, isNull);
   });
 
   test('backend outages keep the session and show an error state', () async {

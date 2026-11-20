@@ -75,6 +75,7 @@ describe('staff routing (decided only by /api/auth/me)', () => {
       '/orders',
     );
     expect(screen.getByText('Awaiting approval')).toBeInTheDocument();
+    expect(screen.getByText('Your account is awaiting staff approval.')).toBeInTheDocument();
     expect(screen.getByText('Vedavathi Night Canteen')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
   });

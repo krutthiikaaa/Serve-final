@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:serve_student/core/api_exception.dart';
 import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/ui/navigation.dart';
 
@@ -110,5 +111,27 @@ void main() {
     expect(find.text('Welcome to SERVE'), findsOneWidget);
     expect(h.services.cart.isEmpty, isTrue);
     expect(h.realtime.started, isFalse);
+  });
+
+  testWidgets('a session that ends while in use returns to sign-in with the reason, clearing user data', (tester) async {
+    usePhoneSize(tester);
+    final h = TestHarness();
+    await h.pumpSignedIn(tester);
+    h.services.cart.add(
+      fx.item('a1000000-0000-4000-8000-000000000001', 'Veg Grilled Sandwich'),
+      canteenName: 'K&G',
+      period: ServicePeriod.night,
+    );
+    await tester.pump();
+    // The server ended the session (expired, revoked, signed out elsewhere):
+    // the next request or realtime `auth.expired` reports it.
+    h.api.meError = const ApiException(401, 'AUTH_REQUIRED', 'Authentication required');
+    await h.auth.sessionEnded();
+    await tester.pumpAndSettle();
+    expect(find.text('Your session expired. Please sign in again.'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(h.services.cart.isEmpty, isTrue);
+    expect(h.realtime.started, isFalse);
+    expect(await h.auth.sessionToken(), isNull);
   });
 }

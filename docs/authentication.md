@@ -73,6 +73,23 @@ linking between sign-in methods is disabled.
 * Database-backed (`AuthSession`), 7 days, renewed while in use; sign-out
   deletes the row. The session cookie `serve.session_token` is HttpOnly,
   `SameSite=Lax` (`__Secure-` and `Secure` in production).
+* The credential is the **signed** value `<token>.<signature>` (the cookie's
+  content, or the native app's Bearer token). A raw session token — as stored
+  in the database or returned in a `get-session` body — is refused everywhere,
+  and no response carries the credential in a header page scripts can read
+  (Better Auth's `set-auth-token` header is removed).
+* Only these Better Auth endpoints are reachable under `/api/auth`
+  (`EXPOSED_AUTH_PATHS` in `backend/src/lib/auth.ts`): `sign-in/social`,
+  `callback/google`, `get-session`, `sign-out`, `revoke-other-sessions`,
+  `revoke-sessions` (and `test/sign-in` in tests). Everything else Better Auth
+  ships — profile and email changes, account (un)linking, provider access
+  tokens, session listing, password flows — answers 404.
+* When a session ends while in use (expired, revoked, signed out elsewhere),
+  every app notices on its next request or on the realtime `auth.expired`
+  event and returns to sign-in with "Your session expired. Please sign in
+  again." The student app also clears the cart, recently viewed items,
+  canteen selection and notifications; favourites are kept per account on the
+  device, so the next student never sees them.
 * One sign-in covers the student web app, staff dashboard and admin portal
   (same backend site; one origin in the single-domain deployment).
 * Cookie-authenticated writes must come from a trusted origin (CSRF check);
@@ -86,8 +103,10 @@ The app opens the system browser (not a WebView) at
 `/api/native-auth/start?code_challenge=…`, the user signs in with Google, and
 the browser returns to `app.serve.student://auth?code=…`. The app exchanges
 the one-time code (2 minutes, single use) together with its PKCE verifier at
-`POST /api/native-auth/exchange` for a session token, kept in the Keychain /
-Android Keystore and sent as `Authorization: Bearer`. Android registers the
+`POST /api/native-auth/exchange` for the signed session credential, kept in
+the Keychain / Android Keystore and sent as `Authorization: Bearer`. Closing
+the browser is reported as a cancelled sign-in; any other browser failure as
+"Authentication failed". Android registers the
 scheme in `AndroidManifest.xml`; iOS needs no setup.
 
 Google only redirects to the URL registered on the OAuth client, so a phone

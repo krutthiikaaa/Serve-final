@@ -78,6 +78,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
   final _stageKey = GlobalKey();
   final _popupKey = GlobalKey();
   bool _signingIn = false;
+  late final AuthController _auth;
 
   @override
   void initState() {
@@ -85,7 +86,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     final complete = widget.completeEmail;
     _withIntro = complete == null && !RoleSelectionScreen._introPlayed;
     _playing = _withIntro;
-    _pane = complete == null ? _Pane.roles : _Pane.studentRegister;
+    _auth = context.read<AuthController>()..addListener(_onAuth);
+    // A reason to explain (session expired, account refused) opens the
+    // student sign-in pane, where it is shown, instead of the role picker.
+    _pane = complete != null
+        ? _Pane.studentRegister
+        : _auth.signInError != null
+        ? _Pane.studentLogin
+        : _Pane.roles;
     _lockedEmail = complete;
     RoleSelectionScreen._introPlayed = true;
     _intro = AnimationController(vsync: this, duration: RoleSelectionScreen.introDuration, value: _withIntro ? 0 : 1);
@@ -126,8 +134,17 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
     _imageWait.stop();
   }
 
+  /// A sign-in message that arrives later (e.g. Flutter web returning from
+  /// Google with a refusal) also opens the pane that shows it.
+  void _onAuth() {
+    if (_auth.signInError != null && _pane == _Pane.roles && mounted) {
+      setState(() => _pane = _Pane.studentLogin);
+    }
+  }
+
   @override
   void dispose() {
+    _auth.removeListener(_onAuth);
     _disposed = true;
     _imageWait.dispose();
     _intro.dispose();
@@ -153,6 +170,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
       case _Pane.roles:
         return;
       case _Pane.studentLogin:
+        _auth.clearSignInError();
+        _show(_Pane.roles);
       case _Pane.staffLogin:
       case _Pane.adminLogin:
         _show(_Pane.roles);

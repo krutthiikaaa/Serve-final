@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 
@@ -65,14 +66,18 @@ class ServeAuthClient {
     final String result;
     try {
       result = await _browser(start.toString(), nativeCallbackScheme);
+    } on PlatformException catch (e) {
+      // The user closed the browser / Custom Tab: not an error to alarm them with.
+      if (e.code == 'CANCELED') throw AuthException('access_denied', signInErrorMessage('access_denied'));
+      throw AuthException('SIGN_IN_FAILED', signInErrorMessage('SIGN_IN_FAILED'));
     } catch (_) {
-      throw const AuthException('access_denied', 'Google sign-in was cancelled.');
+      throw AuthException('SIGN_IN_FAILED', signInErrorMessage('SIGN_IN_FAILED'));
     }
     final params = Uri.parse(result).queryParameters;
     final error = params['error'];
     if (error != null) throw AuthException(error, signInErrorMessage(error));
     final code = params['code'];
-    if (code == null || code.isEmpty) throw const AuthException('SIGN_IN_FAILED', 'Google sign-in did not complete. Please try again.');
+    if (code == null || code.isEmpty) throw AuthException('SIGN_IN_FAILED', signInErrorMessage('SIGN_IN_FAILED'));
     final body = await _send(
       () => _http.post(
         _api('/native-auth/exchange'),
@@ -82,7 +87,7 @@ class ServeAuthClient {
     );
     final token = (body['data'] as Map?)?['token'];
     if (token is! String || token.isEmpty) {
-      throw const AuthException('SIGN_IN_FAILED', 'Google sign-in did not complete. Please try again.');
+      throw AuthException('SIGN_IN_FAILED', signInErrorMessage('SIGN_IN_FAILED'));
     }
     return token;
   }
@@ -126,13 +131,16 @@ class ServeAuthClient {
   }
 }
 
-/// Plain-language reasons for sign-in refusals (same wording as the web apps).
+/// Plain-language reasons for sign-in refusals (same wording as the web
+/// apps). Never internal details: unknown codes get the generic message.
 String signInErrorMessage(String code) => switch (code) {
-  'EMAIL_DOMAIN_NOT_ALLOWED' => 'Use your SRM University-AP Google account (@srmap.edu.in). Other accounts cannot sign in.',
-  'EMAIL_NOT_VERIFIED' => 'Your Google account email is not verified. Verify it with Google and try again.',
-  'account_not_linked' => 'This Google account is not the one linked to your SERVE sign-in. Ask an administrator for help.',
+  'EMAIL_DOMAIN_NOT_ALLOWED' || 'SIGN_IN_METHOD_NOT_ALLOWED' =>
+    'This account is not eligible to use SERVE. Please sign in using your SRM AP institutional account (@srmap.edu.in).',
+  'EMAIL_NOT_VERIFIED' => 'Your account could not be verified. Make sure your Google account email is verified, then try again.',
+  'account_not_linked' => 'This Google account is not the one linked to your SERVE account. Ask a SERVE administrator for help.',
   'access_denied' => 'Google sign-in was cancelled.',
   'network-request-failed' => 'Unable to reach SERVE. Check your connection.',
   'NATIVE_CODE_INVALID' => 'That sign-in expired. Please try again.',
-  _ => 'Google sign-in did not complete. Please try again.',
+  'SESSION_EXPIRED' => 'Your session expired. Please sign in again.',
+  _ => 'Authentication failed. Please try again.',
 };

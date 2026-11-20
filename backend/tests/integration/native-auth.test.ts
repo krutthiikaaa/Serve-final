@@ -97,6 +97,16 @@ describe('native app sign-in', () => {
 
     const res = await exchange(code, verifier).expect(200);
     const token = res.body.data.token as string;
+    // The signed session credential, never the raw token stored in the database.
+    const stored = await prisma.authSession.findFirstOrThrow({
+      where: { user: { email: 'native@srmap.edu.in' } },
+      select: { token: true },
+    });
+    expect(token.startsWith(`${stored.token}.`)).toBe(true);
+    await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${stored.token}`)
+      .expect(401);
     const me = await request(app)
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${token}`)
@@ -150,6 +160,21 @@ describe('native app sign-in', () => {
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
     await exchange(code, verifier).expect(401);
+  });
+
+  it('codes that were never redeemed are purged once expired', async () => {
+    const { challenge } = pkce();
+    await browserSignIn('abandoned@srmap.edu.in', challenge);
+    const native = { identifier: { startsWith: 'serve-native-sign-in:' } };
+    await prisma.authVerification.updateMany({
+      where: native,
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    const stale = await prisma.authVerification.count({ where: native });
+    expect(stale).toBeGreaterThan(0);
+    // The next sign-in clears every expired native code and stores its own.
+    await browserSignIn('next@srmap.edu.in', pkce().challenge);
+    expect(await prisma.authVerification.count({ where: native })).toBe(1);
   });
 
   it('a session signed out before the exchange cannot be redeemed', async () => {

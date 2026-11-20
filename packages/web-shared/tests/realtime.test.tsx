@@ -118,6 +118,23 @@ describe('RealtimeProvider', () => {
     expect(screen.getByText('connected:2')).toBeInTheDocument();
   });
 
+  it('tells the app when the server ends the session (auth.expired)', () => {
+    const onSessionEnded = vi.fn();
+    render(
+      <RealtimeProvider url="http://localhost:5001" enabled onSessionEnded={onSessionEnded}>
+        <Probe />
+      </RealtimeProvider>,
+    );
+    act(() =>
+      sockets[0]!.fire('auth.expired', {
+        type: 'auth.expired',
+        occurredAt: '',
+        data: { reason: 'TOKEN_EXPIRED' },
+      }),
+    );
+    expect(onSessionEnded).toHaveBeenCalledOnce();
+  });
+
   it('reconnects with a force-refreshed token after auth.expired', async () => {
     const getToken = vi.fn(async (force?: boolean) => (force ? 'fresh' : 'cached'));
     render(

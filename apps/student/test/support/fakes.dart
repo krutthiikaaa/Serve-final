@@ -69,7 +69,14 @@ class FakeServeApi extends ServeApi {
   final idempotencyKeys = <String>[];
 
   @override
-  Future<Me> me() async => meValue;
+  Future<Me> me() async {
+    final error = meError;
+    if (error != null) throw error;
+    return meValue;
+  }
+
+  /// When set, `/api/auth/me` fails with it (e.g. a 401 after the session ended).
+  Object? meError;
 
   @override
   Future<List<Hostel>> hostels() async => hostelList;

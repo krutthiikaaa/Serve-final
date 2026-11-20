@@ -150,7 +150,7 @@ function AccountGate() {
   });
   return (
     <AdminApiContext.Provider value={client}>
-      <RealtimeProvider url={config.apiUrl} enabled>
+      <RealtimeProvider url={config.apiUrl} enabled onSessionEnded={() => void refreshMe()}>
         <NotificationsProvider api={api}>
           <Routes>
             <Route element={<AdminLayout me={me} />}>

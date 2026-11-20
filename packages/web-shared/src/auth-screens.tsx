@@ -49,7 +49,8 @@ export function GoogleSignIn({
   error,
   label = 'Continue with Google',
 }: {
-  onSignIn: () => Promise<void>;
+  /** Resolves false when sign-in could not start (the reason arrives as `error`). */
+  onSignIn: () => Promise<boolean | void>;
   /** Why the last sign-in was refused, if it was. */
   error?: string | null;
   label?: string;
@@ -61,7 +62,8 @@ export function GoogleSignIn({
     setBusy(true);
     setFailure(null);
     try {
-      await onSignIn();
+      // On success the browser is leaving for Google: stay busy until it does.
+      if ((await onSignIn()) === false) setBusy(false);
     } catch {
       setFailure('Unable to reach SERVE. Check your connection and try again.');
       setBusy(false);
@@ -75,8 +77,8 @@ export function GoogleSignIn({
         {label}
       </Button>
       <p className="muted small">
-        Use your SRM University-AP Google account (<strong>@srmap.edu.in</strong>). Other accounts
-        cannot sign in.
+        Sign in with your SRM AP institutional Google account (<strong>@srmap.edu.in</strong>).
+        Other accounts are not eligible to use SERVE.
       </p>
     </div>
   );

@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { createCanteenRecord, truncateAll } from '../helpers/db.js';
-import { createTestUser } from '../helpers/identity.js';
+import { createTestUser, storedToken } from '../helpers/identity.js';
 import {
   bearer,
   canteenBySlug,
@@ -70,7 +70,7 @@ describe('socket authentication', () => {
   });
 
   it('accepts the web apps’ session cookie, and refuses a signed-out session', async () => {
-    const cookie = `serve.session_token=${encodeURIComponent(studentA.token)}`;
+    const cookie = `serve.session_token=${encodeURIComponent(storedToken(studentA))}`;
     // A raw token is not a valid signed cookie: only Better Auth's signed cookie value works.
     expect(await server.rejectedConnectWithCookie(cookie)).toBe('AUTH_REQUIRED');
     const signIn = await request(server.app)
@@ -120,7 +120,7 @@ describe('socket authentication', () => {
     const expired = nextEvent<{ reason: string }>(socket, 'auth.expired', () => true, 6_000);
     // The stored session ends (as at its expiry time); the next re-check notices.
     await server.prisma.authSession.updateMany({
-      where: { token: session.token },
+      where: { token: storedToken(session) },
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
     expect((await expired).reason).toBe('TOKEN_EXPIRED');

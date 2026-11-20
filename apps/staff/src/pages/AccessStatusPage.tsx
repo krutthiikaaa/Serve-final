@@ -70,7 +70,8 @@ export function AccessStatusPage({ me }: { me: MeStaff }) {
                 <IconClock />
               </span>
               <p>
-                Your request for <strong>{pending.requestedCanteen.name}</strong> was sent{' '}
+                <strong>Your account is awaiting staff approval.</strong> Your request for{' '}
+                <strong>{pending.requestedCanteen.name}</strong> was sent{' '}
                 {formatDateTime(pending.createdAt)}. This page updates automatically when an admin
                 reviews it.
               </p>

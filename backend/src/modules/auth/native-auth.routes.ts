@@ -3,7 +3,7 @@ import express, { Router, type Response } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../../context.js';
 import { UnauthorizedError } from '../../lib/errors.js';
-import { authBaseUrl } from '../../lib/auth.js';
+import { authBaseUrl, signedSessionToken } from '../../lib/auth.js';
 import { sensitiveLimiter } from '../../middleware/rate-limit.js';
 import { parse } from '../../http/validation.js';
 
@@ -95,20 +95,22 @@ export function createNativeAuthRouter(ctx: AppContext): Router {
     const error = typeof req.query.error === 'string' ? req.query.error : null;
     if (error) return appRedirect(res, { error: error.slice(0, 64) });
     const identity = await ctx.sessions.verify(req.headers);
-    if (!identity || !challenge || !b64url.test(challenge)) {
+    // The browser's session cookie (signed) is what the app will send as
+    // Bearer; it was just verified above, so it belongs to `identity`.
+    const token = identity ? await signedSessionToken(ctx.auth, req.headers.cookie) : null;
+    if (!identity || !token || !challenge || !b64url.test(challenge)) {
       return appRedirect(res, { error: 'SIGN_IN_FAILED' });
     }
-    const session = await ctx.prisma.authSession.findUnique({
-      where: { id: identity.sessionId },
-      select: { token: true },
+    // Codes that were never redeemed expire after CODE_TTL_MS; drop them.
+    await ctx.prisma.authVerification.deleteMany({
+      where: { identifier: { startsWith: IDENTIFIER_PREFIX }, expiresAt: { lt: new Date() } },
     });
-    if (!session) return appRedirect(res, { error: 'SIGN_IN_FAILED' });
     const code = randomBytes(32).toString('base64url');
     await ctx.prisma.authVerification.create({
       data: {
         id: randomBytes(16).toString('hex'),
         identifier: IDENTIFIER_PREFIX + sha256(code),
-        value: JSON.stringify({ token: session.token, challenge }),
+        value: JSON.stringify({ token, challenge }),
         expiresAt: new Date(Date.now() + CODE_TTL_MS),
       },
     });

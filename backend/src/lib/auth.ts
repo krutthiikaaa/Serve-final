@@ -1,7 +1,7 @@
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { APIError, createAuthEndpoint } from 'better-auth/api';
-import { setSessionCookie } from 'better-auth/cookies';
+import { parseSetCookieHeader, setSessionCookie } from 'better-auth/cookies';
 import { bearer } from 'better-auth/plugins';
 import { z } from 'zod';
 import type { Logger } from 'pino';
@@ -34,6 +34,47 @@ const TEST_ONLY_SECRET = 'serve-test-only-secret-not-for-any-real-deployment';
 const TEST_SIGN_IN_METHOD = 'serve-test';
 
 export const AUTH_BASE_PATH = '/api/auth';
+
+/**
+ * The only Better Auth HTTP endpoints SERVE exposes (paths under
+ * AUTH_BASE_PATH). Everything else Better Auth ships — profile and email
+ * changes, account linking and unlinking, provider access tokens, session
+ * listing (which returns session tokens), password flows — answers 404, so
+ * neither a page script nor a crafted request can reach it. Server-side
+ * `auth.api` calls (native sign-in, session checks) are unaffected.
+ */
+export const EXPOSED_AUTH_PATHS: ReadonlySet<string> = new Set([
+  '/sign-in/social', // start Google sign-in (state + PKCE)
+  '/callback/google', // Google redirects back here
+  '/get-session', // web apps: who is signed in
+  '/sign-out', // end this session
+  '/revoke-other-sessions', // sign out other devices
+  '/revoke-sessions', // sign out everywhere
+  '/test/sign-in', // exists only with NODE_ENV=test + AUTH_TEST_SIGN_IN=true
+]);
+
+/**
+ * Better Auth's session cookie value (`<token>.<signature>`) as received in a
+ * request's Cookie header, or null. It is the credential the native app sends
+ * as `Authorization: Bearer` (raw tokens are refused; see bearer() below).
+ */
+export async function signedSessionToken(
+  auth: { $context: Promise<{ authCookies: { sessionToken: { name: string } } }> },
+  cookieHeader: string | undefined,
+): Promise<string | null> {
+  const { name } = (await auth.$context).authCookies.sessionToken;
+  for (const part of (cookieHeader ?? '').split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key !== name) continue;
+    const value = rest.join('=');
+    try {
+      return decodeURIComponent(value) || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 /** Origins whose pages may start a sign-in and receive the redirect back. */
 export function trustedOriginsFor(env: Env): string[] {
@@ -102,7 +143,14 @@ function testSignIn(env: Env) {
         }
         const session = await c.context.internalAdapter.createSession(user.id);
         await setSessionCookie(c, { session, user });
-        return c.json({ token: session.token, user: { id: user.id, email: user.email } });
+        // Hand back the signed cookie value, exactly what a native sign-in
+        // returns; a raw session token is not a credential (requireSignature).
+        const cookie = parseSetCookieHeader(c.responseHeaders.get('set-cookie') ?? '').get(
+          c.context.authCookies.sessionToken.name,
+        );
+        const token = cookie?.value ? decodeURIComponent(cookie.value) : null;
+        if (!token) throw new APIError('INTERNAL_SERVER_ERROR', { message: 'No session cookie' });
+        return c.json({ token, user: { id: user.id, email: user.email } });
       }),
     },
   } as const;
@@ -259,8 +307,13 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
       defaultCookieAttributes: { sameSite: 'lax', httpOnly: true },
     },
     plugins: [
-      // Native app: the session token as `Authorization: Bearer <token>`.
-      bearer(),
+      // Native app: `Authorization: Bearer <token>.<signature>` — the signed
+      // session cookie value, obtained through the PKCE exchange. A raw
+      // session token (as stored in AuthSession, or as returned in a
+      // get-session body) is refused, so seeing one never grants access.
+      // The plugin's `set-auth-token` response header is removed where Better
+      // Auth is mounted (app.ts): page scripts must never see a credential.
+      bearer({ requireSignature: true }),
       ...testPlugins,
     ],
     onAPIError: {

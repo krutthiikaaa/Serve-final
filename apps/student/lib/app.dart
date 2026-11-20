@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -113,6 +115,7 @@ class _AuthGateState extends State<AuthGate> {
     if (student != null && !_sessionActive) {
       _sessionActive = true;
       s.selection.initialize(student);
+      unawaited(s.favourites.useAccount(student.id));
       s.realtime.start();
       s.notifications.start();
     } else if (s.auth.status == AuthStatus.signedOut && _sessionActive) {
@@ -121,6 +124,7 @@ class _AuthGateState extends State<AuthGate> {
       s.notifications.stop();
       s.cart.clear();
       s.recentlyViewed.clear();
+      unawaited(s.favourites.useAccount(null));
       s.selection.reset();
       s.tabs.go(HomeTabs.home);
       Navigator.of(context).popUntil((route) => route.isFirst);

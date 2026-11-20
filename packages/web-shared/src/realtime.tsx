@@ -24,18 +24,23 @@ export const RealtimeContext = createContext<RealtimeContextValue>({
  *   an optional bearer token goes through the `auth` callback.
  * - The client never names rooms: the server assigns them from PostgreSQL.
  * - On `auth.expired` (session ended or expired) the server disconnects; we
- *   reconnect once, which succeeds only if the session is still valid.
+ *   reconnect once, which succeeds only if the session is still valid, and
+ *   tell the app ([onSessionEnded]) so it re-checks the session and signs out
+ *   with an explanation if it has really ended.
  */
 export function RealtimeProvider({
   url,
   getToken,
   enabled,
+  onSessionEnded,
   children,
 }: {
   url: string;
   /** Optional bearer token; the web apps use the session cookie instead. */
   getToken?: (forceRefresh?: boolean) => Promise<string | null>;
   enabled: boolean;
+  /** The server reported that this connection's session ended (`auth.expired`). */
+  onSessionEnded?: () => void;
   children: ReactNode;
 }) {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -43,6 +48,8 @@ export function RealtimeProvider({
   const [connectionEpoch, setEpoch] = useState(0);
   const tokenRef = useRef(getToken);
   tokenRef.current = getToken;
+  const sessionEndedRef = useRef(onSessionEnded);
+  sessionEndedRef.current = onSessionEnded;
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -72,6 +79,7 @@ export function RealtimeProvider({
     s.on('connect_error', () => setState('disconnected'));
     s.on('auth.expired', () => {
       forceRefresh = true;
+      sessionEndedRef.current?.();
     });
     setSocket(s);
     return () => {
