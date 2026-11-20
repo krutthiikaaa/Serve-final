@@ -120,7 +120,11 @@ function AccountGate() {
   const realtimeEnabled = me.registered && me.role === 'STAFF' && me.status !== 'DEACTIVATED';
   return (
     <StaffApiContext.Provider value={client}>
-      <RealtimeProvider url={config.apiUrl} enabled={realtimeEnabled}>
+      <RealtimeProvider
+        url={config.apiUrl}
+        enabled={realtimeEnabled}
+        onSessionEnded={() => void refreshMe()}
+      >
         <NotificationsProvider api={api}>
           {!me.registered ? (
             <CompleteRegistrationPage />

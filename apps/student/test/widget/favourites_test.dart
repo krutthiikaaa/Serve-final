@@ -4,6 +4,7 @@ import 'package:serve_student/services/favourites/favourites_store.dart';
 import 'package:serve_student/ui/widgets/food_product_card.dart';
 
 import '../support/fakes.dart';
+import '../support/fixtures.dart' as fx;
 
 Finder navTab(String label) => find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
 
@@ -77,7 +78,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
     await tester.pumpAndSettle();
-    expect(store.value, {'a1000000-0000-4000-8000-000000000001'});
+    expect(store.values[fx.studentMe().id], {'a1000000-0000-4000-8000-000000000001'});
 
     final second = TestHarness(favouritesStore: store);
     await tester.pumpWidget(second.app);
@@ -91,5 +92,33 @@ void main() {
     await tester.tap(find.text('Favourites'));
     await tester.pumpAndSettle();
     expect(find.text('Veg Grilled Sandwich'), findsOneWidget);
+  });
+
+  testWidgets('the next student on the same device never sees the previous one\'s favourites', (tester) async {
+    useLogicalSize(tester, const Size(390, 844));
+    final store = MemoryFavouritesStore();
+    final first = TestHarness(favouritesStore: store);
+    await openMenu(tester, first);
+    await first.services.favourites.toggle('a1000000-0000-4000-8000-000000000001');
+    await tester.pump();
+    await tester.tap(navTab('Profile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Log out'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
+    await tester.pumpAndSettle();
+    expect(first.services.favourites.ids, isEmpty, reason: 'signed out: nothing user-specific stays in memory');
+
+    final second = TestHarness(favouritesStore: store);
+    second.api.meValue = fx.studentMe(id: 'cfef0fa5-0000-4000-8000-000000000002', name: 'Ravi Kumar', email: 'ravi@srmap.edu.in');
+    await tester.pumpWidget(second.app);
+    await second.auth.signInWithGoogle();
+    await tester.pumpAndSettle();
+    expect(second.services.favourites.ids, isEmpty);
+    await tester.tap(navTab('Profile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Favourites'));
+    await tester.pumpAndSettle();
+    expect(find.text('Veg Grilled Sandwich'), findsNothing);
   });
 }

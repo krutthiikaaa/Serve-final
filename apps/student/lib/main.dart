@@ -20,9 +20,13 @@ Future<void> main() async {
     client: ServeAuthClient(config, httpClient: http),
     store: SecureSessionStore(),
   );
-  final api = ServeApi(ApiClient(baseUrl: config.apiUrl, token: auth.sessionToken, httpClient: http));
+  // Any 401 or realtime `auth.expired` re-checks the session (signs out with
+  // "Your session expired" when it has ended).
+  final api = ServeApi(
+    ApiClient(baseUrl: config.apiUrl, token: auth.sessionToken, httpClient: http, onUnauthorized: () => auth.sessionEnded()),
+  );
   auth.attach(api.me);
-  final realtime = SocketRealtimeService(url: config.apiUrl, token: auth.sessionToken);
+  final realtime = SocketRealtimeService(url: config.apiUrl, token: auth.sessionToken, onSessionEnded: () => auth.sessionEnded());
   runApp(
     ServeApp(
       services: AppServices(config: config, auth: auth, api: api, realtime: realtime, favouritesStore: SecureFavouritesStore()),

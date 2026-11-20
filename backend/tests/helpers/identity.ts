@@ -24,9 +24,15 @@ export interface TestUser {
   /** AuthUser.id */
   uid: string;
   email: string;
-  /** Session token, for `Authorization: Bearer`. */
+  /** Signed session credential (`<token>.<signature>`), for `Authorization: Bearer`. */
   token: string;
 }
+
+/**
+ * The raw session token stored in AuthSession.token (the part before the
+ * signature). Only for locating the row in tests: it is not a credential.
+ */
+export const storedToken = (user: Pick<TestUser, 'token'>) => user.token.split('.')[0]!;
 
 /** A unique, valid SRM address. */
 export const uniqueEmail = (prefix = 'user') =>

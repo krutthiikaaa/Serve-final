@@ -92,7 +92,7 @@ export function FakeAuthProvider({
       }),
       getToken: () => Promise.resolve(null),
       refreshMe: () => Promise.resolve(me),
-      signInWithGoogle: () => Promise.resolve(),
+      signInWithGoogle: () => Promise.resolve(true),
       signOut: () => Promise.resolve(),
       ...overrides,
     }),

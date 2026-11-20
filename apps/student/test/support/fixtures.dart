@@ -127,18 +127,25 @@ Menu menu({
   ],
 });
 
-StudentMe studentMe() => StudentMe.fromJson({
-  'registered': true,
-  'role': 'STUDENT',
-  'id': 'cfef0fa5-0000-4000-8000-000000000001',
-  'authUserId': 'uid-asha',
-  'name': 'Asha Rao',
-  'email': 'asha@srmap.edu.in',
-  'isActive': true,
-  'hostel': {'id': '1c35f533-0000-4000-8000-000000000001', 'name': 'Krishna'},
-  'serviceArea': {'id': kgAreaId, 'name': 'Krishna & Godavari'},
-  'defaultCanteen': {'id': kgId, 'name': 'Krishna & Godavari Night Canteen', 'type': 'NIGHT', 'isActive': true, 'isAcceptingOrders': true},
-});
+StudentMe studentMe({String id = 'cfef0fa5-0000-4000-8000-000000000001', String name = 'Asha Rao', String email = 'asha@srmap.edu.in'}) =>
+    StudentMe.fromJson({
+      'registered': true,
+      'role': 'STUDENT',
+      'id': id,
+      'authUserId': 'uid-$id',
+      'name': name,
+      'email': email,
+      'isActive': true,
+      'hostel': {'id': '1c35f533-0000-4000-8000-000000000001', 'name': 'Krishna'},
+      'serviceArea': {'id': kgAreaId, 'name': 'Krishna & Godavari'},
+      'defaultCanteen': {
+        'id': kgId,
+        'name': 'Krishna & Godavari Night Canteen',
+        'type': 'NIGHT',
+        'isActive': true,
+        'isAcceptingOrders': true,
+      },
+    });
 
 Map<String, dynamic> orderJson({
   String id = 'd8c5c17f-0000-4000-8000-000000000001',

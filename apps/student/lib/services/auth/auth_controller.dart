@@ -25,9 +25,18 @@ class AuthController extends ChangeNotifier {
   final bool _isWeb;
   late MeLoader _loadMe;
 
+  /// Shown when a session that was working ends (expired, signed out
+  /// elsewhere, revoked by the server).
+  static const sessionExpiredMessage = 'Your session expired. Please sign in again.';
+
   AuthStatus status = AuthStatus.initializing;
   String? _token;
   bool _webSession = false;
+
+  /// True once this device has had a working session for the current
+  /// sign-in, so losing it is "expired" rather than "never signed in".
+  bool _hadSession = false;
+  Future<void>? _checking;
   Me? me;
   Object? error;
 
@@ -57,6 +66,9 @@ class AuthController extends ChangeNotifier {
     final stored = await _store.read();
     if (stored == null) return _set(AuthStatus.signedOut);
     _token = stored.token;
+    // The student was signed in on this device: if the saved session no
+    // longer works, tell them why they are back at sign-in.
+    _hadSession = true;
     await refreshMe();
   }
 
@@ -81,30 +93,42 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Ends the session here and on the server, and forgets everything about
+  /// the signed-in student (the app clears its caches when this goes signedOut).
   Future<void> signOut() async {
     final token = _token;
     _token = null;
     _webSession = false;
+    _hadSession = false;
     me = null;
     error = null;
+    signInError = null;
     await _store.clear();
     _set(AuthStatus.signedOut);
     await _client.signOut(token: token);
   }
 
   /// Re-reads `/api/auth/me` (after registration, reconnects, retries).
-  Future<void> refreshMe() async {
+  Future<void> refreshMe() {
+    return _checking ??= _refreshMe().whenComplete(() => _checking = null);
+  }
+
+  Future<void> _refreshMe() async {
     if (!isSignedIn) return _set(AuthStatus.signedOut);
     if (status != AuthStatus.ready) _set(AuthStatus.loadingAccount);
     try {
       me = await _loadMe();
       error = null;
+      _hadSession = true;
       _set(AuthStatus.ready);
     } on ApiException catch (e) {
       if (e.status == 401) {
-        // No (or an ended) session: signed out, quietly.
+        // No session, or one that has ended: signed out, with the reason when
+        // this device had been signed in.
+        if (_hadSession) signInError = sessionExpiredMessage;
         _token = null;
         _webSession = false;
+        _hadSession = false;
         me = null;
         await _store.clear();
         return _set(AuthStatus.signedOut);
@@ -112,6 +136,21 @@ class AuthController extends ChangeNotifier {
       error = e;
       _set(AuthStatus.error);
     }
+  }
+
+  /// A request or the realtime connection was refused for lack of a session
+  /// (401 / `auth.expired`). Re-checks with the server, which signs out with
+  /// [sessionExpiredMessage] if the session has really ended.
+  Future<void> sessionEnded() async {
+    if (_checking != null || !isSignedIn || status == AuthStatus.signedOut) return;
+    await refreshMe();
+  }
+
+  /// The student dismissed the sign-in message (e.g. went back to the role picker).
+  void clearSignInError() {
+    if (signInError == null) return;
+    signInError = null;
+    notifyListeners();
   }
 
   /// The native app's session token for `Authorization: Bearer` (null on web,

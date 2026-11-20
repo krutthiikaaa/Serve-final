@@ -33,8 +33,12 @@ export interface AuthState {
 
 export interface AuthContextValue extends AuthState {
   api: ApiClient;
-  /** Starts Google sign-in; the browser leaves for Google and comes back signed in. */
-  signInWithGoogle(): Promise<void>;
+  /**
+   * Starts Google sign-in. Resolves true when the browser is leaving for
+   * Google (it comes back signed in), false when sign-in could not start
+   * (`signInError` says why).
+   */
+  signInWithGoogle(): Promise<boolean>;
   signOut(): Promise<void>;
   /** Re-read `/api/auth/me` (after registration, approval, reconnect…). */
   refreshMe(): Promise<Me | null>;
@@ -45,19 +49,28 @@ export interface AuthContextValue extends AuthState {
 /** Exported for tests (see `@serve/web-shared/testing`). Apps use AuthProvider. */
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-/** Plain-language reasons for Better Auth / SERVE sign-in error codes. */
+/** Shown when a session that was working ends (expired, signed out elsewhere, revoked). */
+export const SESSION_EXPIRED_MESSAGE = 'Your session expired. Please sign in again.';
+
+/**
+ * Plain-language reasons for Better Auth / SERVE sign-in error codes. Never
+ * internal details: unknown codes get the generic message.
+ */
 export function signInErrorMessage(code: string): string {
   switch (code) {
     case 'EMAIL_DOMAIN_NOT_ALLOWED':
-      return 'Use your SRM University-AP Google account (@srmap.edu.in). Other accounts cannot sign in.';
+    case 'SIGN_IN_METHOD_NOT_ALLOWED':
+      return 'This account is not eligible to use SERVE. Please sign in using your SRM AP institutional account (@srmap.edu.in).';
     case 'EMAIL_NOT_VERIFIED':
-      return 'Your Google account email is not verified. Verify it with Google and try again.';
+      return 'Your account could not be verified. Make sure your Google account email is verified, then try again.';
     case 'account_not_linked':
-      return 'This Google account is not the one linked to your SERVE sign-in. Ask an administrator for help.';
+      return 'This Google account is not the one linked to your SERVE account. Ask a SERVE administrator for help.';
     case 'access_denied':
       return 'Google sign-in was cancelled.';
+    case 'SESSION_EXPIRED':
+      return SESSION_EXPIRED_MESSAGE;
     default:
-      return 'Google sign-in did not complete. Please try again.';
+      return 'Authentication failed. Please try again.';
   }
 }
 
@@ -112,9 +125,18 @@ export function AuthProvider({
     [baseUrl],
   );
 
+  /** Signed out; a session that had been working ends with an explanation. */
   const toSignedOut = useCallback(() => {
+    const expired = signedIn.current;
     signedIn.current = false;
-    setState((s) => ({ ...s, status: 'signedOut', user: null, me: null, error: null }));
+    setState((s) => ({
+      ...s,
+      status: 'signedOut',
+      user: null,
+      me: null,
+      error: null,
+      signInError: expired ? SESSION_EXPIRED_MESSAGE : s.signInError,
+    }));
   }, []);
 
   const api = useMemo(
@@ -206,10 +228,15 @@ export function AuthProvider({
     });
     if (error) {
       setState((s) => ({ ...s, signInError: signInErrorMessage(error.code ?? '') }));
+      return false;
     }
+    return true;
   }, [authClient, appUrl]);
 
   const signOut = useCallback(async () => {
+    // A deliberate sign-out is not an expired session: no message.
+    signedIn.current = false;
+    setState((s) => ({ ...s, signInError: null }));
     try {
       await authClient.signOut();
     } finally {

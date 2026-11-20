@@ -15,12 +15,21 @@ class ApiResponse {
   T data<T>() => body['data'] as T;
 }
 
-/// HTTP client for the SERVE backend: `/api` prefix, bearer token, one retry
-/// with a refreshed token after `AUTH_TOKEN_EXPIRED`, and the backend error
-/// envelope mapped to [ApiException].
+/// HTTP client for the SERVE backend: `/api` prefix, the session (Bearer
+/// token natively, cookie on web), and the backend error envelope mapped to
+/// [ApiException]. A 401 on a signed request means the session has ended:
+/// [onUnauthorized] lets the app sign out with an explanation.
 class ApiClient {
-  ApiClient({required this.baseUrl, required this._token, http.Client? httpClient, this.timeout = const Duration(seconds: 20)})
-    : _http = httpClient ?? http.Client();
+  ApiClient({
+    required this.baseUrl,
+    required this._token,
+    http.Client? httpClient,
+    this.timeout = const Duration(seconds: 20),
+    this.onUnauthorized,
+  }) : _http = httpClient ?? http.Client();
+
+  /// Called after any non-anonymous request is refused with 401.
+  void Function()? onUnauthorized;
 
   final String baseUrl;
 
@@ -68,10 +77,8 @@ class ApiClient {
       }
     }
 
-    var res = await attempt(forceRefresh: false);
-    if (res.statusCode == 401 && !anonymous && _code(res) == 'AUTH_TOKEN_EXPIRED') {
-      res = await attempt(forceRefresh: true);
-    }
+    final res = await attempt(forceRefresh: false);
+    if (res.statusCode == 401 && !anonymous) onUnauthorized?.call();
     final decoded = res.body.isEmpty ? <String, dynamic>{} : _decode(res.body);
     if (res.statusCode < 200 || res.statusCode >= 300) {
       final error = (decoded['error'] as Map?)?.cast<String, dynamic>();
@@ -102,6 +109,4 @@ class ApiClient {
       return {};
     }
   }
-
-  static String? _code(http.Response res) => ((_decode(res.body)['error'] as Map?)?['code']) as String?;
 }

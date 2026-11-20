@@ -1,3 +1,4 @@
+import type { ServerResponse } from 'node:http';
 import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -9,7 +10,7 @@ import { createHealthRouter } from './modules/health/health.routes.js';
 import { toNodeHandler } from 'better-auth/node';
 import { createAuthRouter, SERVE_AUTH_PATHS } from './modules/auth/auth.routes.js';
 import { createNativeAuthRouter } from './modules/auth/native-auth.routes.js';
-import { AUTH_BASE_PATH, trustedOriginsFor } from './lib/auth.js';
+import { AUTH_BASE_PATH, EXPOSED_AUTH_PATHS, trustedOriginsFor } from './lib/auth.js';
 import { ForbiddenError } from './lib/errors.js';
 import { createServices } from './services.js';
 import {
@@ -107,10 +108,14 @@ export function createApp(ctx: AppContext): Express {
   // Better Auth (Google sign-in, callback, session, sign-out) reads the raw
   // request body, so it is mounted before express.json(). SERVE's own
   // /api/auth routes (me, registration) fall through to the router below.
+  // Only the Better Auth endpoints SERVE uses are reachable (an allowlist, so
+  // endpoints added by a future Better Auth version stay closed); the rest
+  // fall through to the JSON 404.
   const betterAuth = toNodeHandler(ctx.auth);
   app.all(`${AUTH_BASE_PATH}/*splat`, (req, res, next) => {
     const path = req.path.slice(AUTH_BASE_PATH.length);
-    if (SERVE_AUTH_PATHS.has(path)) return next();
+    if (SERVE_AUTH_PATHS.has(path) || !EXPOSED_AUTH_PATHS.has(path)) return next();
+    withoutTokenHeader(res);
     void betterAuth(req, res);
   });
 
@@ -162,4 +167,28 @@ export function createApp(ctx: AppContext): Express {
   app.use(errorHandler);
 
   return app;
+}
+
+/**
+ * Better Auth's bearer plugin copies the signed session cookie into a
+ * `set-auth-token` response header (and exposes it to CORS). A page script
+ * can read response headers, so this would hand it the credential the
+ * HttpOnly cookie protects. SERVE's web apps never need it and the native app
+ * gets its token through the PKCE exchange, so the header is never sent.
+ */
+function withoutTokenHeader(res: ServerResponse): void {
+  const setHeader = res.setHeader.bind(res);
+  res.setHeader = (name: string, value: number | string | readonly string[]) => {
+    const header = name.toLowerCase();
+    if (header === 'set-auth-token') return res;
+    if (header === 'access-control-expose-headers') {
+      const kept = String(value)
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry && entry.toLowerCase() !== 'set-auth-token');
+      if (kept.length === 0) return res;
+      return setHeader(name, kept.join(', '));
+    }
+    return setHeader(name, value);
+  };
 }

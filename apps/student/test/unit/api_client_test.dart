@@ -29,23 +29,38 @@ void main() {
       expect(seen.headers['Authorization'], 'Bearer cached');
     });
 
-    test('retries once with a forced refresh after AUTH_TOKEN_EXPIRED', () async {
-      final forced = <bool>[];
+    test('a 401 on a signed request reports the ended session once, without retrying', () async {
       var calls = 0;
+      var ended = 0;
       final client = ApiClient(
         baseUrl: 'http://x',
-        token: ({bool forceRefresh = false}) async {
-          forced.add(forceRefresh);
-          return forceRefresh ? 'fresh' : 'stale';
-        },
-        httpClient: MockClient((req) async {
+        token: ({bool forceRefresh = false}) async => 'gone',
+        httpClient: MockClient((_) async {
           calls++;
-          return req.headers['Authorization'] == 'Bearer fresh' ? json(200, {'data': 'ok'}) : json(401, err('AUTH_TOKEN_EXPIRED'));
+          return json(401, err('AUTH_REQUIRED'));
         }),
+        onUnauthorized: () => ended++,
       );
-      expect(await client.data<String>('GET', '/auth/me'), 'ok');
-      expect(calls, 2);
-      expect(forced, [false, true]);
+      final e = await caught(client.request('GET', '/orders'));
+      expect(e.status, 401);
+      expect(e.userMessage, 'Your session expired. Please sign in again.');
+      expect(calls, 1);
+      expect(ended, 1);
+    });
+
+    test('anonymous requests and other errors never report an ended session', () async {
+      var ended = 0;
+      final client = ApiClient(
+        baseUrl: 'http://x',
+        token: ({bool forceRefresh = false}) async => 't',
+        httpClient: MockClient(
+          (req) async => req.url.path.endsWith('/menu') ? json(401, err('AUTH_REQUIRED')) : json(403, err('FORBIDDEN_ROLE')),
+        ),
+        onUnauthorized: () => ended++,
+      );
+      await caught(client.request('GET', '/menu', anonymous: true));
+      await caught(client.request('GET', '/staff/orders'));
+      expect(ended, 0);
     });
 
     test('maps the error envelope and keeps details', () async {

@@ -36,10 +36,14 @@ abstract class RealtimeService extends ChangeNotifier {
 /// Socket.IO implementation. The token is supplied by a callback on every
 /// handshake; after `auth.expired` the next handshake forces a refresh.
 class SocketRealtimeService extends RealtimeService {
-  SocketRealtimeService({required this.url, required this._token});
+  SocketRealtimeService({required this.url, required this._token, this.onSessionEnded});
 
   final String url;
   final TokenProvider _token;
+
+  /// The server ended this connection's session (`auth.expired`): the app
+  /// re-checks the session and signs out with an explanation if it is gone.
+  final void Function()? onSessionEnded;
   final _events = StreamController<RealtimeEvent>.broadcast();
   sio.Socket? _socket;
   LiveState _state = LiveState.disconnected;
@@ -80,7 +84,10 @@ class SocketRealtimeService extends RealtimeService {
       if (reason == 'io server disconnect' && _forceRefresh) socket.connect();
     });
     socket.onConnectError((_) => _setState(LiveState.disconnected));
-    socket.on('auth.expired', (_) => _forceRefresh = true);
+    socket.on('auth.expired', (_) {
+      _forceRefresh = true;
+      onSessionEnded?.call();
+    });
     socket.onAny((event, data) {
       if (data is Map && data['data'] is Map) {
         _events.add(RealtimeEvent(event, (data['data'] as Map).cast<String, dynamic>()));

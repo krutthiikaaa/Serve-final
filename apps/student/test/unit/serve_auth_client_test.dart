@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -72,9 +73,48 @@ void main() {
       final client = ServeAuthClient(
         config,
         httpClient: MockClient((_) async => http.Response('{}', 200)),
-        browser: (_, _) async => throw Exception('CANCELED'),
+        // What flutter_web_auth_2 throws when the user closes the browser / Custom Tab.
+        browser: (_, _) async => throw PlatformException(code: 'CANCELED'),
       );
-      await expectLater(client.nativeSignIn(), throwsA(isA<AuthException>().having((e) => e.code, 'code', 'access_denied')));
+      await expectLater(
+        client.nativeSignIn(),
+        throwsA(
+          isA<AuthException>()
+              .having((e) => e.code, 'code', 'access_denied')
+              .having((e) => e.message, 'message', 'Google sign-in was cancelled.'),
+        ),
+      );
+    });
+
+    test('a browser that cannot open is a failed sign-in, not a cancellation', () async {
+      var calls = 0;
+      final client = ServeAuthClient(
+        config,
+        httpClient: MockClient((_) async {
+          calls++;
+          return http.Response('{}', 200);
+        }),
+        browser: (_, _) async => throw PlatformException(code: 'NO_BROWSER', message: 'internal detail'),
+      );
+      await expectLater(
+        client.nativeSignIn(),
+        throwsA(
+          isA<AuthException>()
+              .having((e) => e.code, 'code', 'SIGN_IN_FAILED')
+              .having((e) => e.message, 'message', 'Authentication failed. Please try again.'),
+        ),
+      );
+      expect(calls, 0, reason: 'nothing is exchanged');
+    });
+
+    test('refusal messages are plain language, never internals', () {
+      expect(
+        signInErrorMessage('EMAIL_DOMAIN_NOT_ALLOWED'),
+        'This account is not eligible to use SERVE. Please sign in using your SRM AP institutional account (@srmap.edu.in).',
+      );
+      expect(signInErrorMessage('EMAIL_NOT_VERIFIED'), startsWith('Your account could not be verified'));
+      expect(signInErrorMessage('SESSION_EXPIRED'), 'Your session expired. Please sign in again.');
+      expect(signInErrorMessage('Error: stack trace at line 3'), 'Authentication failed. Please try again.');
     });
 
     test('an expired or reused code maps to a friendly message', () async {

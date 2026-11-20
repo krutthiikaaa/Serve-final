@@ -21,9 +21,12 @@ class ApiException implements Exception {
       case 503:
         return networkMessage;
       case 401:
-        return 'Your session has expired. Please sign in again.';
+        return 'Your session expired. Please sign in again.';
       case 403:
-        if (code == 'EMAIL_DOMAIN_NOT_ALLOWED') return 'Please use your university email address.';
+        if (code == 'EMAIL_DOMAIN_NOT_ALLOWED') {
+          return 'This account is not eligible to use SERVE. Please sign in using your SRM AP institutional account (@srmap.edu.in).';
+        }
+        if (code == 'STAFF_NOT_APPROVED') return 'Your account is awaiting staff approval.';
         return message.isNotEmpty ? message : 'You do not have permission to do that.';
       case 404:
         return message.isNotEmpty ? message : 'This is no longer available.';

@@ -5,7 +5,7 @@ import { seedDatabase } from '../../src/db/seed.js';
 import { buildTestApp } from '../helpers/test-app.js';
 import { createHostelRecord, truncateAll } from '../helpers/db.js';
 import { canteenBySlug } from '../helpers/actors.js';
-import { createTestUser, testSignIn, uniqueEmail } from '../helpers/identity.js';
+import { createTestUser, testSignIn, uniqueEmail, storedToken } from '../helpers/identity.js';
 
 /**
  * Better Auth sessions + PostgreSQL accounts. Identities come from the real
@@ -126,14 +126,14 @@ describe('sessions', () => {
   it('expired and deleted sessions are rejected', async () => {
     const expired = await createTestUser();
     await prisma.authSession.updateMany({
-      where: { token: expired.token },
+      where: { token: storedToken(expired) },
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
     await request(app).get('/api/auth/me').set(bearer(expired.token)).expect(401);
 
     const revoked = await createTestUser();
     await request(app).get('/api/auth/me').set(bearer(revoked.token)).expect(200);
-    await prisma.authSession.deleteMany({ where: { token: revoked.token } });
+    await prisma.authSession.deleteMany({ where: { token: storedToken(revoked) } });
     await request(app).get('/api/auth/me').set(bearer(revoked.token)).expect(401);
   });
 
