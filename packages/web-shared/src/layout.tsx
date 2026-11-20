@@ -54,12 +54,7 @@ export function Shell({
 
   return (
     <div className={`shell${navOpen ? ' shell-nav-open' : ''}`}>
-      <div
-        className="shell-backdrop"
-        hidden={!navOpen}
-        onClick={closeNav}
-        aria-hidden="true"
-      />
+      <div className="shell-backdrop" hidden={!navOpen} onClick={closeNav} aria-hidden="true" />
       <aside id={sidebarId} className="sidebar" aria-label={`${product} navigation`}>
         <div className="sidebar-brand">
           <Logo size={40} />

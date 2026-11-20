@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@serve/web-shared';
 import type { AdminCanteen, ServiceArea } from '@serve/contracts';
 import { CanteensPage } from '../src/pages/CanteensPage';
+import { areaClock } from '../src/pages/canteen/AreaSchedule';
 import {
   AREA,
   adminCanteen,
@@ -171,7 +172,41 @@ describe('canteens grouped by service area', () => {
 
 const OVERLAP = 'Day and Night hours overlap. One canteen serves at a time.';
 
+/**
+ * A fixed "now" for the schedule tests: 16 Nov 2026, 20:30 in Asia/Kolkata,
+ * while the Night canteen serves. Its next change — closing at 06:00 IST,
+ * 2026-11-17T00:30Z — is "tomorrow" relative to this clock, whatever the
+ * real date is. Only Date is faked; timers stay real for user events.
+ */
+const NOW = new Date('2026-11-16T15:00:00.000Z');
+const NEXT_CLOSE = '2026-11-17T00:30:00.000Z';
+
+describe('areaClock (next transition, in the area’s time zone)', () => {
+  const tz = 'Asia/Kolkata';
+  it('labels a time later today, tomorrow, or by weekday further out', () => {
+    expect(areaClock('2026-11-16T16:30:00.000Z', tz, NOW)).toBe('22:00 today');
+    expect(areaClock(NEXT_CLOSE, tz, NOW)).toBe('06:00 tomorrow');
+    expect(areaClock('2026-11-18T01:30:00.000Z', tz, NOW)).toBe('Wed 07:00');
+  });
+
+  it('uses the area’s calendar day, not UTC’s', () => {
+    // 2026-11-16T19:00Z is already 17 Nov 00:30 in Kolkata: "tomorrow" seen from
+    // NOW, although it is the same UTC date as NOW.
+    expect(areaClock('2026-11-16T19:00:00.000Z', tz, NOW)).toBe('00:30 tomorrow');
+    // Just before local midnight it is still "today".
+    expect(areaClock('2026-11-16T18:29:00.000Z', tz, NOW)).toBe('23:59 today');
+  });
+});
+
 describe('Day/Night scheduling per area', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const scheduled = (n: AdminCanteen, d: AdminCanteen, overrides: Partial<ServiceArea> = {}) =>
     serviceArea([n, d], {
       schedule: {
@@ -182,7 +217,7 @@ describe('Day/Night scheduling per area', () => {
       },
       mode: 'AUTOMATIC',
       scheduledTarget: 'NIGHT',
-      nextTransition: { at: '2026-11-17T00:30:00.000Z', target: 'NONE' },
+      nextTransition: { at: NEXT_CLOSE, target: 'NONE' },
       ...overrides,
     });
 
@@ -198,7 +233,9 @@ describe('Day/Night scheduling per area', () => {
     expect(within(strip).getByText(/07:00–17:00/)).toBeInTheDocument();
     expect(within(strip).getByText(/18:00–06:00/)).toBeInTheDocument();
     expect(within(strip).getByText(/Asia\/Kolkata/)).toBeInTheDocument();
-    expect(within(strip).getByText(/Next: closes at 06:00/)).toBeInTheDocument();
+    expect(
+      within(strip).getByText('Follows the schedule. Next: closes at 06:00 tomorrow.'),
+    ).toBeInTheDocument();
     expect(within(strip).queryByRole('button', { name: 'Restore automatic' })).toBeNull();
   });
 
