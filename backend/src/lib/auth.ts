@@ -50,6 +50,10 @@ const TEST_SIGN_IN_METHOD = 'serve-test';
 
 export const AUTH_BASE_PATH = '/api/auth';
 
+/** Session lifetime: 7 days, renewed (sliding) at most once a day while in use. */
+export const SESSION_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
+export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
+
 /**
  * The only Better Auth HTTP endpoints SERVE exposes (paths under
  * AUTH_BASE_PATH). Everything else Better Auth ships — profile and email
@@ -269,6 +273,11 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
     },
     session: {
       modelName: 'AuthSession',
+      // Explicit (these equal Better Auth's defaults), so a library upgrade
+      // cannot silently change them: a session lasts 7 days and is renewed
+      // at most once a day while in use; sign-out deletes it at once.
+      expiresIn: SESSION_EXPIRES_IN_SECONDS,
+      updateAge: SESSION_UPDATE_AGE_SECONDS,
       additionalFields: {
         // 'google' | 'password', set by the session create hook; never from input.
         authMethod: { type: 'string', required: false, input: false },

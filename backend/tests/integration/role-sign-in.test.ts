@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
+import { SESSION_EXPIRES_IN_SECONDS } from '../../src/lib/auth.js';
 import { hashNewPassword, setAccountPassword } from '../../src/modules/auth/password-accounts.js';
 import { buildTestApp } from '../helpers/test-app.js';
 import { truncateAll } from '../helpers/db.js';
@@ -359,6 +360,37 @@ describe('moving existing staff and admins to passwords', () => {
         passwordHash: await hashNewPassword(TEST_PASSWORD),
       }),
     ).rejects.toThrow(/No staff account/);
+  });
+});
+
+describe('password sessions', () => {
+  it('last 7 days, and sign-out ends them everywhere they are used', async () => {
+    const admin = await newAdmin(prisma);
+    const session = await sessionOf(admin.token);
+    const lifetime = session.expiresAt.getTime() - session.createdAt.getTime();
+    expect(Math.abs(lifetime - SESSION_EXPIRES_IN_SECONDS * 1000)).toBeLessThan(60_000);
+
+    const socket = await server.connect(admin.token);
+    await request(app)
+      .post('/api/auth/sign-out')
+      .set('Origin', APP)
+      .set(bearer(admin.token))
+      .send({})
+      .expect(200);
+    expect(await prisma.authSession.count({ where: { id: session.id } })).toBe(0);
+    await request(app).get('/api/admin/dashboard').set(bearer(admin.token)).expect(401);
+    // The open socket is told and disconnected within the re-check interval.
+    await new Promise<void>((resolve) => socket.once('disconnect', () => resolve()));
+  });
+
+  it('an expired password session is refused', async () => {
+    const admin = await newAdmin(prisma);
+    await prisma.authSession.update({
+      where: { token: storedToken(admin) },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    await request(app).get('/api/admin/dashboard').set(bearer(admin.token)).expect(401);
+    expect(await server.rejectedConnect(admin.token)).toBe('AUTH_REQUIRED');
   });
 });
 
