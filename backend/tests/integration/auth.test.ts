@@ -5,12 +5,24 @@ import { seedDatabase } from '../../src/db/seed.js';
 import { buildTestApp } from '../helpers/test-app.js';
 import { createHostelRecord, truncateAll } from '../helpers/db.js';
 import { canteenBySlug } from '../helpers/actors.js';
-import { createTestUser, testSignIn, uniqueEmail, storedToken } from '../helpers/identity.js';
+import { hashNewPassword, setAccountPassword } from '../../src/modules/auth/password-accounts.js';
+import {
+  TEST_PASSWORD,
+  createTestUser,
+  passwordSignIn,
+  passwordSignInRequest,
+  testSignIn,
+  uniqueEmail,
+  uniquePersonalEmail,
+  storedToken,
+} from '../helpers/identity.js';
 
 /**
- * Better Auth sessions + PostgreSQL accounts. Identities come from the real
- * Better Auth instance (test-only sign-in, same SRM gate as Google; the
- * Google redirect flow itself is covered in google-oauth.test.ts).
+ * Better Auth sessions + PostgreSQL accounts. Student identities come from the
+ * real Better Auth instance (test-only sign-in, same SRM gate as Google; the
+ * Google redirect flow itself is covered in google-oauth.test.ts); staff and
+ * admins use the real email + password sign-in. Role/method enforcement is
+ * covered in depth in role-sign-in.test.ts.
  */
 const { app, prisma } = buildTestApp();
 const APP = 'http://localhost:5173';
@@ -69,12 +81,14 @@ describe('SRM sign-in rule (same gate as Google)', () => {
     expect(await prisma.authUser.count({ where: { email } })).toBe(0);
   });
 
-  it('the database itself refuses a non-SRM identity', async () => {
-    await expect(
-      prisma.authUser.create({
-        data: { id: 'direct-insert', name: 'X', email: 'x@gmail.com', emailVerified: true },
-      }),
-    ).rejects.toThrow();
+  it('the database itself refuses malformed or mixed-case identity addresses', async () => {
+    for (const email of ['X@srmap.edu.in', 'not-an-email', 'a b@srmap.edu.in']) {
+      await expect(
+        prisma.authUser.create({
+          data: { id: `direct-${email}`, name: 'X', email, emailVerified: false },
+        }),
+      ).rejects.toThrow();
+    }
   });
 });
 
@@ -232,12 +246,18 @@ describe('student registration', () => {
     expect((await registerStudent(user.token).expect(409)).body.error.code).toBe(
       'ALREADY_REGISTERED',
     );
-    const asStaff = await request(app)
+    // The old Google-based staff registration no longer exists…
+    await request(app)
       .post('/api/auth/staff/register')
       .set(bearer(user.token))
       .send({ name: 'Dup' })
+      .expect(404);
+    // …and a student's address cannot also become a staff account.
+    const asStaff = await request(app)
+      .post('/api/auth/staff/sign-up')
+      .send({ name: 'Dup', email: user.email, password: TEST_PASSWORD })
       .expect(409);
-    expect(asStaff.body.error.code).toBe('ALREADY_REGISTERED');
+    expect(asStaff.body.error.code).toBe('EMAIL_IN_USE');
   });
 
   it('rejects invalid, unknown and inactive hostels', async () => {
@@ -298,34 +318,39 @@ describe('student registration', () => {
   });
 });
 
-describe('staff registration', () => {
-  it('creates a PENDING staff account with no canteen (self-assignment rejected)', async () => {
-    const user = await createTestUser();
-    const sneaky = await request(app)
-      .post('/api/auth/staff/register')
-      .set(bearer(user.token))
-      .send({ name: 'Ravi Staff', canteenId: krishnaCanteenId, status: 'APPROVED' })
-      .expect(422);
-    expect(sneaky.body.error.code).toBe('VALIDATION_ERROR');
-    expect(await prisma.staff.count({ where: { authUserId: user.uid } })).toBe(0);
+const staffSignUp = (body: Record<string, unknown>) =>
+  request(app).post('/api/auth/staff/sign-up').send(body);
 
-    const res = await request(app)
-      .post('/api/auth/staff/register')
-      .set(bearer(user.token))
-      .send({ name: 'Ravi Staff' })
-      .expect(201);
-    expect(res.body.data).toMatchObject({
+describe('staff registration (email + password)', () => {
+  it('creates a PENDING staff account with no canteen (self-assignment rejected)', async () => {
+    const email = uniquePersonalEmail('ravi');
+    const sneaky = await staffSignUp({
+      name: 'Ravi Staff',
+      email,
+      password: TEST_PASSWORD,
+      canteenId: krishnaCanteenId,
+      status: 'APPROVED',
+    }).expect(422);
+    expect(sneaky.body.error.code).toBe('VALIDATION_ERROR');
+    expect(await prisma.staff.count({ where: { email } })).toBe(0);
+
+    const res = await staffSignUp({ name: 'Ravi Staff', email, password: TEST_PASSWORD }).expect(
+      201,
+    );
+    expect(res.body.data).toEqual({ email, status: 'PENDING' });
+    const user = await passwordSignIn(email);
+    const me = await request(app).get('/api/auth/me').set(bearer(user.token)).expect(200);
+    expect(me.body.data).toMatchObject({
       role: 'STAFF',
       status: 'PENDING',
       canteen: null,
       pendingChangeRequest: null,
     });
-    expect(await prisma.staff.findUniqueOrThrow({ where: { authUserId: user.uid } })).toMatchObject(
-      {
-        status: 'PENDING',
-        canteenId: null,
-      },
-    );
+    expect(await prisma.staff.findUniqueOrThrow({ where: { email } })).toMatchObject({
+      status: 'PENDING',
+      canteenId: null,
+      authUserId: user.uid,
+    });
   });
 
   it('can request canteen access at registration, notifying admins', async () => {
@@ -334,13 +359,16 @@ describe('staff registration', () => {
       { prisma },
       { email: adminEmail, name: 'Notified Admin' },
     );
-    const user = await createTestUser();
-    const res = await request(app)
-      .post('/api/auth/staff/register')
-      .set(bearer(user.token))
-      .send({ name: 'Requesting Staff', requestedCanteenId: krishnaCanteenId })
-      .expect(201);
-    expect(res.body.data.pendingChangeRequest).toMatchObject({
+    const email = uniquePersonalEmail('requesting');
+    await staffSignUp({
+      name: 'Requesting Staff',
+      email,
+      password: TEST_PASSWORD,
+      requestedCanteenId: krishnaCanteenId,
+    }).expect(201);
+    const user = await passwordSignIn(email);
+    const me = await request(app).get('/api/auth/me').set(bearer(user.token)).expect(200);
+    expect(me.body.data.pendingChangeRequest).toMatchObject({
       status: 'PENDING',
       requestedCanteen: { id: krishnaCanteenId },
     });
@@ -351,11 +379,18 @@ describe('staff registration', () => {
 });
 
 describe('admin provisioning', () => {
-  it('an admin exists only by provisioning, and becomes active at its first SRM sign-in', async () => {
+  it('an admin exists only by provisioning, and signs in with its password', async () => {
     const email = uniqueEmail('admin');
     const result = await bootstrapAdmin({ prisma }, { email, name: 'Ada Admin' });
     expect(result).toMatchObject({ created: true, linked: false });
-    const user = await createTestUser(email);
+    // Provisioned but no password yet: nobody can sign in as this admin.
+    expect((await passwordSignInRequest(email, TEST_PASSWORD)).status).toBe(401);
+    await setAccountPassword(prisma, {
+      role: 'ADMIN',
+      email,
+      passwordHash: await hashNewPassword(TEST_PASSWORD),
+    });
+    const user = await passwordSignIn(email);
     const me = await request(app).get('/api/auth/me').set(bearer(user.token)).expect(200);
     expect(me.body.data).toMatchObject({
       role: 'ADMIN',
@@ -394,7 +429,12 @@ describe('admin provisioning', () => {
   it('a deactivated admin loses access to admin APIs', async () => {
     const email = uniqueEmail('inactive-admin');
     const { adminId } = await bootstrapAdmin({ prisma }, { email, name: 'Soon Inactive' });
-    const user = await createTestUser(email);
+    await setAccountPassword(prisma, {
+      role: 'ADMIN',
+      email,
+      passwordHash: await hashNewPassword(TEST_PASSWORD),
+    });
+    const user = await passwordSignIn(email);
     await request(app).get('/api/admin/dashboard').set(bearer(user.token)).expect(200);
     await prisma.admin.update({ where: { id: adminId }, data: { isActive: false } });
     const res = await request(app).get('/api/admin/dashboard').set(bearer(user.token)).expect(403);
@@ -403,8 +443,8 @@ describe('admin provisioning', () => {
   });
 });
 
-describe('linking existing accounts at the first sign-in', () => {
-  it('an existing approved staff account keeps its approval, canteen and capabilities', async () => {
+describe('existing accounts', () => {
+  it('an existing approved staff account moves to a password, keeping approval, canteen and capabilities', async () => {
     const email = uniqueEmail('legacy-staff');
     const canteen = await canteenBySlug(prisma, 'yamuna-narmada');
     // As created before Better Auth: a Firebase UID, no sign-in identity.
@@ -424,7 +464,17 @@ describe('linking existing accounts at the first sign-in', () => {
         capabilities: { create: [{ capability: 'KITCHEN' }, { capability: 'CASHIER' }] },
       },
     });
-    const user = await createTestUser(email);
+    // Google can no longer sign this address in…
+    const google = await testSignIn(email);
+    expect(google.status).toBe(403);
+    expect(((await google.json()) as { code?: string }).code).toBe('STAFF_ADMIN_USE_PASSWORD');
+    // …an operator sets a password (scripts/set-password.ts) and it signs in with that.
+    await setAccountPassword(prisma, {
+      role: 'STAFF',
+      email,
+      passwordHash: await hashNewPassword(TEST_PASSWORD),
+    });
+    const user = await passwordSignIn(email);
     const me = await request(app).get('/api/auth/me').set(bearer(user.token)).expect(200);
     expect(me.body.data).toMatchObject({
       role: 'STAFF',
@@ -444,17 +494,24 @@ describe('linking existing accounts at the first sign-in', () => {
     ).toBe(2);
   });
 
-  it('an email shared by two accounts is never guessed: 409, nothing linked', async () => {
-    const email = uniqueEmail('duplicate');
-    await prisma.admin.create({ data: { email, name: 'Dup Admin' } });
-    await prisma.student.create({
-      data: { email, name: 'Dup Student', hostelId: krishnaHostelId },
+  it('an existing student account is linked at its first Google sign-in', async () => {
+    const email = uniqueEmail('legacy-student');
+    const student = await prisma.student.create({
+      data: { email, name: 'Legacy Student', hostelId: krishnaHostelId },
     });
     const user = await createTestUser(email);
-    const res = await request(app).get('/api/auth/me').set(bearer(user.token)).expect(409);
-    expect(res.body.error.code).toBe('ACCOUNT_LINK_CONFLICT');
-    expect(await prisma.admin.count({ where: { authUserId: user.uid } })).toBe(0);
-    expect(await prisma.student.count({ where: { authUserId: user.uid } })).toBe(0);
+    const me = await request(app).get('/api/auth/me').set(bearer(user.token)).expect(200);
+    expect(me.body.data).toMatchObject({ role: 'STUDENT', id: student.id });
+  });
+
+  it('a staff or admin address is never claimed by a Google sign-in', async () => {
+    const email = uniqueEmail('unclaimed-admin');
+    await prisma.admin.create({ data: { email, name: 'Unclaimed Admin' } });
+    const res = await testSignIn(email);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code?: string }).code).toBe('STAFF_ADMIN_USE_PASSWORD');
+    expect((await prisma.admin.findUniqueOrThrow({ where: { email } })).authUserId).toBeNull();
+    expect(await prisma.authSession.count({ where: { user: { email } } })).toBe(0);
   });
 
   it('an account already linked to another identity is not taken over', async () => {

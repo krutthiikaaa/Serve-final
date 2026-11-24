@@ -11,10 +11,12 @@ export interface BootstrapAdminInput {
  * There is no public admin registration endpoint, and no Google sign-in ever
  * creates an admin on its own.
  *
- * Creates (or re-activates) an Admin row for an @srmap.edu.in address. The
- * row is linked to its Google identity when that person first signs in with
- * exactly this verified address (modules/auth/principal.ts). Refuses an
- * address that already belongs to a student or staff account.
+ * Creates (or re-activates) an Admin row for an @srmap.edu.in address.
+ * Admins sign in with email + password: the row has no way to sign in until
+ * a password is set (password-accounts.ts setAccountPassword, which
+ * scripts/create-admin.ts does right after this). Google sign-in is refused
+ * for admin addresses. Refuses an address that already belongs to a student
+ * or staff account.
  */
 export async function bootstrapAdmin(
   deps: { prisma: PrismaClient },

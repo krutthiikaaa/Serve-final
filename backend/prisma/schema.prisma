@@ -304,8 +304,9 @@ model Hostel {
 }
 
 // ---------------------------------------------------------------------------
-// Accounts. Better Auth proves identity (AuthUser, signed in with a verified
-// @srmap.edu.in Google account); these tables decide roles. A role row is
+// Accounts. Better Auth proves identity (AuthUser); these tables decide roles.
+// Students sign in with a verified @srmap.edu.in Google account; staff and
+// admins with email + password (admins: @srmap.edu.in only). A role row is
 // linked to its sign-in identity by authUserId. firebaseUid is the legacy
 // Firebase identity, kept (nullable) so no existing value is lost.
 // Emails are stored lower-cased (CHECK constraint in the migration).
@@ -409,8 +410,11 @@ model Admin {
 model AuthUser {
   id            String   @id
   name          String
-  /// Lower-cased; only verified @srmap.edu.in addresses are ever written.
+  /// Lower-cased. Google identities: verified @srmap.edu.in only. Password
+  /// identities (staff, admins): any address; never marked verified.
   email         String   @unique
+  /// True only when Google verified the address. SERVE sends no verification
+  /// emails, so password identities stay false.
   emailVerified Boolean  @default(false)
   image         String?
   createdAt     DateTime @default(now())
@@ -424,22 +428,27 @@ model AuthUser {
 }
 
 model AuthSession {
-  id        String   @id
+  id         String   @id
   /// Opaque session token (sent as the HttpOnly session cookie or a Bearer token).
-  token     String   @unique
-  userId    String
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  token      String   @unique
+  userId     String
+  expiresAt  DateTime
+  ipAddress  String?
+  userAgent  String?
+  /// How this session was created: 'google' or 'password' (CHECK constraint).
+  /// Null = created before role-specific sign-in (Google); accepted for
+  /// students only.
+  authMethod String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
-/// A sign-in method of an AuthUser (Google only).
+/// A sign-in method of an AuthUser: Google (providerId "google", students) or
+/// email + password (providerId "credential", accountId = userId; staff, admins).
 model AuthAccount {
   id                    String    @id
   /// The provider's subject (Google `sub`).
@@ -452,7 +461,7 @@ model AuthAccount {
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?
-  /// Unused: password sign-in is disabled.
+  /// scrypt hash (Better Auth) for "credential" accounts. Never plain text.
   password              String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt

@@ -274,19 +274,71 @@ describe('Google sign-in (real Better Auth flow)', () => {
     expect(await strict.prisma.authUser.count({ where: { email: 'forged@srmap.edu.in' } })).toBe(0);
   });
 
-  it('email/password sign-up and sign-in are disabled', async () => {
+  it('there is no public email/password sign-up, and a student has no password', async () => {
     const body = { email: 'pw@srmap.edu.in', password: 'Password-12345', name: 'Pw' };
     const signUp = await request(strict.app)
       .post('/api/auth/sign-up/email')
       .set('Origin', APP)
       .send(body);
-    expect(signUp.status).toBeGreaterThanOrEqual(400);
+    expect(signUp.status).toBe(404);
     const signIn = await request(strict.app)
       .post('/api/auth/sign-in/email')
       .set('Origin', APP)
       .send(body);
-    expect(signIn.status).toBeGreaterThanOrEqual(400);
+    expect(signIn.status).toBe(401);
+    expect(signIn.body.code).toBe('INVALID_EMAIL_OR_PASSWORD');
     expect(await strict.prisma.authUser.count({ where: { email: body.email } })).toBe(0);
+
+    // A real Google student cannot use the password sign-in either.
+    const { callback } = await googleSignIn(strict.app, {
+      email: 'google-only@srmap.edu.in',
+      hd: 'srmap.edu.in',
+    });
+    expect(callback.headers.location).toBe(`${APP}/`);
+    const student = await request(strict.app)
+      .post('/api/auth/sign-in/email')
+      .set('Origin', APP)
+      .send({ email: 'google-only@srmap.edu.in', password: 'Password-12345' });
+    expect(student.status).toBe(401);
+    expect(student.body.code).toBe('INVALID_EMAIL_OR_PASSWORD');
+  });
+
+  it('Google never signs in a staff member or admin', async () => {
+    // A provisioned admin (not yet linked) and a staff account with a password.
+    await strict.prisma.admin.create({
+      data: { email: 'google-admin@srmap.edu.in', name: 'Admin' },
+    });
+    const admin = await googleSignIn(strict.app, {
+      email: 'google-admin@srmap.edu.in',
+      hd: 'srmap.edu.in',
+    });
+    expect(errorOf(admin.callback.headers.location)).toBe('STAFF_ADMIN_USE_PASSWORD');
+    expect(
+      (
+        await strict.prisma.admin.findUniqueOrThrow({
+          where: { email: 'google-admin@srmap.edu.in' },
+        })
+      ).authUserId,
+    ).toBeNull();
+
+    await request(strict.app)
+      .post('/api/auth/staff/sign-up')
+      .send({ name: 'Staff', email: 'google-staff@srmap.edu.in', password: 'Password-12345' })
+      .expect(201);
+    const staff = await googleSignIn(strict.app, {
+      email: 'google-staff@srmap.edu.in',
+      hd: 'srmap.edu.in',
+    });
+    // The address belongs to a password identity: Google cannot attach to it.
+    expect(staff.callback.headers.location).not.toBe(`${APP}/`);
+    expect(errorOf(staff.callback.headers.location)).toBeTruthy();
+    expect(
+      await strict.prisma.authSession.count({
+        where: {
+          user: { email: { in: ['google-admin@srmap.edu.in', 'google-staff@srmap.edu.in'] } },
+        },
+      }),
+    ).toBe(0);
   });
 
   it('the test-only sign-in endpoint does not exist unless explicitly enabled', async () => {

@@ -100,7 +100,6 @@ const ADMIN_ROUTES: Route[] = [
 const ANY_ROLE_ROUTES: Route[] = [
   ['get', '/api/auth/me'],
   ['post', '/api/auth/student/register'],
-  ['post', '/api/auth/staff/register'],
   ['get', '/api/canteens'],
   ['get', `/api/canteens/${anyId}`],
   ['get', `/api/canteens/${anyId}/menu`],

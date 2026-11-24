@@ -1,12 +1,16 @@
 /**
- * Pre-provision development accounts for real @srmap.edu.in Google accounts.
- * Development only (NODE_ENV=development). Each address you set becomes that
- * role the first time its owner signs in with Google; unset ones are skipped.
+ * Pre-provision development accounts. Development only (NODE_ENV=development);
+ * unset addresses are skipped.
  *
  *   DEV_ADMIN_EMAIL=a@srmap.edu.in \
- *   DEV_STAFF_NIGHT_EMAIL=b@srmap.edu.in DEV_STAFF_DAY_EMAIL=c@srmap.edu.in \
- *   DEV_STAFF_PENDING_EMAIL=d@srmap.edu.in DEV_STUDENT_EMAIL=e@srmap.edu.in \
+ *   DEV_STAFF_NIGHT_EMAIL=b@example.com DEV_STAFF_DAY_EMAIL=c@example.com \
+ *   DEV_STAFF_PENDING_EMAIL=d@example.com DEV_STUDENT_EMAIL=e@srmap.edu.in \
  *   npm run db:seed:dev-users --workspace backend
+ *
+ * The student signs in with that Google account (@srmap.edu.in). Staff (any
+ * address) and the admin (@srmap.edu.in) sign in with email + password: the
+ * password is asked for once (hidden, or the first line of stdin) and set on
+ * every staff/admin account provisioned here.
  *
  * Requires the base seed (npm run db:seed) for canteens and hostels.
  * Idempotent: existing rows are reused; nothing is deleted.
@@ -15,6 +19,9 @@ import { loadEnv } from '../src/config/env.js';
 import { createPrismaClient } from '../src/lib/prisma.js';
 import { bootstrapAdmin } from '../src/modules/auth/admin-bootstrap.js';
 import { isSrmEmail, normalizeEmail } from '../src/modules/auth/srm-email.js';
+import { isPasswordIdentityEmail } from '../src/modules/auth/sign-in-method.js';
+import { hashNewPassword, setAccountPassword } from '../src/modules/auth/password-accounts.js';
+import { readNewPassword } from './read-password.js';
 
 const env = loadEnv();
 if (env.NODE_ENV !== 'development') {
@@ -22,21 +29,21 @@ if (env.NODE_ENV !== 'development') {
   process.exit(1);
 }
 
-function emailFrom(variable: string): string | null {
+function emailFrom(variable: string, srmOnly = true): string | null {
   const raw = process.env[variable];
   if (!raw) return null;
   const email = normalizeEmail(raw);
-  if (!email || !isSrmEmail(email)) {
-    console.error(`${variable} must be an @srmap.edu.in address.`);
+  if (!email || (srmOnly ? !isSrmEmail(email) : !isPasswordIdentityEmail(email))) {
+    console.error(`${variable} must be ${srmOnly ? 'an @srmap.edu.in' : 'a valid email'} address.`);
     process.exit(1);
   }
   return email;
 }
 
 const adminEmail = emailFrom('DEV_ADMIN_EMAIL');
-const nightEmail = emailFrom('DEV_STAFF_NIGHT_EMAIL');
-const dayEmail = emailFrom('DEV_STAFF_DAY_EMAIL');
-const pendingEmail = emailFrom('DEV_STAFF_PENDING_EMAIL');
+const nightEmail = emailFrom('DEV_STAFF_NIGHT_EMAIL', false);
+const dayEmail = emailFrom('DEV_STAFF_DAY_EMAIL', false);
+const pendingEmail = emailFrom('DEV_STAFF_PENDING_EMAIL', false);
 const studentEmail = emailFrom('DEV_STUDENT_EMAIL');
 if (![adminEmail, nightEmail, dayEmail, pendingEmail, studentEmail].some(Boolean)) {
   console.error(
@@ -44,6 +51,17 @@ if (![adminEmail, nightEmail, dayEmail, pendingEmail, studentEmail].some(Boolean
   );
   process.exit(1);
 }
+
+const passwordAccounts: { role: 'STAFF' | 'ADMIN'; email: string }[] = [
+  ...(adminEmail ? [{ role: 'ADMIN' as const, email: adminEmail }] : []),
+  ...[nightEmail, dayEmail, pendingEmail]
+    .filter((email): email is string => Boolean(email))
+    .map((email) => ({ role: 'STAFF' as const, email })),
+];
+const passwordHash =
+  passwordAccounts.length > 0
+    ? await hashNewPassword(await readNewPassword('Password for the dev staff/admin accounts'))
+    : null;
 
 const prisma = createPrismaClient(env.DATABASE_URL);
 const ready: string[] = [];
@@ -112,8 +130,13 @@ try {
     ready.push(`${studentEmail} (student, Krishna)`);
   }
 
+  if (passwordHash) {
+    for (const account of passwordAccounts) {
+      await setAccountPassword(prisma, { ...account, passwordHash });
+    }
+  }
   console.error(
-    `Development accounts ready (active at each owner's first Google sign-in): ${ready.join(', ')}`,
+    `Development accounts ready (student: Google sign-in; staff/admin: email + password): ${ready.join(', ')}`,
   );
 } finally {
   await prisma.$disconnect();

@@ -13,6 +13,14 @@ import {
   normalizeEmail,
   srmIdentityRejection,
 } from '../modules/auth/srm-email.js';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  SIGN_IN_METHOD_MESSAGE,
+  isAdminEmail,
+  isPasswordIdentityEmail,
+  type AuthMethod,
+} from '../modules/auth/sign-in-method.js';
 
 /**
  * Better Auth: the single sign-in system for the student app, staff
@@ -20,10 +28,17 @@ import {
  * (see app.ts). It proves identity only; Student / Staff / Admin rows in
  * PostgreSQL decide roles (modules/auth/principal.ts).
  *
- * Sign-in: Google OAuth (authorization-code flow with PKCE), restricted to
- * verified @srmap.edu.in accounts. Email/password and every other method are
- * disabled. Sessions are database-backed: an HttpOnly cookie for the web
- * apps, or the same session token as a Bearer token for the native app.
+ * Sign-in methods are role-specific (modules/auth/sign-in-method.ts):
+ * - Students: Google OAuth (authorization-code flow with PKCE), restricted to
+ *   verified @srmap.edu.in accounts.
+ * - Staff and admins: email + password (scrypt hashes). Better Auth's public
+ *   sign-up is disabled: password identities are created only by staff
+ *   self-registration (POST /api/auth/staff/sign-up, always PENDING) and by
+ *   admin provisioning scripts.
+ * Every new session records its method (AuthSession.authMethod); the session
+ * hook below refuses a method that does not match the account's role.
+ * Sessions are database-backed: an HttpOnly cookie for the web apps, or the
+ * same session token as a Bearer token for the native app.
  */
 
 /** Session token prefix for cookies: `serve.session_token` (`__Secure-` in production). */
@@ -44,8 +59,10 @@ export const AUTH_BASE_PATH = '/api/auth';
  * `auth.api` calls (native sign-in, session checks) are unaffected.
  */
 export const EXPOSED_AUTH_PATHS: ReadonlySet<string> = new Set([
-  '/sign-in/social', // start Google sign-in (state + PKCE)
+  '/sign-in/social', // start Google sign-in (state + PKCE) — students
   '/callback/google', // Google redirects back here
+  '/sign-in/email', // email + password — staff and admins
+  '/change-password', // staff and admins (app.ts checks the session first)
   '/get-session', // web apps: who is signed in
   '/sign-out', // end this session
   '/revoke-other-sessions', // sign out other devices
@@ -99,6 +116,29 @@ export function authBaseUrl(env: Env): string {
 
 function reject(code: keyof typeof SRM_REJECTION_MESSAGE): never {
   throw new APIError('FORBIDDEN', { code, message: SRM_REJECTION_MESSAGE[code] });
+}
+
+/** Same answer as a wrong password: never reveal which accounts exist or their role. */
+function invalidCredentials(): never {
+  throw new APIError('UNAUTHORIZED', {
+    code: 'INVALID_EMAIL_OR_PASSWORD',
+    message: 'Invalid email or password',
+  });
+}
+
+/**
+ * The sign-in method of a session being created, from the Better Auth
+ * endpoint creating it. Only these endpoints may create sessions.
+ */
+export function sessionMethodFor(path: string | undefined, testSignIn: boolean): AuthMethod | null {
+  if (!path) return null;
+  if (path.startsWith('/callback/')) return 'google';
+  // Password sign-in, and the replacement session change-password issues
+  // when it revokes the others (only password identities can change one).
+  if (path === '/sign-in/email' || path === '/change-password') return 'password';
+  // The test-only endpoint simulates a Google sign-in.
+  if (testSignIn && path === '/test/sign-in') return 'google';
+  return null;
 }
 
 /** Defence in depth for every stored identity: SRM address, verified by Google. */
@@ -227,15 +267,35 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
           : undefined;
       },
     },
-    session: { modelName: 'AuthSession' },
+    session: {
+      modelName: 'AuthSession',
+      additionalFields: {
+        // 'google' | 'password', set by the session create hook; never from input.
+        authMethod: { type: 'string', required: false, input: false },
+      },
+    },
     account: {
       modelName: 'AuthAccount',
-      // One Google account per identity. Never attach another sign-in method
-      // (or another Google account) to an existing identity by email.
+      // Never attach another sign-in method (or another Google account) to an
+      // existing identity by email. Google cannot take over a password
+      // identity with the same address, nor the reverse.
       accountLinking: { enabled: false },
     },
     verification: { modelName: 'AuthVerification' },
-    emailAndPassword: { enabled: false },
+    emailAndPassword: {
+      // Staff and admins only: the session hook refuses a password session
+      // for any identity without a Staff or Admin account.
+      enabled: true,
+      // No public sign-up (/sign-up/email is also not exposed): password
+      // identities are created by SERVE itself (staff sign-up, admin scripts).
+      disableSignUp: true,
+      minPasswordLength: PASSWORD_MIN_LENGTH,
+      maxPasswordLength: PASSWORD_MAX_LENGTH,
+      // SERVE sends no email, so it cannot verify addresses; it does not
+      // pretend to (password identities keep emailVerified=false).
+      requireEmailVerification: false,
+      autoSignIn: false,
+    },
     socialProviders: google ? { google } : {},
     databaseHooks: {
       user: {
@@ -267,16 +327,48 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
       },
       session: {
         create: {
-          // Every new session (Google, native exchange, test) re-checks the
-          // stored identity, so an identity that no longer qualifies cannot
-          // sign in by any path.
-          before: async (session) => {
+          // Every new session records how it was created and must match the
+          // account's role, so no path can sign a student in with a password
+          // or a staff member / admin in with Google:
+          //   google   → verified @srmap.edu.in, and no Staff/Admin account
+          //              (linked, or unlinked with the same address)
+          //   password → a linked Staff or Admin account (admins: @srmap.edu.in)
+          before: async (session, context) => {
+            const method = sessionMethodFor(context?.path, testPlugins.length > 0);
+            if (!method) {
+              throw new APIError('FORBIDDEN', {
+                code: 'SIGN_IN_METHOD_NOT_ALLOWED',
+                message: 'This sign-in method is not available.',
+              });
+            }
             const user = await prisma.authUser.findUnique({
               where: { id: session.userId },
-              select: { email: true, emailVerified: true },
+              select: {
+                email: true,
+                emailVerified: true,
+                staff: { select: { id: true } },
+                admin: { select: { id: true } },
+              },
             });
-            if (!user) reject('EMAIL_DOMAIN_NOT_ALLOWED');
-            assertStoredIdentity(user);
+            if (method === 'google') {
+              if (!user) reject('EMAIL_DOMAIN_NOT_ALLOWED');
+              assertStoredIdentity(user);
+              const [unlinkedStaff, unlinkedAdmins] = await Promise.all([
+                prisma.staff.count({ where: { email: user.email, authUserId: null } }),
+                prisma.admin.count({ where: { email: user.email, authUserId: null } }),
+              ]);
+              if (user.staff || user.admin || unlinkedStaff > 0 || unlinkedAdmins > 0) {
+                throw new APIError('FORBIDDEN', {
+                  code: 'STAFF_ADMIN_USE_PASSWORD',
+                  message: SIGN_IN_METHOD_MESSAGE.password,
+                });
+              }
+            } else {
+              if (!user || (!user.staff && !user.admin)) invalidCredentials();
+              if (!isPasswordIdentityEmail(user.email)) invalidCredentials();
+              if (user.admin && !isAdminEmail(user.email)) invalidCredentials();
+            }
+            return { data: { ...session, authMethod: method } };
           },
         },
       },

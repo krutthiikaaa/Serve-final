@@ -283,7 +283,10 @@ const canteenState = z.strictObject({
   isAcceptingOrders: z.boolean(),
   isPaused: z.boolean(),
 });
-/** Signed in with a verified @srmap.edu.in Google account, no SERVE account yet. */
+/**
+ * Signed in with a verified @srmap.edu.in Google account, no SERVE account yet
+ * (student registration). Password identities always have an account.
+ */
 export const meUnregisteredSchema = z.strictObject({
   registered: z.literal(false),
   role: z.null(),
@@ -322,6 +325,24 @@ export const meStaffSchema = z.strictObject({
     .nullable(),
 });
 export const meAdminSchema = z.strictObject({ ...meBase, role: z.literal('ADMIN') });
+
+/**
+ * `POST /api/auth/staff/sign-up` (no session): staff self-registration with
+ * email + password. Any address; it is not verified. The account is PENDING
+ * until an admin approves it; the client then signs in with
+ * `POST /api/auth/sign-in/email`.
+ */
+export const staffSignUpRequestSchema = z.strictObject({
+  name: z.string().min(1).max(120),
+  email: z.email(),
+  password: z.string().min(10).max(128),
+  requestedCanteenId: uuid.optional(),
+});
+export const staffSignUpResultSchema = z.strictObject({
+  email: z.email(),
+  status: z.literal('PENDING'),
+});
+export type StaffSignUpRequest = z.infer<typeof staffSignUpRequestSchema>;
 
 /** `POST /api/native-auth/exchange` (native app): a session token for `Authorization: Bearer`. */
 export const nativeAuthExchangeResultSchema = z.strictObject({

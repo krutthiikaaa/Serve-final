@@ -22,6 +22,7 @@
     "prisma:migrate:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
     "admin:create": "tsx scripts/create-admin.ts",
+    "account:set-password": "tsx scripts/set-password.ts",
     "db:seed:dev-users": "tsx scripts/seed-dev-users.ts"
   },
   "dependencies": {

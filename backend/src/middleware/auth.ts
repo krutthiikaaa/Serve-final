@@ -9,6 +9,11 @@ import {
   type StaffPrincipal,
   type StudentPrincipal,
 } from '../modules/auth/principal.js';
+import {
+  SIGN_IN_METHOD_MESSAGE,
+  isSignInMethodAllowed,
+  requiredSignInMethod,
+} from '../modules/auth/sign-in-method.js';
 
 export interface AuthContext extends VerifiedIdentity {
   /** null when the signed-in identity has not registered a SERVE account yet. */
@@ -27,10 +32,33 @@ declare module 'express-serve-static-core' {
 export type ApprovedStaffPrincipal = StaffPrincipal & { status: 'APPROVED'; canteenId: string };
 
 /**
+ * The account a session may act as, or an error when the session's sign-in
+ * method is not the one the account's role requires (a staff member or admin
+ * signed in with Google, a student with a password, or a session from before
+ * role-specific sign-in held by a staff member or admin). Such a session is
+ * revoked at once, so it cannot be used again anywhere.
+ */
+export async function principalForSession(
+  prisma: PrismaClient,
+  identity: VerifiedIdentity,
+): Promise<Principal | null> {
+  const principal = await resolvePrincipal(prisma, identity);
+  if (!isSignInMethodAllowed(identity.authMethod, principal?.role ?? null)) {
+    await prisma.authSession.deleteMany({ where: { id: identity.sessionId } });
+    throw new UnauthorizedError(
+      SIGN_IN_METHOD_MESSAGE[requiredSignInMethod(principal?.role ?? null)],
+      'SIGN_IN_METHOD_NOT_ALLOWED',
+    );
+  }
+  return principal;
+}
+
+/**
  * authenticateUser: verifies the Better Auth session (HttpOnly cookie from the
  * web apps, or `Authorization: Bearer <session token>` from the native app),
- * then loads the caller's account from PostgreSQL. Authorization decisions
- * downstream use only this database-backed context.
+ * then loads the caller's account from PostgreSQL and checks that the session
+ * was created with the sign-in method the account's role requires.
+ * Authorization decisions downstream use only this database-backed context.
  */
 export function createAuthenticate(deps: {
   sessions: SessionVerifier;
@@ -41,7 +69,7 @@ export function createAuthenticate(deps: {
     if (!identity) {
       throw new UnauthorizedError('Authentication required', 'AUTH_REQUIRED');
     }
-    const principal = await resolvePrincipal(deps.prisma, identity);
+    const principal = await principalForSession(deps.prisma, identity);
     req.auth = { ...identity, principal };
     next();
   };

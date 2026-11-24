@@ -14,6 +14,8 @@ export const REDACT_PATHS = [
   'res.headers.location',
   'res.headers["set-auth-token"]',
   '*.password',
+  '*.newPassword',
+  '*.currentPassword',
   '*.token',
   '*.idToken',
   '*.accessToken',
