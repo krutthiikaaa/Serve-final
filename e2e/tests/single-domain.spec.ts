@@ -55,7 +55,9 @@ async function expectApp(page: Page, app: 'student' | 'staff' | 'admin') {
     });
   } else {
     await expect(page).toHaveTitle(app === 'staff' ? 'SERVE Staff' : 'SERVE Admin');
-    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    // Staff and admins sign in with email + password; no Google option.
+    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByText(/google/i)).toHaveCount(0);
   }
 }
 

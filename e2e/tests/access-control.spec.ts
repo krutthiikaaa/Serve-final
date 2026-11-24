@@ -23,7 +23,8 @@ test('an admin account is turned away from the staff dashboard', async ({ page }
 test('a student account is turned away from both web apps', async ({ page }) => {
   const student = await StudentActor.register('Web Curious Student');
   const email = student.me.email;
-  await signIn(page, E2E.staffUrl, email, E2E.password);
+  // A student's Google session (test stand-in) reaches the staff dashboard…
+  await signIn(page, E2E.staffUrl, email);
   await expect(
     page.getByText('Use the SERVE mobile app to order.', { exact: false }),
   ).toBeVisible();
@@ -45,29 +46,48 @@ test('only verified @srmap.edu.in accounts can sign in', async ({ request }) => 
   expect((await unverified.json()).code).toBe('EMAIL_NOT_VERIFIED');
 });
 
-test('a Google account refused by SERVE is explained on the sign-in screen', async ({ page }) => {
-  // Where Better Auth sends the browser back after refusing, e.g., a Gmail account.
-  await page.goto(`${E2E.staffUrl}/?error=EMAIL_DOMAIN_NOT_ALLOWED`);
-  await expect(page.getByRole('alert')).toContainText('@srmap.edu.in');
-  await expect(page).toHaveURL(`${E2E.staffUrl}/`);
-  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+test('Google sign-in (students) redirects to Google with PKCE and the SRM domain', async ({
+  request,
+}) => {
+  // What the student app does; no request reaches Google.
+  const res = await request.post(`${E2E.apiUrl}/api/auth/sign-in/social`, {
+    data: {
+      provider: 'google',
+      callbackURL: `${E2E.studentUrl}/`,
+      errorCallbackURL: `${E2E.studentUrl}/`,
+    },
+    headers: { Origin: E2E.studentUrl },
+  });
+  expect(res.ok()).toBe(true);
+  const google = new URL(((await res.json()) as { url: string }).url);
+  expect(google.hostname).toBe('accounts.google.com');
+  expect(google.searchParams.get('redirect_uri')).toBe(`${E2E.apiUrl}/api/auth/callback/google`);
+  expect(google.searchParams.get('hd')).toBe('srmap.edu.in');
+  expect(google.searchParams.get('code_challenge_method')).toBe('S256');
+  expect(google.searchParams.get('state')).toBeTruthy();
+  expect(google.searchParams.get('prompt')).toBe('select_account');
 });
 
-test('Continue with Google sends the browser to Google with PKCE and the SRM domain', async ({
-  page,
-}) => {
-  // Intercepted: no request reaches Google.
-  let google: URL | null = null;
-  await page.route('https://accounts.google.com/**', async (route) => {
-    google = new URL(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Google</p>' });
+test('staff and admin addresses are refused by Google sign-in', async ({ request }) => {
+  const { email } = await approvedStaff('No Google Staff', 'Krishna & Godavari Night Canteen');
+  for (const address of [email, E2E.adminEmail]) {
+    const res = await request.post(`${E2E.apiUrl}/api/auth/test/sign-in`, {
+      data: { email: address },
+    });
+    expect(res.ok(), address).toBe(false);
+  }
+  const admin = await request.post(`${E2E.apiUrl}/api/auth/test/sign-in`, {
+    data: { email: E2E.adminEmail },
   });
-  await page.goto(E2E.adminUrl);
-  await page.getByRole('button', { name: 'Continue with Google' }).click();
-  await expect.poll(() => google?.hostname).toBe('accounts.google.com');
-  expect(google!.searchParams.get('redirect_uri')).toBe(`${E2E.apiUrl}/api/auth/callback/google`);
-  expect(google!.searchParams.get('hd')).toBe('srmap.edu.in');
-  expect(google!.searchParams.get('code_challenge_method')).toBe('S256');
-  expect(google!.searchParams.get('state')).toBeTruthy();
-  expect(google!.searchParams.get('prompt')).toBe('select_account');
+  expect((await admin.json()).code).toBe('STAFF_ADMIN_USE_PASSWORD');
+});
+
+test('students cannot use the password sign-in', async ({ request }) => {
+  const student = await StudentActor.register('Password Curious Student');
+  const res = await request.post(`${E2E.apiUrl}/api/auth/sign-in/email`, {
+    data: { email: student.me.email, password: E2E.password },
+    headers: { Origin: E2E.staffUrl },
+  });
+  expect(res.status()).toBe(401);
+  expect((await res.json()).code).toBe('INVALID_EMAIL_OR_PASSWORD');
 });

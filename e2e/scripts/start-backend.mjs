@@ -2,7 +2,8 @@
  * Starts an isolated SERVE backend for the end-to-end suite:
  *   1. resets the TEST database (refuses any database not ending in `_test`),
  *   2. applies every migration and the catalogue seed,
- *   3. provisions the E2E admin through the official bootstrap script,
+ *   3. provisions the E2E admin (with its password) through the official
+ *      admin:create script,
  *   4. runs the backend on E2E_API_PORT with CORS for the E2E frontends.
  * With E2E_WEB_ROOT set it also serves the built web apps from that folder
  * (the single-domain deployment, see start-single-domain.mjs).
@@ -79,7 +80,11 @@ run(
 );
 run([prismaJs, 'migrate', 'deploy']);
 run([tsxCli, 'prisma/seed.ts']);
-run([tsxCli, 'scripts/create-admin.ts', '--email', E2E.adminEmail, '--name', 'E2E Admin']);
+// The admin signs in with email + password; create-admin reads it from stdin.
+run(
+  [tsxCli, 'scripts/create-admin.ts', '--email', E2E.adminEmail, '--name', 'E2E Admin'],
+  `${E2E.password}\n`,
+);
 
 const server = spawn(process.execPath, [tsxCli, 'src/server.ts'], {
   cwd: backend,
