@@ -214,7 +214,8 @@ export function fakeStaffApi(): MockedApi {
       throw new Error(`${name} not stubbed`);
     });
   const names: (keyof StaffApi)[] = [
-    'registerStaff',
+    'signUp',
+    'serviceAreaDirectory',
     'canteens',
     'requestAccess',
     'changeRequests',

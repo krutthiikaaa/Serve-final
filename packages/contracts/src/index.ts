@@ -343,6 +343,7 @@ export const staffSignUpResultSchema = z.strictObject({
   status: z.literal('PENDING'),
 });
 export type StaffSignUpRequest = z.infer<typeof staffSignUpRequestSchema>;
+export type StaffSignUpResult = z.infer<typeof staffSignUpResultSchema>;
 
 /** `POST /api/native-auth/exchange` (native app): a session token for `Authorization: Bearer`. */
 export const nativeAuthExchangeResultSchema = z.strictObject({

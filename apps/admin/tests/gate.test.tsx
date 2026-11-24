@@ -1,8 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { Me } from '@serve/contracts';
-import { ToastProvider } from '@serve/web-shared';
+import { ToastProvider, type AuthContextValue } from '@serve/web-shared';
 import { FakeAuthProvider } from '@serve/web-shared/testing';
 import { Gate } from '../src/App';
 import { meAdmin } from './fixtures';
@@ -11,10 +11,10 @@ vi.mock('socket.io-client', () => ({
   io: () => ({ on() {}, off() {}, removeAllListeners() {}, disconnect() {}, connect() {} }),
 }));
 
-const renderGate = (me: Me | null, path = '/') =>
+const renderGate = (me: Me | null, path = '/', overrides: Partial<AuthContextValue> = {}) =>
   render(
     <ToastProvider>
-      <FakeAuthProvider me={me}>
+      <FakeAuthProvider me={me} overrides={overrides}>
         <MemoryRouter initialEntries={[path]}>
           <Gate />
         </MemoryRouter>
@@ -23,12 +23,38 @@ const renderGate = (me: Me | null, path = '/') =>
   );
 
 describe('admin routing (decided only by /api/auth/me)', () => {
-  it('shows Google sign-in (SRM accounts) and no self-registration when signed out', () => {
+  it('shows email + password sign-in, no Google and no self-registration when signed out', () => {
     renderGate(null);
-    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
-    expect(screen.getByText('@srmap.edu.in')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
-    expect(screen.queryByText(/create account/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Admin portal' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toHaveAttribute('type', 'email');
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByText(/google/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/create account|request access/i)).not.toBeInTheDocument();
+  });
+
+  it('signs in with email and password', async () => {
+    const signInWithPassword = vi.fn(async () => true);
+    renderGate(null, '/', { signInWithPassword });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ada@srmap.edu.in' } });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'an-admin-password' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() =>
+      expect(signInWithPassword).toHaveBeenCalledWith('ada@srmap.edu.in', 'an-admin-password'),
+    );
+  });
+
+  it('shows why a sign-in was refused', () => {
+    renderGate(null, '/', { signInError: 'Incorrect email or password.' });
+    expect(screen.getByRole('alert')).toHaveTextContent('Incorrect email or password.');
+  });
+
+  it('protected pages are never shown while signed out', () => {
+    renderGate(null, '/staff');
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Canteens' })).not.toBeInTheDocument();
   });
 
   it('old SSO handoff links open the portal with the shared session', () => {
@@ -54,7 +80,7 @@ describe('admin routing (decided only by /api/auth/me)', () => {
     expect(screen.getByText(/Use the staff dashboard instead/)).toBeInTheDocument();
   });
 
-  it('refuses Google users without a SERVE admin account', () => {
+  it('refuses an identity without a SERVE admin account', () => {
     renderGate({ registered: false, role: null, authUserId: 'u', email: 'x@srmap.edu.in' });
     expect(
       screen.getByText('This account is not registered as a SERVE admin.'),

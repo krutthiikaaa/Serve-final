@@ -4,15 +4,17 @@ import type {
   Category,
   CategoryWithItems,
   ChangeRequest,
-  Me,
   Menu,
   MenuItem,
   OrderStatus,
   Page,
   Receipt,
+  ServiceAreaDirectory,
   ServicePeriod,
   StaffDashboard,
   StaffOrder,
+  StaffSignUpRequest,
+  StaffSignUpResult,
 } from '@serve/contracts';
 import type { ApiClient, Query } from '@serve/web-shared';
 
@@ -55,8 +57,15 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
   const scoped = (query: Query = {}): Query => (canteenId ? { ...query, canteenId } : query);
 
   return {
-    registerStaff: (body: { name: string; requestedCanteenId?: string }) =>
-      api.data<Me>('POST', '/auth/staff/register', { body }),
+    /**
+     * Staff self-registration (no session): email + password, PENDING until an
+     * admin approves. The app then signs in with the same email and password.
+     */
+    signUp: (body: StaffSignUpRequest) =>
+      api.data<StaffSignUpResult>('POST', '/auth/staff/sign-up', { body, anonymous: true }),
+    /** Active canteens per service area (public; for the registration form). */
+    serviceAreaDirectory: () =>
+      api.data<ServiceAreaDirectory>('GET', '/service-areas', { anonymous: true }),
     canteens: () => api.get<Canteen[]>('/canteens'),
     requestAccess: (body: { requestedCanteenId: string; notes?: string }) =>
       api.data<ChangeRequest>('POST', '/staff/change-requests', { body }),

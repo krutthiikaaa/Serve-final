@@ -14,7 +14,7 @@ import type {
   StaffDetail,
   StaffSummary,
 } from '@serve/contracts';
-import { ToastProvider } from '@serve/web-shared';
+import { ToastProvider, type AuthContextValue } from '@serve/web-shared';
 import {
   FakeAuthProvider,
   FakeRealtimeProvider,
@@ -340,11 +340,12 @@ export function renderAdmin(
     api,
     fake = createFakeSocket(),
     path = '/',
-  }: { api: MockedApi; fake?: FakeSocket; path?: string },
+    auth,
+  }: { api: MockedApi; fake?: FakeSocket; path?: string; auth?: Partial<AuthContextValue> },
 ) {
   const result = render(
     <ToastProvider>
-      <FakeAuthProvider me={meAdmin()}>
+      <FakeAuthProvider me={meAdmin()} {...(auth ? { overrides: auth } : {})}>
         <AdminApiContext.Provider value={api as unknown as AdminApi}>
           <FakeRealtimeProvider fake={fake}>
             <MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>

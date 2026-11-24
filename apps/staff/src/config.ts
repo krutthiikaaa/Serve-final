@@ -21,9 +21,4 @@ export const config = {
   studentAppUrl:
     (import.meta.env.VITE_STUDENT_APP_URL as string | undefined) ||
     (import.meta.env.DEV ? 'http://localhost:5555' : window.location.origin),
-  /**
-   * This app's root URL: Google sign-in returns here. Same origin as the page
-   * (with the /staff/ or /admin/ base on the single domain).
-   */
-  appUrl: new URL(import.meta.env.BASE_URL, window.location.origin).toString(),
 };

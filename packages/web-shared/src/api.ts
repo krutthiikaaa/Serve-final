@@ -27,9 +27,6 @@ export function errorMessage(err: unknown): string {
       case 0:
         return NETWORK_MESSAGE;
       case 401:
-        if (err.code === 'SSO_CODE_INVALID') {
-          return err.message || 'This sign-in link is invalid or has expired.';
-        }
         return 'Your session has expired. Please sign in again.';
       case 403:
         return err.message || 'You do not have permission to do that.';
@@ -68,9 +65,9 @@ export interface ApiClientOptions {
    * Optional bearer token. The web apps leave it unset: they authenticate
    * with Better Auth's HttpOnly session cookie (sent with credentials).
    */
-  getToken?: (forceRefresh?: boolean) => Promise<string | null>;
-  /** Called when the backend rejects the session for good. */
-  onUnauthorized?: () => void;
+  getToken?: () => Promise<string | null>;
+  /** Called when the backend rejects the session for good, with its error code. */
+  onUnauthorized?: (code?: string) => void;
   fetchImpl?: typeof fetch;
 }
 
@@ -108,12 +105,12 @@ export class ApiClient {
     path: string,
     options: RequestOptions = {},
   ): Promise<ApiResponse<T>> {
-    const attempt = async (forceRefresh: boolean): Promise<Response> => {
+    const attempt = async (): Promise<Response> => {
       const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
       if (options.file) headers['Content-Type'] = options.file.contentType;
       else if (options.body !== undefined) headers['Content-Type'] = 'application/json';
       if (!options.anonymous && this.options.getToken) {
-        const token = await this.options.getToken(forceRefresh);
+        const token = await this.options.getToken();
         if (token) headers.Authorization = `Bearer ${token}`;
       }
       try {
@@ -133,19 +130,13 @@ export class ApiClient {
       }
     };
 
-    let res = await attempt(false);
+    const res = await attempt();
     if (res.status === 401 && !options.anonymous) {
       const code = await peekCode(res);
-      if (code === 'AUTH_TOKEN_EXPIRED') res = await attempt(true);
-      else {
-        this.options.onUnauthorized?.();
-        throw await toError(res, code);
-      }
+      this.options.onUnauthorized?.(code);
+      throw await toError(res, code);
     }
-    if (!res.ok) {
-      if (res.status === 401 && !options.anonymous) this.options.onUnauthorized?.();
-      throw await toError(res);
-    }
+    if (!res.ok) throw await toError(res);
     const body = (res.status === 204 ? undefined : await res.json()) as T;
     return { body, headers: res.headers, status: res.status };
   }
