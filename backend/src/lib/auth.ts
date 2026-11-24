@@ -17,7 +17,6 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   SIGN_IN_METHOD_MESSAGE,
-  isAdminEmail,
   isPasswordIdentityEmail,
   type AuthMethod,
 } from '../modules/auth/sign-in-method.js';
@@ -341,7 +340,7 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
           // or a staff member / admin in with Google:
           //   google   → verified @srmap.edu.in, and no Staff/Admin account
           //              (linked, or unlinked with the same address)
-          //   password → a linked Staff or Admin account (admins: @srmap.edu.in)
+          //   password → a linked Staff or Admin account (any well-formed address)
           before: async (session, context) => {
             const method = sessionMethodFor(context?.path, testPlugins.length > 0);
             if (!method) {
@@ -377,7 +376,6 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
             } else {
               if (!user || (!user.staff && !user.admin)) invalidCredentials();
               if (!isPasswordIdentityEmail(user.email)) invalidCredentials();
-              if (user.admin && !isAdminEmail(user.email)) invalidCredentials();
             }
             return { data: { ...session, authMethod: method } };
           },

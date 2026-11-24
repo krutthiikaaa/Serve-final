@@ -23,8 +23,8 @@ the repository root unless a step says otherwise.
   * **Students**: Google only, verified `@srmap.edu.in` accounts.
   * **Staff**: email + password (any address, e.g. Gmail or Outlook).
     Self-registered accounts stay **PENDING** until an admin approves them.
-  * **Admins**: email + password, `@srmap.edu.in` addresses, created only with
-    `npm run admin:create`.
+  * **Admins**: email + password (any address), created only with
+    `npm run admin:create` (no public registration).
 * The session is an HttpOnly cookie set by the backend on `localhost`. Open
   every app at `http://localhost:…`, **not** `127.0.0.1`, so the browser sends
   it.
@@ -192,7 +192,7 @@ The two `apps/*/.env.development.local` files need no changes: they contain
 ```powershell
 npm run prisma:migrate:deploy --workspace backend    # applies every migration to serve_dev
 npm run db:seed --workspace backend                  # canteens, hostels, menus (idempotent)
-npm run admin:create --workspace backend -- --email your.name@srmap.edu.in --name "Your Name"
+npm run admin:create --workspace backend -- --email your.name@example.com --name "Your Name"
 ```
 
 `prisma:migrate:deploy` applies all migrations in `backend/prisma/migrations`,
@@ -207,13 +207,13 @@ example one created before password sign-in existed):
 
 ```powershell
 npm run account:set-password --workspace backend -- --role staff --email someone@gmail.com
-npm run account:set-password --workspace backend -- --role admin --email someone@srmap.edu.in
+npm run account:set-password --workspace backend -- --role admin --email someone@example.com
 ```
 
 Optional demo accounts (development only):
 
 ```powershell
-$env:DEV_ADMIN_EMAIL = "your.name@srmap.edu.in"
+$env:DEV_ADMIN_EMAIL = "your.name@example.com"
 $env:DEV_STAFF_NIGHT_EMAIL = "kg.night@example.com"
 $env:DEV_STAFF_PENDING_EMAIL = "pending.staff@example.com"
 $env:DEV_STUDENT_EMAIL = "your.student@srmap.edu.in"

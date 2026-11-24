@@ -1,9 +1,10 @@
 /**
  * Provision a SERVE admin (the only way admins are created).
  *
- *   npm run admin:create --workspace backend -- --email someone@srmap.edu.in --name "Ada Admin"
+ *   npm run admin:create --workspace backend -- --email ada@example.com --name "Ada Admin"
  *
- * Admins sign in with email + password; the address must be @srmap.edu.in.
+ * Admins sign in with email + password; any well-formed address works (there
+ * is no institutional-domain requirement and no public admin registration).
  * The password is asked for twice without being shown (or read from the
  * first line of stdin); it is never a command-line argument. Running it again
  * for an existing admin re-activates the account and replaces its password
@@ -15,7 +16,7 @@ import { loadEnv } from '../src/config/env.js';
 import { createPrismaClient } from '../src/lib/prisma.js';
 import { bootstrapAdmin } from '../src/modules/auth/admin-bootstrap.js';
 import { hashNewPassword, setAccountPassword } from '../src/modules/auth/password-accounts.js';
-import { isSrmEmail } from '../src/modules/auth/srm-email.js';
+import { isPasswordIdentityEmail } from '../src/modules/auth/sign-in-method.js';
 import { readNewPassword } from './read-password.js';
 
 const { values } = parseArgs({
@@ -27,13 +28,11 @@ const { values } = parseArgs({
 });
 
 if (!values.email || !values.name) {
-  console.error(
-    'Usage: admin:create -- --email <name>@srmap.edu.in --name "<name>" [--confirm-production]',
-  );
+  console.error('Usage: admin:create -- --email <address> --name "<name>" [--confirm-production]');
   process.exit(1);
 }
-if (!isSrmEmail(values.email)) {
-  console.error('Admins must use an @srmap.edu.in address.');
+if (!isPasswordIdentityEmail(values.email)) {
+  console.error('Not a valid email address.');
   process.exit(1);
 }
 

@@ -2,7 +2,7 @@
  * Set or reset the password of an EXISTING staff or admin account.
  *
  *   npm run account:set-password --workspace backend -- --role staff --email someone@gmail.com
- *   npm run account:set-password --workspace backend -- --role admin --email someone@srmap.edu.in
+ *   npm run account:set-password --workspace backend -- --role admin --email someone@example.com
  *
  * Staff and admins sign in with email + password (students use Google). Use
  * this to move an existing account (created before passwords existed) to

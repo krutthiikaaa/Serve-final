@@ -415,14 +415,21 @@ describe('admin provisioning', () => {
       .expect(404);
   });
 
-  it('refuses non-SRM admin addresses and existing students', async () => {
-    await expect(
-      bootstrapAdmin({ prisma }, { email: 'boss@gmail.com', name: 'Boss' }),
-    ).rejects.toThrow(/@srmap\.edu\.in/);
+  it('refuses malformed addresses and addresses of existing students or staff', async () => {
+    for (const email of ['not-an-email', 'a b@gmail.com', '']) {
+      await expect(bootstrapAdmin({ prisma }, { email, name: 'Boss' })).rejects.toThrow(
+        /Not a valid email address/,
+      );
+    }
     const student = await createTestUser();
     await registerStudent(student.token).expect(201);
     await expect(bootstrapAdmin({ prisma }, { email: student.email, name: 'X' })).rejects.toThrow(
       /already registered as a student/,
+    );
+    const staffEmail = uniquePersonalEmail('staff-not-admin');
+    await staffSignUp({ name: 'Staff', email: staffEmail, password: TEST_PASSWORD }).expect(201);
+    await expect(bootstrapAdmin({ prisma }, { email: staffEmail, name: 'X' })).rejects.toThrow(
+      /already registered as a staff member/,
     );
   });
 

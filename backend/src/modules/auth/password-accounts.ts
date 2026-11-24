@@ -3,7 +3,7 @@ import { hashPassword } from 'better-auth/crypto';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../lib/prisma.js';
 import { normalizeEmail } from './srm-email.js';
-import { isAdminEmail, isPasswordIdentityEmail, passwordSchema } from './sign-in-method.js';
+import { isPasswordIdentityEmail, passwordSchema } from './sign-in-method.js';
 
 /**
  * Password identities for staff and admins (email + password sign-in).
@@ -87,9 +87,6 @@ export async function setAccountPassword(
   const email = normalizeEmail(input.email) ?? '';
   const label = input.role === 'ADMIN' ? 'admin' : 'staff';
   if (!isPasswordIdentityEmail(email)) throw new PasswordAccountError('Not a valid email address.');
-  if (input.role === 'ADMIN' && !isAdminEmail(email)) {
-    throw new PasswordAccountError('Admins must use an @srmap.edu.in address.');
-  }
   return prisma.$transaction(async (tx) => {
     const select = { id: true, name: true, authUserId: true } as const;
     const account =

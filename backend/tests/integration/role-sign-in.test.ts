@@ -10,6 +10,7 @@ import {
   canteenBySlug,
   newAdmin,
   newApprovedStaff,
+  newPendingStaff,
   newStudent,
 } from '../helpers/actors.js';
 import {
@@ -191,17 +192,27 @@ describe('staff and admin password sign-in', () => {
     expect(res.body.code).toBe('INVALID_EMAIL_OR_PASSWORD');
   });
 
-  it('admins are @srmap.edu.in only', async () => {
+  it('admins may use any address (e.g. a personal one), still password-only', async () => {
     const email = uniquePersonalEmail('admin');
     await prisma.admin.create({ data: { email, name: 'Personal Admin' } });
-    await expect(
-      setAccountPassword(prisma, {
-        role: 'ADMIN',
-        email,
-        passwordHash: await hashNewPassword(TEST_PASSWORD),
-      }),
-    ).rejects.toThrow(/@srmap\.edu\.in/);
+    // No password yet: nobody can sign in as this admin.
     expect((await passwordSignInRequest(email, TEST_PASSWORD)).status).toBe(401);
+    await setAccountPassword(prisma, {
+      role: 'ADMIN',
+      email,
+      passwordHash: await hashNewPassword(TEST_PASSWORD),
+    });
+    const admin = await passwordSignIn(email);
+    expect((await sessionOf(admin.token)).authMethod).toBe('password');
+    const me = await request(app).get('/api/auth/me').set(bearer(admin.token)).expect(200);
+    expect(me.body.data).toMatchObject({ role: 'ADMIN', email });
+    await request(app).get('/api/admin/dashboard').set(bearer(admin.token)).expect(200);
+    // A wrong password is still refused.
+    const wrong = await signIn(email, 'not-the-admin-password').expect(401);
+    expect(wrong.body.code).toBe('INVALID_EMAIL_OR_PASSWORD');
+    // The admin API stays closed to staff, whatever their address.
+    const staff = await newPendingStaff(app);
+    await request(app).get('/api/admin/dashboard').set(bearer(staff.token)).expect(403);
   });
 
   it('password sign-in is rate-limited per client', async () => {

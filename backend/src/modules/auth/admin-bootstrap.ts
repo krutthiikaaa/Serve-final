@@ -1,5 +1,6 @@
 import type { PrismaClient } from '../../lib/prisma.js';
-import { isSrmEmail, normalizeEmail } from './srm-email.js';
+import { isPasswordIdentityEmail } from './sign-in-method.js';
+import { normalizeEmail } from './srm-email.js';
 
 export interface BootstrapAdminInput {
   email: string;
@@ -11,7 +12,9 @@ export interface BootstrapAdminInput {
  * There is no public admin registration endpoint, and no Google sign-in ever
  * creates an admin on its own.
  *
- * Creates (or re-activates) an Admin row for an @srmap.edu.in address.
+ * Creates (or re-activates) an Admin row for any well-formed address (no
+ * institutional-domain requirement: admins are trusted operators provisioned
+ * by this script, never self-registered).
  * Admins sign in with email + password: the row has no way to sign in until
  * a password is set (password-accounts.ts setAccountPassword, which
  * scripts/create-admin.ts does right after this). Google sign-in is refused
@@ -23,8 +26,8 @@ export async function bootstrapAdmin(
   input: BootstrapAdminInput,
 ): Promise<{ adminId: string; linked: boolean; created: boolean }> {
   const email = normalizeEmail(input.email) ?? '';
-  if (!isSrmEmail(email)) {
-    throw new Error('Admins must use an @srmap.edu.in Google account.');
+  if (!isPasswordIdentityEmail(email)) {
+    throw new Error('Not a valid email address.');
   }
   const [student, staff] = await Promise.all([
     deps.prisma.student.findUnique({ where: { email } }),

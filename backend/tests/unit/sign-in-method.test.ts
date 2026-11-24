@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sessionMethodFor } from '../../src/lib/auth.js';
 import {
-  isAdminEmail,
   isPasswordIdentityEmail,
   isSignInMethodAllowed,
   parseAuthMethod,
@@ -58,18 +57,13 @@ describe('session creation path → method', () => {
 });
 
 describe('addresses and passwords', () => {
-  it('password identities may use any well-formed address', () => {
+  it('password identities (staff and admins) may use any well-formed address', () => {
     expect(isPasswordIdentityEmail('Someone@Gmail.com')).toBe(true);
     expect(isPasswordIdentityEmail('staff@srmap.edu.in')).toBe(true);
+    expect(isPasswordIdentityEmail('sliceoflife.demo@example.com')).toBe(true);
     expect(isPasswordIdentityEmail('not-an-email')).toBe(false);
     expect(isPasswordIdentityEmail('a b@gmail.com')).toBe(false);
     expect(isPasswordIdentityEmail(42)).toBe(false);
-  });
-
-  it('admins must use @srmap.edu.in', () => {
-    expect(isAdminEmail('ada@srmap.edu.in')).toBe(true);
-    expect(isAdminEmail('ada@gmail.com')).toBe(false);
-    expect(isAdminEmail('ada@srmap.edu.in.evil.com')).toBe(false);
   });
 
   it('passwords are 10–128 characters', () => {

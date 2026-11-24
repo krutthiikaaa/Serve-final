@@ -111,9 +111,7 @@ function AccountGate() {
             <PasswordSignIn onSignIn={signInWithPassword} error={signInError} />
           </div>
         </section>
-        <p className="auth-switch">
-          Admin accounts (@srmap.edu.in) are provisioned by the SERVE operations team.
-        </p>
+        <p className="auth-switch">Admin accounts are provisioned by the SERVE operations team.</p>
       </AuthLayout>
     );
   }

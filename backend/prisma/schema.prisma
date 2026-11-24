@@ -306,7 +306,7 @@ model Hostel {
 // ---------------------------------------------------------------------------
 // Accounts. Better Auth proves identity (AuthUser); these tables decide roles.
 // Students sign in with a verified @srmap.edu.in Google account; staff and
-// admins with email + password (admins: @srmap.edu.in only). A role row is
+// admins with email + password (any address). A role row is
 // linked to its sign-in identity by authUserId. firebaseUid is the legacy
 // Firebase identity, kept (nullable) so no existing value is lost.
 // Emails are stored lower-cased (CHECK constraint in the migration).

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isSrmEmail, normalizeEmail } from './srm-email.js';
+import { normalizeEmail } from './srm-email.js';
 
 /**
  * Role-specific sign-in methods — the rule every layer enforces (session
@@ -7,7 +7,8 @@ import { isSrmEmail, normalizeEmail } from './srm-email.js';
  * Socket.IO handshake):
  *
  *   STUDENT            Google (verified @srmap.edu.in)
- *   STAFF, ADMIN       email + password (admins: @srmap.edu.in addresses)
+ *   STAFF, ADMIN       email + password (any well-formed address; admins are
+ *                      provisioned only by `npm run admin:create`)
  *   not registered     Google (the student registration path)
  *
  * The method is recorded on the session when it is created
@@ -50,16 +51,11 @@ export const passwordSchema = z
   .max(PASSWORD_MAX_LENGTH, { error: `Must be at most ${PASSWORD_MAX_LENGTH} characters` });
 
 /**
- * Address of a password identity: any well-formed address, lower-cased.
- * Staff may use a personal address (e.g. Gmail). It is NOT verified: SERVE
+ * Address of a password identity (staff and admins): any well-formed address,
+ * lower-cased. A personal address (e.g. Gmail) is fine. It is NOT verified: SERVE
  * sends no verification email, so these identities keep emailVerified=false.
  */
 export function isPasswordIdentityEmail(value: unknown): boolean {
   const email = normalizeEmail(value);
   return email !== null && z.email().safeParse(email).success;
-}
-
-/** Admins may only use an @srmap.edu.in address. */
-export function isAdminEmail(value: unknown): boolean {
-  return isSrmEmail(value);
 }

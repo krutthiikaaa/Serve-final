@@ -7,7 +7,7 @@ backend. The sign-in method depends on the role, and the backend enforces it:
 | --- | --- | --- | --- |
 | Student | **Google only**, verified `@srmap.edu.in` | student app (Flutter: web, Android, iOS) | self-registration (name + hostel) after the first Google sign-in |
 | Staff | **email + password only** (any address, e.g. Gmail/Outlook) | staff dashboard | self-registration; **PENDING** until an admin approves and assigns a canteen |
-| Admin | **email + password only**, `@srmap.edu.in` | admin portal | created only by `npm run admin:create` |
+| Admin | **email + password only** (any address) | admin portal | created only by `npm run admin:create`; no public registration |
 
 Better Auth proves *who* you are; PostgreSQL (`Student` / `Staff` / `Admin`)
 decides *what you may do*, exactly as before. Approval status, canteen
@@ -97,12 +97,13 @@ the same address (Better Auth answers `account_not_linked`).
 
 ## Admins: provisioned, email + password
 
-* `npm run admin:create --workspace backend -- --email name@srmap.edu.in --name "Name"`
+* `npm run admin:create --workspace backend -- --email name@example.com --name "Name"`
   creates (or re-activates) the Admin row and its password identity; the
   password is typed at a hidden prompt (or the first line of stdin), never an
   argument. Running it again resets the password.
-* There is no admin self-registration. Only `@srmap.edu.in` addresses; Google
-  is refused for admin addresses.
+* There is no admin self-registration. Any well-formed address may be an admin
+  (no institutional-domain requirement); an address already used by a student
+  or staff account is refused. Google is refused for admin addresses.
 
 ## Passwords
 

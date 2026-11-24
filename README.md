@@ -12,7 +12,7 @@
 
 > **Sign-in is role-specific (Better Auth).** Students: Google only, verified
 > `@srmap.edu.in` accounts. Staff: email + password (any address; PENDING until
-> an admin approves). Admins: email + password, `@srmap.edu.in`, provisioned
+> an admin approves). Admins: email + password (any address), provisioned only
 > with `admin:create`. The backend enforces the method per role.
 > [docs/authentication.md](docs/authentication.md) is authoritative, and
 > [docs/development.md](docs/development.md) is the local setup guide
@@ -244,7 +244,7 @@ npm run prisma:migrate:deploy --workspace backend
 npm run db:seed --workspace backend
 
 # 5. Provision your admin account (asks for its password at a hidden prompt)
-npm run admin:create --workspace backend -- --email you@srmap.edu.in --name "Your Name"
+npm run admin:create --workspace backend -- --email you@example.com --name "Your Name"
 
 # 6. Optional: development staff/admin/student accounts
 #    (set DEV_*_EMAIL variables; see .env.example; asks for one password)

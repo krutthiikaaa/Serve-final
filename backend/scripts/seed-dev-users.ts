@@ -2,13 +2,13 @@
  * Pre-provision development accounts. Development only (NODE_ENV=development);
  * unset addresses are skipped.
  *
- *   DEV_ADMIN_EMAIL=a@srmap.edu.in \
+ *   DEV_ADMIN_EMAIL=a@example.com \
  *   DEV_STAFF_NIGHT_EMAIL=b@example.com DEV_STAFF_DAY_EMAIL=c@example.com \
  *   DEV_STAFF_PENDING_EMAIL=d@example.com DEV_STUDENT_EMAIL=e@srmap.edu.in \
  *   npm run db:seed:dev-users --workspace backend
  *
- * The student signs in with that Google account (@srmap.edu.in). Staff (any
- * address) and the admin (@srmap.edu.in) sign in with email + password: the
+ * The student signs in with that Google account (@srmap.edu.in). Staff and the
+ * admin (any address) sign in with email + password: the
  * password is asked for once (hidden, or the first line of stdin) and set on
  * every staff/admin account provisioned here.
  *
@@ -40,7 +40,7 @@ function emailFrom(variable: string, srmOnly = true): string | null {
   return email;
 }
 
-const adminEmail = emailFrom('DEV_ADMIN_EMAIL');
+const adminEmail = emailFrom('DEV_ADMIN_EMAIL', false);
 const nightEmail = emailFrom('DEV_STAFF_NIGHT_EMAIL', false);
 const dayEmail = emailFrom('DEV_STAFF_DAY_EMAIL', false);
 const pendingEmail = emailFrom('DEV_STAFF_PENDING_EMAIL', false);
