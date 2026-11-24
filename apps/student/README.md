@@ -11,9 +11,15 @@ automated end-to-end tests.
 ## Run it
 
 Requirements: **Flutter 3.47 or newer** (`flutter --version`) and the backend
-stack running on your computer: PostgreSQL, the Firebase Auth Emulator and the
-backend on `:5001` (see [docs/development.md](../../docs/development.md)).
-Commands run from the repository root.
+stack running on your computer: PostgreSQL and the backend on `:5001` (see
+[docs/development.md](../../docs/development.md), which also covers Windows
+PowerShell). Commands run from the repository root.
+
+Students sign in with **Google only** (verified `@srmap.edu.in` accounts),
+through the backend; the backend needs your own Google OAuth client for that
+(`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, see the development guide).
+Staff and admins do not use this app to sign in: they use the staff dashboard
+and admin portal with their email and password.
 
 ### Android emulator (easiest)
 
@@ -30,12 +36,13 @@ No other settings are needed: the app reaches your computer as `10.0.2.2`.
 
 1. Android: turn on Developer options → USB debugging and connect the phone
    (USB or wireless debugging). It should appear in `flutter devices`.
-2. Start the emulator with **`npm run emulators:phone`** instead of
-   `npm run emulators`. It listens on your network, not only on your computer.
-3. `npm run dev:student -- -d <phone-id> --lan`. This finds your computer's
+2. `npm run dev:student -- -d <phone-id> --lan`. This finds your computer's
    network address and points the app at it.
-4. If the phone still can't connect, allow ports 5001 and 9099 through your
-   computer's firewall.
+3. If the phone still can't connect, allow port 5001 through your computer's
+   firewall.
+4. Google sign-in on a phone or emulator needs the backend on a public https
+   URL registered with Google (`BETTER_AUTH_URL`, e.g. a tunnel): see
+   [docs/authentication.md](../../docs/authentication.md#native-app-android--ios).
 
 The debug build allows plain `http://` to your computer; release builds only
 talk to an `https://` backend.
@@ -50,9 +57,9 @@ Not yet tried on a real iPhone; these are the standard Flutter steps.
    e.g. `app.serve.serveStudent.<yourname>`.
 2. On the iPhone: **Settings → Privacy & Security → Developer Mode → On**
    (iOS 16+), connect it by cable and trust the computer.
-3. Start the emulator with `npm run emulators:phone` and the backend as usual,
-   then `npm run dev:student -- -d <iphone-id> --lan` (`flutter devices`
-   shows the id). iPhone and Mac must be on the same Wi-Fi.
+3. Start the backend as usual, then
+   `npm run dev:student -- -d <iphone-id> --lan` (`flutter devices` shows the
+   id). iPhone and Mac must be on the same Wi-Fi.
 4. Allow **Local Network** when iOS asks (debug builds talk to your Mac). If
    you declined: Settings → SERVE → Local Network.
 5. "Untrusted Developer": **Settings → General → VPN & Device Management** →
@@ -69,10 +76,10 @@ After deployment, run it against the public domain in release mode instead:
 
 ### Signing in
 
-Demo account (emulator only, after `npm run db:seed:dev-users --workspace backend`):
-`student@serve.dev` with your `DEV_SEED_PASSWORD`. The emulator forgets
-accounts when it restarts, so re-run the seed after each restart. You can also
-tap "Create an account" in the app.
+Tap **Student → Continue with Google** and choose your `@srmap.edu.in` Google
+account. The first time, enter your name and hostel. Other Google accounts
+(e.g. Gmail) are refused, and a staff or admin address is told to use the
+staff dashboard or admin portal with its email and password.
 
 ### Troubleshooting
 
@@ -82,27 +89,24 @@ tap "Create an account" in the app.
 | `Flutter was not found` (from `npm run dev:student`) | Flutter isn't on your PATH | Install Flutter, or set `FLUTTER_BIN` to the `flutter` executable |
 | `No supported devices connected` | No phone, emulator or simulator is running (desktop isn't a target) | Start an Android emulator / iOS simulator, connect your phone, or use `npm run dev:student` for Chrome |
 | "Unable to connect to SERVE" on the role screen or after sign-in | Backend not running, or the web origin isn't allowed | Start `npm run dev:backend`; add `http://localhost:5555` to `CORS_ORIGINS` in `backend/.env` and restart the backend |
-| "Incorrect email or password" for `student@serve.dev` | The emulator restarted and lost the demo accounts | `DEV_SEED_PASSWORD='…' npm run db:seed:dev-users --workspace backend` |
-| "Unable to reach the sign-in service" | The Auth Emulator isn't running | `npm run emulators` |
+| "This account is not eligible to use SERVE…" | The Google account is not `@srmap.edu.in` | Use your SRM University-AP Google account |
+| "Google sign-in is for students only…" | The address belongs to a staff or admin account | Use the staff dashboard / admin portal with email + password |
+| Google: `redirect_uri_mismatch` | The OAuth client's redirect URI is not `<BETTER_AUTH_URL>/api/auth/callback/google` | Fix it in the Google Cloud console (see docs/development.md) |
 | Works in Chrome but not on an Android emulator | A custom `API_URL` uses `localhost` | Drop the flag (the default is `10.0.2.2`) or use `10.0.2.2` |
-| Your own phone can't connect | `localhost` on the phone is the phone itself, or the emulator only listens on your computer | Run `npm run emulators:phone` and `npm run dev:student -- -d <phone-id> --lan`; same Wi-Fi; allow ports 5001 and 9099 in the firewall |
+| Your own phone can't connect | `localhost` on the phone is the phone itself | Run `npm run dev:student -- -d <phone-id> --lan`; same Wi-Fi; allow port 5001 in the firewall |
 
 ## Configuration (`--dart-define`)
 
 | Key | Default | Notes |
 |---|---|---|
 | `API_URL` | `http://localhost:5001` (`http://10.0.2.2:5001` on an Android emulator); a **built** web app uses the origin that serves it | Backend origin. REST lives under `/api`, Socket.IO at `/socket.io`. |
-| `FIREBASE_API_KEY` | `demo-api-key` | Public Firebase web API key. |
-| `FIREBASE_PROJECT_ID` | `demo-serve` | `demo-*` projects only work with the emulator. |
-| `FIREBASE_AUTH_EMULATOR_HOST` | `127.0.0.1:9099` (`10.0.2.2:9099` on Android) for `demo-` projects in development builds | `host:port` of the Auth Emulator. Never used by release builds. |
-| `STAFF_DASHBOARD_URL` / `ADMIN_PORTAL_URL` | `http://localhost:5173` / `:5174` in development builds; `/staff/` and `/admin/` on the serving origin for a built web app | SSO callback origin after Staff/Admin sign-in. Only `/sso/callback?code=` URLs on this origin are opened. |
+| `STAFF_DASHBOARD_URL` / `ADMIN_PORTAL_URL` | `http://localhost:5173` / `:5174` in development builds; `/staff/` and `/admin/` on the serving origin for a built web app | Opened from the role screen's Staff / Admin options (they sign in there with email + password). |
 
-Only public values go here. Firebase Admin credentials, database passwords and
+Only public values go here. Google OAuth credentials, database passwords and
 payment secrets exist only on the backend.
 
 **Release builds** (`flutter build apk|ipa|web --release`) refuse to start with
-the emulator configured, a `demo-` project, or a non-`https` / localhost
-`API_URL` (see `lib/config/app_config.dart`). Android release builds keep the
+a non-`https` / localhost `API_URL` (see `lib/config/app_config.dart`). Android release builds keep the
 platform default of HTTPS only; plain HTTP is allowed in debug builds for the
 local backend.
 
@@ -111,7 +115,7 @@ local backend.
 The native app is the real student app; it is not published to the App
 Store or Google Play. Against the deployed domain it runs from Xcode or
 `flutter run --release` on an iPhone, and as an APK on Android, with
-`--dart-define=API_URL=https://YOUR_DOMAIN` and the real Firebase values. The
+`--dart-define=API_URL=https://YOUR_DOMAIN`. The
 web build is served at `/` on the same domain for browser tests and demos
 (installable from Safari or Chrome). `npm run build:web` (repository root)
 builds it; it does not register Flutter's service worker
@@ -126,8 +130,8 @@ lib/
   app.dart                  providers + AuthGate (routes on /api/auth/me, owns the session lifecycle)
   config/app_config.dart    --dart-define values and release validation
   core/                     ApiException + messages, formatting (paise → ₹), UUIDs
-  services/auth/            Firebase Auth over REST, secure session store, AuthController
-  services/api/             ApiClient (bearer, token-refresh retry, error envelope), ServeApi, models
+  services/auth/            Google sign-in via the backend (Better Auth), secure session store, AuthController
+  services/api/             ApiClient (bearer / cookie session, error envelope), ServeApi, models
   services/realtime/        Socket.IO with token callback, auth.expired refresh, connection epoch
   state/                    cart (one canteen), selected canteen, notifications badge
   ui/                       screens, widgets, navigation, live-reload mixin
@@ -139,8 +143,9 @@ confirmation, order tracking, orders, order details, notifications, profile.
 The bottom navigation is exactly Home, Menu, Orders and Profile.
 
 See [docs/frontend-architecture.md](../../docs/frontend-architecture.md) for the
-design decisions (why Firebase Auth runs over REST, how realtime refetching
-works, what the client never sends).
+design decisions (how realtime refetching works, what the client never sends;
+its sign-in sections predate Better Auth — see
+[docs/authentication.md](../../docs/authentication.md)).
 
 ## Logo
 
@@ -155,8 +160,11 @@ or recoloured; the app icons are made from it. Menu items without an
 flutter analyze
 flutter test                                    # unit + widget tests (fakes, no network)
 
-# The real service layer against a running backend + Auth Emulator:
-SERVE_INTEGRATION=1 DEV_SEED_PASSWORD='…' flutter test --tags integration
+# The real service layer against a running test backend (NODE_ENV=test,
+# AUTH_TEST_SIGN_IN=true) and an approved staff account with the KITCHEN and
+# CASHIER capabilities (staff sign in with email + password):
+SERVE_INTEGRATION=1 API_URL=http://localhost:5101 \
+  SERVE_STAFF_EMAIL='…' SERVE_STAFF_PASSWORD='…' flutter test --tags integration
 ```
 
 The web build is also driven end to end by Playwright
