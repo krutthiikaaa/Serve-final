@@ -38,7 +38,10 @@ function execute(sql: string) {
  */
 export function backdatePaymentDeadline(orderId: string) {
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new Error(`Not an order id: ${orderId}`);
+  // Prisma stores DateTime as UTC in `timestamp without time zone` columns, so
+  // compute the deadline in UTC: a bare now() would be cast to the server's
+  // local wall-clock time (e.g. Asia/Kolkata) and land hours in the future.
   execute(
-    `UPDATE "Payment" SET "paymentDueAt" = now() - interval '1 minute' WHERE "orderId" = '${orderId}';`,
+    `UPDATE "Payment" SET "paymentDueAt" = (now() AT TIME ZONE 'UTC') - interval '1 minute' WHERE "orderId" = '${orderId}';`,
   );
 }

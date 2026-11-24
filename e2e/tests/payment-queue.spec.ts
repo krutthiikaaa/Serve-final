@@ -24,7 +24,8 @@ async function cashierPage(page: Page) {
     primaryCanteenId: canteen.id,
     assignments: [{ canteenId: canteen.id, capabilities: ['KITCHEN', 'MENU', 'PAUSE', 'CASHIER'] }],
   });
-  await signIn(page, `${E2E.staffUrl}/cashier`, email);
+  // Staff sign in with email + password (the backend refuses Google sessions for staff).
+  await signIn(page, `${E2E.staffUrl}/cashier`, email, E2E.password);
   await expectLive(page);
   return { staff, canteen };
 }
