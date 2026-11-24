@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:serve_student/core/api_exception.dart';
 import 'package:serve_student/services/api/models.dart';
 import 'package:serve_student/services/auth/auth_controller.dart';
+import 'package:serve_student/services/auth/serve_auth_client.dart';
 import 'package:serve_student/services/auth/session_store.dart';
 
 import '../support/fakes.dart';
@@ -106,6 +107,22 @@ void main() {
     await web.restore();
     expect(web.status, AuthStatus.signedOut);
     expect(web.signInError, isNull);
+  });
+
+  test('a staff/admin session refused for its sign-in method points to the web portals', () async {
+    store.value = const StoredSession(token: 'staff-google');
+    me = () => throw const ApiException(401, 'SIGN_IN_METHOD_NOT_ALLOWED', 'x');
+    await auth.restore();
+    expect(auth.status, AuthStatus.signedOut);
+    expect(store.value, isNull);
+    expect(auth.signInError, staffAdminPortalMessage);
+  });
+
+  test('a refused staff/admin address explains where to sign in', () async {
+    google.signInError = const AuthException('STAFF_ADMIN_USE_PASSWORD', staffAdminPortalMessage);
+    await auth.signInWithGoogle();
+    expect(auth.signInError, staffAdminPortalMessage);
+    expect(store.value, isNull);
   });
 
   test('backend outages keep the session and show an error state', () async {

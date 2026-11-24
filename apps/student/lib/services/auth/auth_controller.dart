@@ -124,8 +124,13 @@ class AuthController extends ChangeNotifier {
     } on ApiException catch (e) {
       if (e.status == 401) {
         // No session, or one that has ended: signed out, with the reason when
-        // this device had been signed in.
-        if (_hadSession) signInError = sessionExpiredMessage;
+        // this device had been signed in. A staff/admin session (refused by
+        // the backend for its sign-in method) is pointed at the web portals.
+        if (e.code == 'SIGN_IN_METHOD_NOT_ALLOWED') {
+          signInError = staffAdminPortalMessage;
+        } else if (_hadSession) {
+          signInError = sessionExpiredMessage;
+        }
         _token = null;
         _webSession = false;
         _hadSession = false;

@@ -19,13 +19,16 @@ import 'package:serve_student/services/realtime/realtime_service.dart';
 
 /// The student app's real service layer (session restore, Bearer API client,
 /// Socket.IO) against a running backend in test mode (NODE_ENV=test,
-/// AUTH_TEST_SIGN_IN=true). Google cannot run here, so identities come from
-/// the backend's test-only sign-in, which applies the same SRM rules.
+/// AUTH_TEST_SIGN_IN=true). Google cannot run here, so the student's identity
+/// comes from the backend's test-only sign-in, which applies the same SRM
+/// rules and records a Google session.
 ///
 ///   SERVE_INTEGRATION=1 API_URL=http://localhost:5101 flutter test --tags integration
 ///
-/// Uses a pre-provisioned approved K&G Night staff account (SERVE_STAFF_EMAIL,
-/// default staff.kg@srmap.edu.in) to move the order through the kitchen.
+/// Uses an approved K&G Night staff account with the KITCHEN and CASHIER
+/// capabilities (admin portal → Staff) to move the order through the kitchen.
+/// Staff sign in with email + password: SERVE_STAFF_EMAIL and
+/// SERVE_STAFF_PASSWORD (required).
 void main() {
   final env = Platform.environment;
   final enabled = env['SERVE_INTEGRATION'] == '1';
@@ -41,6 +44,21 @@ void main() {
     );
     expect(res.statusCode, 200, reason: res.body);
     return (jsonDecode(res.body) as Map)['token'] as String;
+  }
+
+  /// A staff session: the real email + password sign-in (staff cannot use Google).
+  String? staffToken;
+  Future<String> staffSignIn() async {
+    final res = await http.post(
+      Uri.parse('${config.apiUrl}/api/auth/sign-in/email'),
+      headers: {'Content-Type': 'application/json', 'Origin': 'http://localhost:5173'},
+      body: jsonEncode({'email': env['SERVE_STAFF_EMAIL'], 'password': env['SERVE_STAFF_PASSWORD']}),
+    );
+    expect(res.statusCode, 200, reason: res.body);
+    // The signed session cookie value is the Bearer credential.
+    final cookie = RegExp(r'serve\.session_token=([^;]+)').firstMatch(res.headers['set-cookie'] ?? '');
+    expect(cookie, isNotNull, reason: 'session cookie');
+    return Uri.decodeComponent(cookie!.group(1)!);
   }
 
   late AuthController auth;
@@ -60,7 +78,7 @@ void main() {
   }
 
   Future<http.Response> staffRequest(String method, String path, {Object? body, String? canteenId}) async {
-    final staffToken = await testSignIn(env['SERVE_STAFF_EMAIL'] ?? 'staff.kg@srmap.edu.in');
+    staffToken ??= await staffSignIn();
     final uri = Uri.parse('${config.apiUrl}$path').replace(queryParameters: canteenId == null ? null : {'canteenId': canteenId});
     final request = http.Request(method, uri)..headers.addAll({'Authorization': 'Bearer $staffToken', 'Content-Type': 'application/json'});
     if (body != null) request.body = jsonEncode(body);
@@ -190,5 +208,5 @@ void main() {
     await auth.signOut();
     expect(auth.status, AuthStatus.signedOut);
     expect(store.value, isNull);
-  }, skip: enabled ? false : 'Set SERVE_INTEGRATION=1 (needs a backend with NODE_ENV=test and AUTH_TEST_SIGN_IN=true)');
+  }, skip: enabled ? false : 'Set SERVE_INTEGRATION=1, SERVE_STAFF_EMAIL and SERVE_STAFF_PASSWORD (needs a backend with NODE_ENV=test and AUTH_TEST_SIGN_IN=true)');
 }

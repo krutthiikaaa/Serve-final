@@ -1,4 +1,4 @@
 tags:
   integration:
-    # Talks to a running backend + Firebase Auth Emulator; see README.
+    # Talks to a running backend in test mode; see test/integration/backend_flow_test.dart.
     timeout: 2x
