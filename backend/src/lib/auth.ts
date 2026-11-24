@@ -361,7 +361,8 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
             });
             if (method === 'google') {
               if (!user) reject('EMAIL_DOMAIN_NOT_ALLOWED');
-              assertStoredIdentity(user);
+              // The role rule first: it gives a staff member or admin the
+              // useful answer ("use your password"), whatever else is wrong.
               const [unlinkedStaff, unlinkedAdmins] = await Promise.all([
                 prisma.staff.count({ where: { email: user.email, authUserId: null } }),
                 prisma.admin.count({ where: { email: user.email, authUserId: null } }),
@@ -372,6 +373,7 @@ export function createAuth({ env, prisma, logger }: CreateAuthOptions) {
                   message: SIGN_IN_METHOD_MESSAGE.password,
                 });
               }
+              assertStoredIdentity(user);
             } else {
               if (!user || (!user.staff && !user.admin)) invalidCredentials();
               if (!isPasswordIdentityEmail(user.email)) invalidCredentials();

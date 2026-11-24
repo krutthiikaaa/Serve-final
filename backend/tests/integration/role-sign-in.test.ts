@@ -182,6 +182,8 @@ describe('staff and admin password sign-in', () => {
     const admin = await newAdmin(prisma);
     expect((await sessionOf(admin.token)).authMethod).toBe('password');
     await request(app).get('/api/admin/dashboard').set(bearer(admin.token)).expect(200);
+    // Google (the test stand-in) refuses the admin's address with the useful reason.
+    await expect(createTestUser(admin.email)).rejects.toThrow(/STAFF_ADMIN_USE_PASSWORD/);
 
     const student = await newStudent(app, prisma);
     expect((await sessionOf(student.token)).authMethod).toBe('google');
