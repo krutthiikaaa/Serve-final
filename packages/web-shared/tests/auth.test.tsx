@@ -5,6 +5,7 @@ import {
   AuthProvider,
   PASSWORD_REQUIRED_MESSAGE,
   SESSION_EXPIRED_MESSAGE,
+  SESSION_RESTORE_TIMEOUT_MS,
   passwordChangeErrorMessage,
   signInErrorMessage,
   useAuth,
@@ -153,6 +154,33 @@ describe('AuthProvider (Better Auth session)', () => {
     expect(calls.some((c) => c.url.endsWith('/api/auth/me'))).toBe(false);
     // Better Auth requests carry the session cookie.
     expect(calls[0]?.init?.credentials).toBe('include');
+  });
+
+  it('an unreachable backend ends in "error" (not an endless spinner), and Retry recovers', async () => {
+    // Connection refused: Better Auth's fetch throws instead of returning `{ error }`.
+    vi.stubGlobal('fetch', () => Promise.reject(new TypeError('fetch failed')));
+    renderAuth();
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('error'));
+    // Backend is back with no session: retry lands on sign-in.
+    stubBackend({ session: null, me: null, meStatus: 401 });
+    fireEvent.click(screen.getByText('recheck'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('signedOut'));
+    expect(screen.getByTestId('error')).toHaveTextContent('');
+  });
+
+  it('a backend that never answers the session check times out into "error"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.stubGlobal('fetch', () => new Promise<Response>(() => undefined));
+      renderAuth();
+      expect(screen.getByTestId('status')).toHaveTextContent('initializing');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SESSION_RESTORE_TIMEOUT_MS + 1);
+      });
+      expect(screen.getByTestId('status')).toHaveTextContent('error');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('restores a session and loads the backend account', async () => {

@@ -9,6 +9,7 @@ import {
   Input,
   PASSWORD_MIN_LENGTH,
   Select,
+  errorMessage,
   fieldErrors,
   newPasswordProblem,
   useAuth,
@@ -124,7 +125,7 @@ export function CreateAccountPage() {
             label="Canteen you work at"
             error={
               directory.error
-                ? 'Could not load canteens'
+                ? `Could not load canteens. ${errorMessage(directory.error)}`
                 : (serverErrors.requestedCanteenId ?? undefined)
             }
           >
@@ -148,6 +149,16 @@ export function CreateAccountPage() {
               </Select>
             )}
           </Field>
+          {directory.error ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={directory.loading}
+              onClick={() => void directory.reload()}
+            >
+              Retry loading canteens
+            </Button>
+          ) : null}
           <Button type="submit" loading={busy} disabled={!complete}>
             Request access
           </Button>

@@ -62,6 +62,9 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 /** Shown when a session that was working ends (expired, signed out elsewhere, revoked). */
 export const SESSION_EXPIRED_MESSAGE = 'Your session expired. Please sign in again.';
 
+/** How long the initial session check may take before the app shows "unreachable" + Retry. */
+export const SESSION_RESTORE_TIMEOUT_MS = 15_000;
+
 /** Shown when the backend refuses a session created with the wrong sign-in method. */
 export const PASSWORD_REQUIRED_MESSAGE =
   'Staff and admins sign in with their email and password. Please sign in again.';
@@ -238,19 +241,42 @@ export function AuthProvider({
   // Restore the session on load.
   useEffect(() => {
     let cancelled = false;
+    const unavailable = (status = 0) =>
+      setState((s) => ({
+        ...s,
+        status: 'error',
+        error: new ApiError(
+          status,
+          'AUTH_UNAVAILABLE',
+          'Unable to reach SERVE. Check your connection.',
+        ),
+      }));
     void (async () => {
-      const { data, error } = await authClient.getSession();
+      let result: Awaited<ReturnType<typeof authClient.getSession>>;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        // An unreachable backend makes Better Auth's fetch throw (connection
+        // refused) or hang; either way end in `error` (with Retry), never an
+        // endless "initializing" spinner.
+        result = await Promise.race([
+          authClient.getSession(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('Session check timed out')),
+              SESSION_RESTORE_TIMEOUT_MS,
+            );
+          }),
+        ]);
+      } catch {
+        if (!cancelled) unavailable();
+        return;
+      } finally {
+        clearTimeout(timer);
+      }
       if (cancelled) return;
+      const { data, error } = result;
       if (error && error.status !== 401) {
-        setState((s) => ({
-          ...s,
-          status: 'error',
-          error: new ApiError(
-            error.status ?? 0,
-            'AUTH_UNAVAILABLE',
-            'Unable to reach SERVE. Check your connection.',
-          ),
-        }));
+        unavailable(error.status ?? 0);
         return;
       }
       if (!data) return toSignedOut();

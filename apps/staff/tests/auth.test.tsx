@@ -133,6 +133,35 @@ describe('staff registration', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('This email is already registered.');
     expect(signInWithPassword).not.toHaveBeenCalled();
   });
+
+  it('explains an unreachable backend and retries loading the canteens', async () => {
+    const api = fakeStaffApi();
+    api.serviceAreaDirectory
+      .mockRejectedValueOnce(new ApiError(0, 'NETWORK_ERROR', 'offline'))
+      .mockResolvedValue(
+        DIRECTORY as unknown as Awaited<ReturnType<StaffApi['serviceAreaDirectory']>>,
+      );
+    render(
+      <ToastProvider>
+        <FakeAuthProvider me={null}>
+          <StaffApiContext.Provider value={api as unknown as StaffApi}>
+            <MemoryRouter>
+              <CreateAccountPage />
+            </MemoryRouter>
+          </StaffApiContext.Provider>
+        </FakeAuthProvider>
+      </ToastProvider>,
+    );
+    expect(await screen.findByText(/Could not load canteens\. Unable to connect/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading canteens' }));
+    expect(
+      await screen.findByRole('option', { name: 'K&G Night Canteen (Night)' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Retry loading canteens' }),
+    ).not.toBeInTheDocument();
+    expect(api.serviceAreaDirectory).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('staff Account page: password change', () => {
