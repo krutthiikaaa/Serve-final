@@ -59,4 +59,15 @@ test('order events reach only the right staff, student and admins', async () => 
   expect(otherStudent.status).toBe(404);
 
   for (const s of [kgSocket, vedSocket, buyerSocket, bystanderSocket, adminSocket]) s.close();
+
+  // Leave nothing active behind: the canteen is shared with other specs (e.g. visual.spec).
+  for (const status of ['READY', 'COLLECTED'] as const) {
+    const moved = await kg.staff.data<{ status: string }>(
+      'PATCH',
+      `/staff/orders/${order.id}/status`,
+      { status },
+    );
+    expect(moved.status).toBe(status);
+  }
+  expect((await buyer.order(order.id)).status).toBe('COLLECTED');
 });
