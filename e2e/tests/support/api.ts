@@ -11,15 +11,69 @@ import type {
 import { E2E } from './constants.mjs';
 
 /**
- * Drives the backend exactly like the native student app does: a Better Auth
- * session (here from the test-only sign-in, same SRM rule as Google), then
- * the SERVE REST API with `Authorization: Bearer <session token>`.
+ * Drives the backend like the real clients do, then calls the SERVE REST API
+ * with `Authorization: Bearer <signed session credential>`:
+ * - students: a Google session (the test-only sign-in stands in for Google,
+ *   with the same SRM rule);
+ * - staff and admins: the real email + password sign-in.
  * Nothing here talks to PostgreSQL directly.
  */
 export const uniqueEmail = (prefix: string) =>
   `${prefix}.${Date.now()}.${randomUUID().slice(0, 6)}@srmap.edu.in`;
 
-/** A real Better Auth session for a verified @srmap.edu.in identity. */
+/** A unique personal address (staff may use Gmail, Outlook…). */
+export const uniquePersonalEmail = (prefix: string) =>
+  `${prefix}.${Date.now()}.${randomUUID().slice(0, 6)}@gmail.com`;
+
+/** The signed session cookie value from a Better Auth response (the Bearer credential). */
+function sessionCredential(res: Response): string | null {
+  for (const cookie of res.headers.getSetCookie()) {
+    const [pair] = cookie.split(';');
+    const [name, ...value] = (pair ?? '').split('=');
+    if (name?.trim().endsWith('serve.session_token')) return decodeURIComponent(value.join('='));
+  }
+  return null;
+}
+
+/** Email + password sign-in (staff, admins); resolves with the session credential. */
+export async function passwordSignIn(email: string, password = E2E.password): Promise<string> {
+  const res = await fetch(`${E2E.apiUrl}/api/auth/sign-in/email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: E2E.staffUrl },
+    body: JSON.stringify({ email, password }),
+  });
+  const token = res.ok ? sessionCredential(res) : null;
+  if (!token) throw new Error(`Password sign-in failed: ${res.status} ${await res.text()}`);
+  return token;
+}
+
+/** Staff self-registration (no session): a PENDING account with a password. */
+export async function staffSignUp(
+  name: string,
+  email: string,
+  requestedCanteenId?: string,
+  password = E2E.password,
+) {
+  const res = await fetch(`${E2E.apiUrl}/api/auth/staff/sign-up`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password, requestedCanteenId }),
+  });
+  if (res.status !== 201)
+    throw new Error(`Staff sign-up failed: ${res.status} ${await res.text()}`);
+}
+
+/** A canteen from the public service-area directory (what the registration form shows). */
+export async function canteenByName(name: string): Promise<{ id: string; name: string }> {
+  const res = await fetch(`${E2E.apiUrl}/api/service-areas`);
+  const areas = ((await res.json()) as { data: { canteens: { id: string; name: string }[] }[] })
+    .data;
+  const canteen = areas.flatMap((area) => area.canteens).find((c) => c.name === name);
+  if (!canteen) throw new Error(`Canteen ${name} not seeded`);
+  return canteen;
+}
+
+/** A real Better Auth Google session (test-only stand-in) for a verified @srmap.edu.in identity. */
 export async function testSignIn(email: string): Promise<string> {
   const res = await fetch(`${E2E.apiUrl}/api/auth/test/sign-in`, {
     method: 'POST',
@@ -124,6 +178,29 @@ export class StudentActor extends ApiActor {
     return this.data<{ order: StudentOrder }>('POST', `/payments/${orderId}/mock-complete`, {});
   }
 
+  /** "I've paid": records the claim (never confirms payment). */
+  claim(orderId: string, utr?: string) {
+    return this.call<{ data: StudentOrder; error?: { code: string } }>(
+      'POST',
+      `/payments/${orderId}/claim`,
+      utr ? { utr } : {},
+    );
+  }
+
+  order(orderId: string) {
+    return this.data<StudentOrder>('GET', `/orders/${orderId}`);
+  }
+
+  /** Orders the first available item of the default canteen, without paying. */
+  async orderUnpaid(quantity = 1) {
+    const menu = await this.menu();
+    const item = menu.categories.flatMap((c) => c.items).find((i) => i.isOrderable);
+    if (!item) throw new Error('No orderable item');
+    const placed = await this.placeOrder(menu.canteen.id, [{ menuItemId: item.id, quantity }]);
+    if (placed.status !== 201) throw new Error(`Order failed: ${JSON.stringify(placed.body)}`);
+    return placed.body.data;
+  }
+
   /** Orders and pays for the first available items of the default canteen. */
   async orderAndPay(quantity = 2) {
     const menu = await this.menu();
@@ -178,20 +255,20 @@ export class LiveSocket {
   }
 }
 
-/** The E2E admin (provisioned by email; linked at its first sign-in). */
+/** The E2E admin (provisioned with a password by start-backend.mjs), signed in with it. */
 export async function adminActor(): Promise<ApiActor> {
-  return new ApiActor(await testSignIn(E2E.adminEmail));
+  return new ApiActor(await passwordSignIn(E2E.adminEmail));
 }
 
-/** A staff member onboarded through the API and approved by the E2E admin. */
+/**
+ * A staff member registered with a personal address and a password, then
+ * approved by the E2E admin. Sign in with `email` and `E2E.password`.
+ */
 export async function approvedStaff(name: string, canteenName: string) {
   const admin = await adminActor();
-  const email = uniqueEmail('staff');
-  const staff = new ApiActor(await testSignIn(email));
-  const canteens = await staff.data<{ id: string; name: string }[]>('GET', '/canteens');
-  const canteen = canteens.find((c) => c.name === canteenName);
-  if (!canteen) throw new Error(`Canteen ${canteenName} not seeded`);
-  await staff.data('POST', '/auth/staff/register', { name, requestedCanteenId: canteen.id });
+  const email = uniquePersonalEmail('staff');
+  const canteen = await canteenByName(canteenName);
+  await staffSignUp(name, email, canteen.id);
   const pending = await admin.call<{ data: { id: string; staff: { email: string } }[] }>(
     'GET',
     '/admin/change-requests?status=PENDING&limit=100',
@@ -202,5 +279,6 @@ export async function approvedStaff(name: string, canteenName: string) {
   await admin.data('POST', `/admin/change-requests/${request.id}/approve`, {
     replaceExisting: true,
   });
+  const staff = new ApiActor(await passwordSignIn(email));
   return { email, staff, canteen, admin };
 }

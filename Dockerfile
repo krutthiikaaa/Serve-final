@@ -5,12 +5,12 @@
 #
 # The web apps are built BEFORE `docker build` (the Flutter SDK is not part of
 # this image), so the image contains exactly what you built and tested:
-#   FIREBASE_API_KEY=<web api key> FIREBASE_PROJECT_ID=<project id> npm run build:web
+#   npm run build:web
 #   docker build -t serve .
 # One-off tasks (migrations, catalogue seed, admin provisioning) use the build
 # stage, which has the Prisma CLI and tsx:
 #   docker build --target build -t serve-tools .
-# Runtime configuration (database, Firebase service account, payment mode)
+# Runtime configuration (database, Better Auth secret, Google OAuth client, payment mode)
 # comes from the environment at `docker run`; none of it is baked in.
 # See docs/deployment.md.
 

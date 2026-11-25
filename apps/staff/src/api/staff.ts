@@ -4,15 +4,18 @@ import type {
   Category,
   CategoryWithItems,
   ChangeRequest,
-  Me,
   Menu,
   MenuItem,
   OrderStatus,
   Page,
+  PendingPaymentSection,
   Receipt,
+  ServiceAreaDirectory,
   ServicePeriod,
   StaffDashboard,
   StaffOrder,
+  StaffSignUpRequest,
+  StaffSignUpResult,
 } from '@serve/contracts';
 import type { ApiClient, Query } from '@serve/web-shared';
 
@@ -55,8 +58,15 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
   const scoped = (query: Query = {}): Query => (canteenId ? { ...query, canteenId } : query);
 
   return {
-    registerStaff: (body: { name: string; requestedCanteenId?: string }) =>
-      api.data<Me>('POST', '/auth/staff/register', { body }),
+    /**
+     * Staff self-registration (no session): email + password, PENDING until an
+     * admin approves. The app then signs in with the same email and password.
+     */
+    signUp: (body: StaffSignUpRequest) =>
+      api.data<StaffSignUpResult>('POST', '/auth/staff/sign-up', { body, anonymous: true }),
+    /** Active canteens per service area (public; for the registration form). */
+    serviceAreaDirectory: () =>
+      api.data<ServiceAreaDirectory>('GET', '/service-areas', { anonymous: true }),
     canteens: () => api.get<Canteen[]>('/canteens'),
     requestAccess: (body: { requestedCanteenId: string; notes?: string }) =>
       api.data<ChangeRequest>('POST', '/staff/change-requests', { body }),
@@ -104,10 +114,19 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
     disableItem: (id: string) =>
       api.data<MenuItem>('DELETE', `/staff/menu/items/${id}`, { query: scoped() }),
 
-    pendingPayments: async (options: { cursor?: string | null } = {}) =>
+    /** The payment queue: claimed ("I've paid", oldest claim first) or unclaimed. */
+    pendingPayments: async (options: {
+      section: PendingPaymentSection;
+      cursor?: string | null;
+      limit?: number;
+    }) =>
       (
         await api.request<Page<StaffOrder>>('GET', '/staff/payments/pending', {
-          query: scoped({ limit: 50, cursor: options.cursor }),
+          query: scoped({
+            section: options.section,
+            limit: options.limit ?? 25,
+            cursor: options.cursor,
+          }),
         })
       ).body,
     confirmPayment: (id: string, body: { paymentReceived: true; utr?: string | null }) =>

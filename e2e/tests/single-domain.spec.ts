@@ -55,7 +55,9 @@ async function expectApp(page: Page, app: 'student' | 'staff' | 'admin') {
     });
   } else {
     await expect(page).toHaveTitle(app === 'staff' ? 'SERVE Staff' : 'SERVE Admin');
-    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    // Staff and admins sign in with email + password; no Google option.
+    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByText(/google/i)).toHaveCount(0);
   }
 }
 
@@ -244,9 +246,10 @@ test('full flow on one origin: Flutter student pays, staff works the order live,
 
     // Nothing reaches the kitchen until the cashier confirms the payment.
     await expect(staff.getByRole('region', { name: 'New' }).getByText(orderNumber)).toHaveCount(0);
+    // Not claimed by the student: the cashier finds it under "Not claimed yet".
     const pending = await staffApi.data<{ id: string; orderNumber: string }[]>(
       'GET',
-      `/staff/payments/pending?limit=100&canteenId=${canteen.id}`,
+      `/staff/payments/pending?section=unclaimed&limit=100&canteenId=${canteen.id}`,
     );
     const unpaid = pending.find((o) => o.orderNumber === orderNumber);
     expect(unpaid, `pending order ${orderNumber}`).toBeTruthy();

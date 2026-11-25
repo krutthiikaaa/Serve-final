@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { MenuItem, Receipt, ServicePeriod, StaffOrder } from '@serve/contracts';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type {
+  MenuItem,
+  PendingPaymentSection,
+  Receipt,
+  ServicePeriod,
+  StaffOrder,
+} from '@serve/contracts';
 import {
   Button,
   CanteenTypeBadge,
@@ -89,6 +95,59 @@ export function CashierPage() {
   );
 }
 
+const QUEUE_PAGE = 25;
+
+/**
+ * One section of the payment queue, oldest first, with "Load more". Live
+ * changes reload it from the first page (the most urgent rows).
+ */
+function useQueueSection(section: PendingPaymentSection, canteenId: string) {
+  const api = useStaffApi();
+  const { connectionEpoch } = useRealtime();
+  const first = useResource(
+    () => api.pendingPayments({ section, limit: QUEUE_PAGE }),
+    [api, section, canteenId, connectionEpoch],
+  );
+  const [more, setMore] = useState<{ rows: StaffOrder[]; cursor: string | null } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<unknown>(null);
+  // A fresh first page starts the section over.
+  useEffect(() => setMore(null), [first.data]);
+
+  const rows = [...(first.data?.data ?? []), ...(more?.rows ?? [])];
+  const cursor = more ? more.cursor : (first.data?.nextCursor ?? null);
+  const loadMore = async () => {
+    if (!cursor) return;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const page = await api.pendingPayments({ section, cursor, limit: QUEUE_PAGE });
+      setMore((prev) => ({ rows: [...(prev?.rows ?? []), ...page.data], cursor: page.nextCursor }));
+    } catch (err) {
+      setMoreError(err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+  return {
+    rows,
+    hasMore: cursor !== null,
+    loading: first.loading && !first.data,
+    error: first.error && !first.data ? first.error : null,
+    loadingMore,
+    moreError,
+    loadMore,
+    reload: () => first.reload(),
+  };
+}
+
+/** "Expires in 12 min" / "Expiring now" from an unclaimed payment's deadline. */
+function expiresIn(dueAt: string | null | undefined, now: number): string {
+  if (!dueAt) return 'Does not expire';
+  const minutes = Math.ceil((new Date(dueAt).getTime() - now) / 60_000);
+  return minutes <= 0 ? 'Expiring now' : `Expires in ${minutes} min`;
+}
+
 function PendingQueue({
   canteenId,
   isDemo,
@@ -100,17 +159,31 @@ function PendingQueue({
 }) {
   const api = useStaffApi();
   const toast = useToast();
-  const { connectionEpoch } = useRealtime();
-  const pending = useResource(() => api.pendingPayments(), [api, canteenId, connectionEpoch]);
+  const claimedQueue = useQueueSection('claimed', canteenId);
+  const unclaimedQueue = useQueueSection('unclaimed', canteenId);
   const [acting, setActing] = useState<StaffOrder | null>(null);
   const [mode, setMode] = useState<'confirm' | 'reject' | 'view' | null>(null);
   const [utr, setUtr] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
-  useServerEvents(['order.created', 'order.payment_confirmed', 'order.cancelled'] as const, () => {
-    void pending.reload();
-  });
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const reloadAll = () => {
+    void claimedQueue.reload();
+    void unclaimedQueue.reload();
+  };
+  // Claims, new orders, rejections, expiries and cancellations arrive as
+  // `payment.queue_changed` (ids only); confirmations by another cashier as
+  // `order.payment_confirmed`.
+  useServerEvents(
+    ['payment.queue_changed', 'order.payment_confirmed', 'order.cancelled'] as const,
+    reloadAll,
+  );
 
   const open = (order: StaffOrder, next: 'confirm' | 'reject' | 'view') => {
     setActing(order);
@@ -145,10 +218,11 @@ function PendingQueue({
       );
       onReceipt(result.receipt);
       close();
-      await pending.reload();
+      reloadAll();
     } catch (err) {
       toast(errorMessage(err), 'error');
       setBusy(false);
+      reloadAll();
     }
   };
 
@@ -159,84 +233,137 @@ function PendingQueue({
       await api.rejectPayment(acting.id, reason.trim() || undefined);
       toast(`Payment rejected for ${acting.orderNumber}`);
       close();
-      await pending.reload();
+      reloadAll();
     } catch (err) {
       toast(errorMessage(err), 'error');
       setBusy(false);
+      reloadAll();
     }
   };
 
-  if (pending.loading && !pending.data) return <SkeletonRows rows={4} />;
-  if (pending.error && !pending.data)
-    return <ErrorState error={pending.error} onRetry={() => void pending.reload()} />;
-
-  const rows = pending.data?.data ?? [];
+  const orderCells = (order: StaffOrder) => (
+    <>
+      <td>
+        <strong className="order-number">{order.orderNumber}</strong>
+        <div className="muted small">
+          {order.canteen.name} · {order.servicePeriod ?? '—'}
+        </div>
+      </td>
+      <td>{order.student?.name ?? '—'}</td>
+      <td className="muted">
+        {order.items.map((item) => `${item.quantity}× ${item.itemName}`).join(', ')}
+      </td>
+      <td className="num">{formatRupees(order.totalPaise)}</td>
+    </>
+  );
 
   return (
-    <section className="section">
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No payments waiting"
-          body="New app orders stay here until you confirm actual UPI credit."
-        />
-      ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Student</th>
-                <th>Items</th>
-                <th>Total</th>
-                <th>Method</th>
-                <th>UTR</th>
-                <th>Status</th>
-                <th>Waiting</th>
-                <th>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((order) => (
-                <tr key={order.id}>
-                  <td>
-                    <strong className="order-number">{order.orderNumber}</strong>
-                    <div className="muted small">
-                      Token {order.orderNumber} · {order.canteen.name} ·{' '}
-                      {order.servicePeriod ?? '—'}
-                    </div>
-                  </td>
-                  <td>{order.student?.name ?? '—'}</td>
-                  <td className="muted">
-                    {order.items.map((item) => `${item.quantity}× ${item.itemName}`).join(', ')}
-                  </td>
-                  <td className="num">{formatRupees(order.totalPaise)}</td>
-                  <td>{order.payment?.provider ?? '—'}</td>
-                  <td>{order.payment?.utr ?? '—'}</td>
-                  <td>
-                    <Tag tone="warning">{order.payment?.status ?? 'PENDING'}</Tag>
-                  </td>
-                  <td className="muted">{timeAgo(order.createdAt)}</td>
-                  <td>
-                    <div className="row-actions">
-                      <Button size="sm" variant="secondary" onClick={() => open(order, 'view')}>
-                        View
-                      </Button>
-                      <Button size="sm" onClick={() => open(order, 'confirm')}>
-                        {isDemo ? 'Simulate' : 'Confirm'}
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => open(order, 'reject')}>
-                        Reject
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <>
+      <section className="section" aria-labelledby="claimed-heading">
+        <div className="section-header">
+          <h2 id="claimed-heading">Claimed — check these first</h2>
+          <p className="muted small">
+            The student says they have paid. Oldest claim first. A claim or UTR is not proof:
+            confirm only when the credit is in the canteen&apos;s account.
+          </p>
         </div>
-      )}
+        <QueueSection
+          queue={claimedQueue}
+          label="claimed payments"
+          empty={
+            <EmptyState
+              title="No claims waiting"
+              body="When a student taps “I've paid”, the order appears here, oldest first."
+            />
+          }
+          head={
+            <tr>
+              <th>Order</th>
+              <th>Student</th>
+              <th>Items</th>
+              <th>Total</th>
+              <th>UTR</th>
+              <th>Claimed</th>
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          }
+          row={(order) => (
+            <tr key={order.id}>
+              {orderCells(order)}
+              <td>{order.payment?.utr ?? '—'}</td>
+              <td className="muted nowrap">
+                {order.payment?.claimedAt ? timeAgo(order.payment.claimedAt, now) : '—'}
+              </td>
+              <td>
+                <div className="row-actions">
+                  <Button size="sm" variant="secondary" onClick={() => open(order, 'view')}>
+                    View
+                  </Button>
+                  <Button size="sm" onClick={() => open(order, 'confirm')}>
+                    {isDemo ? 'Simulate' : 'Confirm'}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => open(order, 'reject')}>
+                    Reject
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          )}
+        />
+      </section>
+
+      <section className="section" aria-labelledby="unclaimed-heading">
+        <div className="section-header">
+          <h2 id="unclaimed-heading">Not claimed yet</h2>
+          <p className="muted small">
+            Placed, but the student has not said they paid. Unpaid orders expire automatically.
+          </p>
+        </div>
+        <QueueSection
+          queue={unclaimedQueue}
+          label="unclaimed orders"
+          empty={
+            <EmptyState
+              title="No unpaid orders"
+              body="New app orders wait here until the student pays and claims."
+            />
+          }
+          head={
+            <tr>
+              <th>Order</th>
+              <th>Student</th>
+              <th>Items</th>
+              <th>Total</th>
+              <th>Placed</th>
+              <th>Expiry</th>
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          }
+          row={(order) => (
+            <tr key={order.id}>
+              {orderCells(order)}
+              <td className="muted nowrap">{timeAgo(order.createdAt, now)}</td>
+              <td className="nowrap">
+                <Tag tone="warning">{expiresIn(order.payment?.paymentDueAt, now)}</Tag>
+              </td>
+              <td>
+                <div className="row-actions">
+                  <Button size="sm" variant="secondary" onClick={() => open(order, 'view')}>
+                    View
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => open(order, 'confirm')}>
+                    {isDemo ? 'Simulate' : 'Confirm'}
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          )}
+        />
+      </section>
 
       {acting && mode === 'view' ? (
         <Modal title={`Order ${acting.orderNumber}`} onClose={close}>
@@ -306,13 +433,56 @@ function PendingQueue({
             </>
           }
         >
-          <p>Rejected payments do not go to the kitchen.</p>
+          <p>
+            Rejected payments do not go to the kitchen. The student is told and can pay and claim
+            again before the order expires.
+          </p>
           <Field label="Reason (optional)">
             {(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} />}
           </Field>
         </Modal>
       ) : null}
-    </section>
+    </>
+  );
+}
+
+/** A queue section: skeleton, error, empty state, table, and "Load more". */
+function QueueSection({
+  queue,
+  label,
+  empty,
+  head,
+  row,
+}: {
+  queue: ReturnType<typeof useQueueSection>;
+  label: string;
+  empty: ReactNode;
+  head: ReactNode;
+  row: (order: StaffOrder) => ReactNode;
+}) {
+  if (queue.loading) return <SkeletonRows rows={3} />;
+  if (queue.error) return <ErrorState error={queue.error} onRetry={() => void queue.reload()} />;
+  if (queue.rows.length === 0) return <>{empty}</>;
+  return (
+    <>
+      <div className="table-wrap">
+        <table className="table" aria-label={label}>
+          <thead>{head}</thead>
+          <tbody>{queue.rows.map(row)}</tbody>
+        </table>
+      </div>
+      <FormError error={queue.moreError} />
+      {queue.hasMore ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={queue.loadingMore}
+          onClick={() => void queue.loadMore()}
+        >
+          Load more
+        </Button>
+      ) : null}
+    </>
   );
 }
 

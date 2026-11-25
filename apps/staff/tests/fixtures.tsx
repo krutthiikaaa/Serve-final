@@ -60,6 +60,9 @@ export function order(status: OrderStatus, overrides: Partial<StaffOrder> = {}):
       refundedAt: null,
       failureReason: null,
       isSimulated: false,
+      claimedAt: null,
+      paymentDueAt: null,
+      expiredAt: null,
     },
     createdAt: at,
     updatedAt: at,
@@ -214,7 +217,8 @@ export function fakeStaffApi(): MockedApi {
       throw new Error(`${name} not stubbed`);
     });
   const names: (keyof StaffApi)[] = [
-    'registerStaff',
+    'signUp',
+    'serviceAreaDirectory',
     'canteens',
     'requestAccess',
     'changeRequests',

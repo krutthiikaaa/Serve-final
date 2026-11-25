@@ -82,20 +82,36 @@ describe('app order cashier confirmation', () => {
         expect(res.body.data.map((row: { id: string }) => row.id)).not.toContain(placed.id);
       });
 
-    const pending = await request(app)
-      .get('/api/staff/payments/pending')
-      .set(bearer(cashier.token))
-      .expect(200);
-    const row = pending.body.data.find((item: { id: string }) => item.id === placed.id);
+    // Placed, not claimed yet: in the cashier's unclaimed section only.
+    const queue = async (section: 'claimed' | 'unclaimed') =>
+      (
+        await request(app)
+          .get(`/api/staff/payments/pending?section=${section}`)
+          .set(bearer(cashier.token))
+          .expect(200)
+      ).body.data as {
+        id: string;
+        status: string;
+        receiptNumber: string | null;
+        payment: { status: string; claimedAt: string | null };
+      }[];
+    const row = (await queue('unclaimed')).find((item) => item.id === placed.id)!;
     expect(row.status).toBe('PLACED');
     expect(row.payment.status).toBe('PENDING');
+    expect(row.payment.claimedAt).toBeNull();
     expect(row.receiptNumber).toBeNull();
+    expect((await queue('claimed')).map((item) => item.id)).not.toContain(placed.id);
 
     await request(app)
       .post(`/api/payments/${placed.id}/claim`)
       .set(bearer(student.token))
       .send({ utr: 'AXIS123456789' })
       .expect(200);
+    // Claimed: moves to the claimed section (a claim is not a payment).
+    const claimedRow = (await queue('claimed')).find((item) => item.id === placed.id)!;
+    expect(claimedRow.payment).toMatchObject({ status: 'PENDING' });
+    expect(claimedRow.payment.claimedAt).toEqual(expect.any(String));
+    expect((await queue('unclaimed')).map((item) => item.id)).not.toContain(placed.id);
 
     await onlyCapabilities(['KITCHEN']);
     await request(app)

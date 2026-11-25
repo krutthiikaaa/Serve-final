@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { StudentActor, approvedStaff, uniqueEmail } from './support/api';
+import { StudentActor, approvedStaff, uniquePersonalEmail } from './support/api';
 import { E2E } from './support/constants.mjs';
 import { expectLive, signIn } from './support/ui';
 
@@ -18,7 +18,10 @@ const shot = (page: Page, name: string) =>
 test('staff dashboard screens', async ({ page }) => {
   const { email } = await approvedStaff('Visual Staff', 'Krishna & Godavari Night Canteen');
   const student = await StudentActor.register('Visual Student');
-  for (let i = 0; i < 3; i += 1) await student.orderAndPay(i + 1);
+  const orders = [];
+  for (let i = 0; i < 3; i += 1) orders.push((await student.orderAndPay(i + 1)).order);
+  // The canteen is shared with other specs, so act on and check this test's own order only.
+  const target = orders[0]!.orderNumber;
 
   await page.goto(E2E.staffUrl);
   await shot(page, 'staff-01-login');
@@ -32,14 +35,17 @@ test('staff dashboard screens', async ({ page }) => {
   await shot(page, 'staff-03-dashboard');
 
   await page.getByRole('link', { name: 'Orders' }).click();
-  const first = page.getByRole('region', { name: 'New' }).getByRole('article').first();
-  await first.getByRole('button', { name: 'Start preparing' }).click();
-  await expect(page.getByRole('region', { name: 'Preparing' }).getByRole('article')).toHaveCount(1);
+  const card = (column: 'New' | 'Preparing') =>
+    page
+      .getByRole('region', { name: column })
+      .getByRole('article')
+      .filter({ has: page.getByText(target, { exact: true }) });
+  await card('New').getByRole('button', { name: 'Start preparing' }).click();
+  // The board changes only after the backend confirms: wait for this order to move.
+  await expect(card('Preparing')).toBeVisible();
+  await expect(card('New')).toHaveCount(0);
   await shot(page, 'staff-04-order-board');
-  await page
-    .getByRole('region', { name: 'Preparing' })
-    .getByRole('article')
-    .first()
+  await card('Preparing')
     .getByRole('button', { name: /details/ })
     .click();
   await shot(page, 'staff-05-order-detail');
@@ -66,16 +72,19 @@ test('staff dashboard screens', async ({ page }) => {
 });
 
 test('staff onboarding states', async ({ page }) => {
-  // The sign-in screen (Google, SRM accounts only), then a first sign-in.
+  // The email + password sign-in, then the registration form.
+  await page.goto(E2E.staffUrl);
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  await shot(page, 'staff-11a-sign-in');
   await page.goto(`${E2E.staffUrl}/create-account`);
-  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
-  await shot(page, 'staff-11a-request-access-google');
-  const email = uniqueEmail('visual.pending');
-  await signIn(page, E2E.staffUrl, email, E2E.password);
-  await expect(page.getByRole('heading', { name: 'Your staff details' })).toBeVisible();
-  await shot(page, 'staff-11-complete-registration');
   await page.getByLabel('Full name').fill('Visual Pending');
-  await page.getByLabel('Canteen you work at').selectOption({ label: 'Vedavathi Night Canteen' });
+  await page.getByLabel('Email', { exact: true }).fill(uniquePersonalEmail('visual.pending'));
+  await page.getByLabel('Password', { exact: true }).fill(E2E.password);
+  await page.getByLabel('Confirm password').fill(E2E.password);
+  await page
+    .getByLabel('Canteen you work at')
+    .selectOption({ label: 'Vedavathi Night Canteen (Night)' });
+  await shot(page, 'staff-11-request-access');
   await page.getByRole('button', { name: 'Request access' }).click();
   await expect(page.getByRole('heading', { name: 'Awaiting approval' })).toBeVisible();
   await shot(page, 'staff-12-awaiting-approval');
@@ -127,6 +136,6 @@ test('admin portal screens', async ({ page }) => {
     .click();
   await shot(page, 'admin-09-notifications');
   await page.getByRole('button', { name: 'Log out' }).click();
-  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await shot(page, 'admin-10-login');
 });

@@ -10,10 +10,14 @@
 > and production deployment. See
 > [Current Development Status](#17-current-development-status).
 
-> **Sign-in is Google (Better Auth), verified `@srmap.edu.in` accounts only.**
-> Firebase Authentication, the Auth Emulator and email/password sign-in have
-> been removed. [docs/authentication.md](docs/authentication.md) is
-> authoritative; some older pages under `docs/` still describe Firebase.
+> **Sign-in is role-specific (Better Auth).** Students: Google only, verified
+> `@srmap.edu.in` accounts. Staff: email + password (any address; PENDING until
+> an admin approves). Admins: email + password (any address), provisioned only
+> with `admin:create`. The backend enforces the method per role.
+> [docs/authentication.md](docs/authentication.md) is authoritative, and
+> [docs/development.md](docs/development.md) is the local setup guide
+> (Windows PowerShell included); some older pages under `docs/` still describe
+> Firebase.
 
 ---
 
@@ -99,7 +103,8 @@ All three talk to **one shared backend**.
 ```
  Student App (Flutter)   Staff Dashboard (React)   Admin Portal (React)
           │                        │                        │
-          │  1. Google sign-in (Better Auth, @srmap.edu.in) -> session
+          │  1. Sign-in (Better Auth): students Google (@srmap.edu.in);
+          │     staff and admins email + password -> session
           │  2. REST over HTTPS   HttpOnly session cookie (web) or Bearer (mobile)
           │  3. Socket.IO         session-authenticated, server-assigned rooms
           ▼                        ▼                        ▼
@@ -134,7 +139,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Shared web code | `packages/contracts` (zod contract + types), `packages/web-shared` | **Implemented** |
 | Backend | Node.js + TypeScript + Express + Socket.IO | **Implemented** |
 | Database | PostgreSQL + Prisma | **Implemented** (schema, migration, seed) |
-| Authentication | Better Auth + Google OAuth (verified `@srmap.edu.in` only) | **Implemented** (automated tests use a test-only sign-in; real Google sign-in needs your own OAuth client) |
+| Authentication | Better Auth: Google OAuth for students (verified `@srmap.edu.in` only); email + password (scrypt) for staff and admins | **Implemented** (automated tests use a test-only stand-in for Google; real Google sign-in needs your own OAuth client) |
 | Payments | Mock provider, Razorpay-ready | Mock **implemented**; Razorpay API calls pending |
 
 ## 10. Canteen Structure
@@ -206,8 +211,9 @@ backend/
 
 - Node.js 22.12 or newer (see `.nvmrc`) and npm 10+
 - PostgreSQL 16 running locally on port 5432
-- A Google OAuth web client of your own (Google Cloud console → Google Auth
-  Platform → Clients). See [docs/authentication.md](docs/authentication.md).
+- A Google OAuth web client of your own for **student** sign-in (Google Cloud
+  console → Google Auth Platform → Clients). Staff and admin sign-in need no
+  Google client. Step by step: [docs/development.md](docs/development.md).
 - Flutter 3.47 (Dart 3.13) for the student app
 
 ### Steps
@@ -228,20 +234,20 @@ cp backend/.env.example backend/.env
 cp backend/.env.example backend/.env.test   # then apply the TEST notes at its end
 #    BETTER_AUTH_SECRET:  openssl rand -base64 32
 #    PAYMENT_SECRET:      openssl rand -hex 32
-#    GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET: your own Google OAuth web client with
-#      redirect URI http://localhost:5001/api/auth/callback/google and JavaScript
-#      origins http://localhost:5173, http://localhost:5174, http://localhost:5555
+#    GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (student sign-in): your own Google
+#      OAuth web client with redirect URI http://localhost:5001/api/auth/callback/google
+#      and JavaScript origin http://localhost:5555
 
 # 4. Apply migrations and seed canteens, hostels and menus
 #    (back up an existing database first: pg_dump serve_dev > backup.sql)
 npm run prisma:migrate:deploy --workspace backend
 npm run db:seed --workspace backend
 
-# 5. Provision your admin account (activated at its first Google sign-in)
-npm run admin:create --workspace backend -- --email you@srmap.edu.in --name "Your Name"
+# 5. Provision your admin account (asks for its password at a hidden prompt)
+npm run admin:create --workspace backend -- --email you@example.com --name "Your Name"
 
-# 6. Optional: development staff/student accounts for real SRM Google accounts
-#    (set DEV_*_EMAIL variables; see .env.example)
+# 6. Optional: development staff/admin/student accounts
+#    (set DEV_*_EMAIL variables; see .env.example; asks for one password)
 npm run db:seed:dev-users --workspace backend
 
 # 7. Run the backend with live reload on http://localhost:5001
@@ -265,10 +271,12 @@ npm run dev:student -- -d emulator-5554       # Android emulator (`flutter devic
 ```
 
 Open the apps at `http://localhost:…` (not `127.0.0.1`), so the session cookie
-is shared. Everyone signs in with **Continue with Google** using a verified
-`@srmap.edu.in` account; new accounts have no role until the student registers
-or the staff member's access request is approved by an admin. There is no
-public admin registration: admins are created with `admin:create` above.
+is sent. Students sign in to the student app with **Continue with Google**
+using a verified `@srmap.edu.in` account, then register (name + hostel). Staff
+use **Request access** on the staff dashboard (name, any email, password,
+canteen) and stay pending until an admin approves them; then they sign in with
+their email and password. Admins sign in to the admin portal with the email
+and password from `admin:create`; there is no public admin registration.
 
 The student app's development defaults point at the local backend (Android
 emulators reach your machine as `10.0.2.2`). Google sign-in on a phone or
@@ -320,6 +328,8 @@ error names the variable without printing its value.
 | `DEMO_MODE` | no | `true` declares a public demo: mock payments allowed in production, no real money moves; every other production rule still applies |
 | `WEB_ROOT` | no | Folder of built web apps (`npm run build:web`) to serve on the same domain; unset = API only |
 | `PAYMENT_SECRET` | mock mode | At least 32 characters |
+| `UNPAID_ORDER_EXPIRY_MINUTES` | no | Default `20`: unpaid app orders that were never claimed ("I've paid") expire after this; claimed orders never expire automatically |
+| `UNPAID_ORDER_EXPIRY_CHECK_SECONDS` | no | Default `60`: how often the server checks for orders to expire |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | razorpay mode | Placeholders only until the Razorpay integration is completed |
 | `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_*`, `SENSITIVE_RATE_LIMIT_*` | no | See `.env.example` |
 
@@ -343,7 +353,8 @@ The backend suite runs against the real `serve_test` database, which every run
 recreates from the migrations, and the real Better Auth stack (the Google flow
 runs with only Google's token endpoint replaced in-process). It covers:
 - database constraints and seed idempotency
-- Google sign-in, the `@srmap.edu.in` rule, sessions and registration
+- role-specific sign-in (Google for students, passwords for staff and admins),
+  the `@srmap.edu.in` rule, sessions, password changes and registration
 - menu management and cross-canteen isolation
 - cart quotes, orders, idempotency and the state machine
 - payments, including amount mismatch and replayed events
@@ -379,8 +390,10 @@ screen.
 
 Implemented:
 
-- Google sign-in through Better Auth, restricted to verified `@srmap.edu.in`
-  accounts; database-backed sessions in HttpOnly cookies (Bearer tokens on
+- Role-specific sign-in through Better Auth, enforced by the backend on every
+  session, REST request and Socket.IO connection: Google for students
+  (verified `@srmap.edu.in` only), email + password (scrypt) for staff and
+  admins. Database-backed sessions in HttpOnly cookies (Bearer tokens on
   mobile). Roles, staff status and canteen scope come from PostgreSQL only.
 - Strict per-canteen isolation for staff, and per-student isolation for orders
   and notifications. Out-of-scope resources return 404.
@@ -424,7 +437,7 @@ the three client apps.
 |---|---|---|
 | 1 | Monorepo, backend foundation, environment configuration, health endpoints | **Complete** |
 | 2 | Database schema, migration, seed data | **Complete** |
-| 3 | Authentication, roles, authorization (now Google via Better Auth) | **Complete** |
+| 3 | Authentication, roles, authorization (now role-specific via Better Auth) | **Complete** |
 | 4 | REST APIs: canteens, menus, cart, orders, mock payments, staff, admin, notifications | **Complete** |
 | 5 | Socket.IO realtime and the critical end-to-end backend flow | **Complete** |
 | — | Backend audit and contract freeze | **Complete** |

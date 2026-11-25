@@ -1,9 +1,19 @@
-import { ErrorState, SkeletonRows, useResource } from '@serve/web-shared';
+import {
+  ChangePasswordForm,
+  ErrorState,
+  SkeletonRows,
+  useAuth,
+  useResource,
+} from '@serve/web-shared';
 import { useAdminApi } from '../useAdminApi';
 
-/** Display values already used by the product. Nothing here is an environment secret. */
+/**
+ * Display values already used by the product (nothing here is an environment
+ * secret), and the signed-in admin's password.
+ */
 export function SettingsPage() {
   const api = useAdminApi();
+  const { changePassword } = useAuth();
   const settings = useResource(() => api.settings(), [api]);
 
   return (
@@ -11,7 +21,9 @@ export function SettingsPage() {
       <div className="page-header">
         <div>
           <h1>Settings</h1>
-          <p>University details shown on receipts. These are not editable from this screen.</p>
+          <p>
+            University details shown on receipts (not editable from this screen), and your password.
+          </p>
         </div>
       </div>
       {settings.loading && !settings.data ? (
@@ -36,6 +48,12 @@ export function SettingsPage() {
           </ul>
         </section>
       ) : null}
+      <section className="section" aria-label="Password">
+        <div className="section-header">
+          <h2>Password</h2>
+        </div>
+        <ChangePasswordForm onChange={changePassword} />
+      </section>
     </>
   );
 }

@@ -1,13 +1,14 @@
 import { Link } from 'react-router-dom';
-import { AuthLayout, GoogleSignIn, useAuth } from '@serve/web-shared';
+import { AuthLayout, PasswordSignIn, useAuth } from '@serve/web-shared';
 
+/** Staff sign in with their email and password (no Google sign-in for staff). */
 export function LoginPage() {
-  const { signInWithGoogle, signInError } = useAuth();
+  const { signInWithPassword, signInError } = useAuth();
   return (
     <AuthLayout subtitle="Staff dashboard">
       <section className="section">
         <div className="section-body">
-          <GoogleSignIn onSignIn={signInWithGoogle} error={signInError} />
+          <PasswordSignIn onSignIn={signInWithPassword} error={signInError} />
         </div>
       </section>
       <p className="auth-switch">

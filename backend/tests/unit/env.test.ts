@@ -270,3 +270,24 @@ describe('envFileFor', () => {
     expect(envFileFor('production')).toBeNull();
   });
 });
+
+describe('UNPAID_ORDER_EXPIRY_MINUTES', () => {
+  it('defaults to a 20-minute payment window, checked every minute', () => {
+    expect(parseEnv(validDev).UNPAID_ORDER_EXPIRY_MINUTES).toBe(20);
+    expect(parseEnv(validDev).UNPAID_ORDER_EXPIRY_CHECK_SECONDS).toBe(60);
+    expect(issuesOf({ ...validDev, UNPAID_ORDER_EXPIRY_CHECK_SECONDS: '0' }).join(' ')).toMatch(
+      /UNPAID_ORDER_EXPIRY_CHECK_SECONDS/,
+    );
+  });
+
+  it('accepts whole minutes from 1 to 1440 and refuses anything else', () => {
+    expect(
+      parseEnv({ ...validDev, UNPAID_ORDER_EXPIRY_MINUTES: '45' }).UNPAID_ORDER_EXPIRY_MINUTES,
+    ).toBe(45);
+    for (const bad of ['0', '-5', '1.5', '1441', 'soon']) {
+      expect(issuesOf({ ...validDev, UNPAID_ORDER_EXPIRY_MINUTES: bad }).join(' ')).toMatch(
+        /UNPAID_ORDER_EXPIRY_MINUTES/,
+      );
+    }
+  });
+});

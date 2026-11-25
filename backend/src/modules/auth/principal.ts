@@ -3,6 +3,7 @@ import type { StaffStatus } from '../../generated/prisma/client.js';
 import { ConflictError } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/prisma-errors.js';
 import { areaCanteenSelect, defaultCanteenOf } from '../canteens/service-areas.js';
+import type { AuthMethod } from './sign-in-method.js';
 
 /**
  * The authenticated caller as known to PostgreSQL. Built only from the
@@ -51,8 +52,10 @@ export type Role = Principal['role'];
 export interface SignInIdentity {
   /** AuthUser.id */
   uid: string;
-  /** Lower-cased, verified @srmap.edu.in address. */
+  /** Lower-cased address (Google sessions: verified @srmap.edu.in). */
   email: string;
+  /** How the session was created; null/absent = Google (pre-existing sessions). */
+  authMethod?: AuthMethod | null;
 }
 
 const studentInclude = {
@@ -69,13 +72,15 @@ const studentInclude = {
  * it has none yet ("complete your registration").
  *
  * 1. The account already linked to this identity (authUserId).
- * 2. Otherwise, first sign-in of an EXISTING account: exactly one unlinked
- *    account with the same (verified, exact) email is linked now. This is how
- *    accounts from before Better Auth, and admins provisioned by email
- *    (scripts/create-admin.ts), are claimed. Roles, approval status, canteen
- *    assignments and history stay exactly as they were.
+ * 2. Otherwise, a Google identity's first sign-in may claim an EXISTING
+ *    student account: exactly one unlinked Student row with the same
+ *    (Google-verified, exact) email is linked now, keeping its history.
  *    Refused, never guessed, when the email matches more than one account or
  *    an account already linked to a different identity (409, needs an admin).
+ *    Staff and admin accounts are never claimed by email: they sign in with a
+ *    password, and their identity is linked when the password is created
+ *    (staff sign-up, scripts/create-admin.ts, scripts/set-password.ts).
+ *    Password identities never claim anything (they are always created linked).
  */
 export async function resolvePrincipal(
   prisma: PrismaClient,
@@ -83,6 +88,7 @@ export async function resolvePrincipal(
 ): Promise<Principal | null> {
   const linked = await findLinked(prisma, identity.uid);
   if (linked) return linked;
+  if (identity.authMethod === 'password') return null;
   return claimByEmail(prisma, identity);
 }
 
@@ -142,31 +148,24 @@ async function claimByEmail(
   identity: SignInIdentity,
 ): Promise<Principal | null> {
   const { email, uid } = identity;
-  const [admins, staff, students] = await Promise.all([
-    prisma.admin.findMany({ where: { email }, select: { id: true, authUserId: true } }),
-    prisma.staff.findMany({ where: { email }, select: { id: true, authUserId: true } }),
-    prisma.student.findMany({ where: { email }, select: { id: true, authUserId: true } }),
-  ]);
-  const matches = [
-    ...admins.map((row) => ({ table: 'admin' as const, ...row })),
-    ...staff.map((row) => ({ table: 'staff' as const, ...row })),
-    ...students.map((row) => ({ table: 'student' as const, ...row })),
-  ];
-  if (matches.length === 0) return null;
+  // Google identities claim student accounts only; a staff/admin address is
+  // refused at session creation (lib/auth.ts) and never claimed here.
+  const students = await prisma.student.findMany({
+    where: { email },
+    select: { id: true, authUserId: true },
+  });
+  if (students.length === 0) return null;
   // A concurrent request of this same identity may have just linked it.
-  if (matches.some((match) => match.authUserId === uid)) return findLinked(prisma, uid);
-  if (matches.length > 1 || matches[0]!.authUserId !== null) accountConflict();
-  const match = matches[0]!;
+  if (students.some((match) => match.authUserId === uid)) return findLinked(prisma, uid);
+  if (students.length > 1 || students[0]!.authUserId !== null) accountConflict();
+  const match = students[0]!;
   // Conditional update: only an unlinked row is claimed (a concurrent claim
   // loses cleanly); the database trigger guarantees one account per identity.
-  const where = { id: match.id, authUserId: null };
   try {
-    const updated =
-      match.table === 'admin'
-        ? await prisma.admin.updateMany({ where, data: { authUserId: uid } })
-        : match.table === 'staff'
-          ? await prisma.staff.updateMany({ where, data: { authUserId: uid } })
-          : await prisma.student.updateMany({ where, data: { authUserId: uid } });
+    const updated = await prisma.student.updateMany({
+      where: { id: match.id, authUserId: null },
+      data: { authUserId: uid },
+    });
     if (updated.count !== 1) return findLinked(prisma, uid).then((p) => p ?? accountConflict());
   } catch (err) {
     if (isAuthUserTaken(err)) accountConflict();

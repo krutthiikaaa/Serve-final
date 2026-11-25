@@ -486,6 +486,9 @@ class Payment {
     this.isSimulated = false,
     this.verifiedAt,
     this.paidAt,
+    this.claimedAt,
+    this.paymentDueAt,
+    this.expiredAt,
   });
   factory Payment.fromJson(Map<String, dynamic> j) => Payment(
     provider: j['provider'] as String,
@@ -496,6 +499,9 @@ class Payment {
     isSimulated: j['isSimulated'] as bool? ?? false,
     verifiedAt: _dateOrNull(j['verifiedAt']),
     paidAt: _dateOrNull(j['paidAt']),
+    claimedAt: _dateOrNull(j['claimedAt']),
+    paymentDueAt: _dateOrNull(j['paymentDueAt']),
+    expiredAt: _dateOrNull(j['expiredAt']),
   );
   final String provider;
   final String status;
@@ -506,9 +512,25 @@ class Payment {
   final DateTime? verifiedAt;
   final DateTime? paidAt;
 
+  /// When the student said "I've paid" (not proof of payment; the cashier decides).
+  final DateTime? claimedAt;
+
+  /// An unclaimed payment expires at this moment (null: never automatically).
+  final DateTime? paymentDueAt;
+
+  /// Set when the order was cancelled because it was not paid or claimed in time.
+  final DateTime? expiredAt;
+
   bool get isPending => status == 'PENDING';
   bool get isSuccess => status == 'SUCCESS';
   bool get isFailed => status == 'FAILED';
+
+  /// Claimed and waiting for the cashier (a claimed order never expires).
+  bool get isClaimed => isPending && claimedAt != null;
+  bool get isExpired => expiredAt != null;
+
+  /// The cashier looked for the money and could not confirm it.
+  bool get isRejected => isFailed && expiredAt == null && verifiedAt != null;
 }
 
 class TimelineStep {

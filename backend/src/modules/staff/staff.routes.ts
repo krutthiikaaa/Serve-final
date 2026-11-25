@@ -84,6 +84,10 @@ const posMenuQuery = z.object({ period: z.enum(['DAY', 'NIGHT']).optional() });
  * canteen (Staff.canteenId, from PostgreSQL). A `?canteenId=` naming any other
  * canteen is refused with 403; there is no canteen switching.
  */
+const pendingPaymentsQuery = paginationQuery.extend({
+  section: z.enum(['claimed', 'unclaimed']).default('claimed'),
+});
+
 export function createStaffRouter(ctx: AppContext, services: Services): Router {
   const router = Router();
   router.use(createAuthenticate(ctx), requireStaff);
@@ -206,13 +210,10 @@ export function createStaffRouter(ctx: AppContext, services: Services): Router {
     res.json({ data: await services.menu.updateItem(scope(req), itemId, { isActive: false }) });
   });
 
+  // The payment queue, by section (claimed: "I've paid", oldest claim first).
   router.get('/payments/pending', cashier, async (req, res) => {
-    res.json(
-      await services.cashier.pendingPayments(
-        staffOperatingCanteenId(req),
-        parse(paginationQuery, req.query),
-      ),
-    );
+    const { section, ...page } = parse(pendingPaymentsQuery, req.query);
+    res.json(await services.cashier.pendingPayments(staffOperatingCanteenId(req), section, page));
   });
   router.post('/orders/:id/confirm-payment', cashier, async (req, res) => {
     const { id: orderId } = parse(idParams, req.params);

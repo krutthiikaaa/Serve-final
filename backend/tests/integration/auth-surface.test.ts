@@ -40,7 +40,7 @@ function betterAuthPaths(): { path: string; methods: string[] }[] {
 }
 
 describe('Better Auth endpoint surface', () => {
-  it('exposes only the sign-in, callback, session and sign-out endpoints', async () => {
+  it('exposes only the sign-in, callback, password change, session and sign-out endpoints', async () => {
     const user = await createTestUser();
     const closed = betterAuthPaths().filter(({ path }) => !EXPOSED_AUTH_PATHS.has(path));
     // Sanity: the enumeration really covers Better Auth's extra endpoints.
@@ -51,6 +51,11 @@ describe('Better Auth endpoint surface', () => {
         '/link-social',
         '/unlink-account',
         '/get-access-token',
+        // No public password sign-up or email-based reset: staff sign up
+        // through SERVE (always PENDING), admins are provisioned.
+        '/sign-up/email',
+        '/request-password-reset',
+        '/reset-password',
       ]),
     );
     for (const { path, methods } of closed) {

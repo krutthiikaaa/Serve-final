@@ -5,10 +5,13 @@ import { createLogger } from '../../src/config/logger.js';
 import { testEnv } from './test-app.js';
 
 /**
- * Sign-in identities for tests. Goes through the REAL Better Auth instance
- * (same configuration as production) via its test-only sign-in endpoint,
- * which applies the same SRM gate, database hooks and session creation as a
- * Google sign-in. The returned token is a genuine Better Auth session token,
+ * Sign-in identities for tests, through the REAL Better Auth instance (same
+ * configuration as production):
+ * - students: the test-only sign-in endpoint, which stands in for Google and
+ *   applies the same SRM gate, database hooks and session creation (the
+ *   session is recorded as a Google session);
+ * - staff and admins: the real email + password endpoint.
+ * The returned token is a genuine signed Better Auth session credential,
  * accepted as `Authorization: Bearer` by any app instance on this database.
  */
 const env = testEnv({ AUTH_TEST_SIGN_IN: 'true' });
@@ -51,6 +54,47 @@ export function testSignIn(
       body: JSON.stringify({ email, ...options }),
     }),
   );
+}
+
+/** A unique personal (non-SRM) address, as staff may use. */
+export const uniquePersonalEmail = (prefix = 'staff') =>
+  `${prefix}-${randomUUID().slice(0, 8)}@example.com`;
+
+/** A password that satisfies the policy (10–128 characters). */
+export const TEST_PASSWORD = 'correct-horse-battery-staple';
+
+/** Raw email + password sign-in (staff, admins) through the real Better Auth endpoint. */
+export function passwordSignInRequest(email: string, password: string) {
+  const base = env.BETTER_AUTH_URL ?? `http://localhost:${env.PORT}`;
+  return authInstance().handler(
+    new Request(`${base}/api/auth/sign-in/email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: base },
+      body: JSON.stringify({ email, password }),
+    }),
+  );
+}
+
+/**
+ * Email + password sign-in; resolves with the signed session credential (the
+ * session cookie's value, exactly what a browser holds), for `Authorization: Bearer`.
+ */
+export async function passwordSignIn(email: string, password = TEST_PASSWORD): Promise<TestUser> {
+  const res = await passwordSignInRequest(email, password);
+  const body = (await res.json()) as { user?: { id: string; email: string } };
+  const name = (await authInstance().$context).authCookies.sessionToken.name;
+  const cookie = res.headers
+    .getSetCookie()
+    .map((value) => value.split(';')[0]!)
+    .find((value) => value.startsWith(`${name}=`));
+  if (!res.ok || !body.user || !cookie) {
+    throw new Error(`password sign-in failed (${res.status}): ${JSON.stringify(body)}`);
+  }
+  return {
+    uid: body.user.id,
+    email: body.user.email,
+    token: decodeURIComponent(cookie.slice(name.length + 1)),
+  };
 }
 
 export async function createTestUser(

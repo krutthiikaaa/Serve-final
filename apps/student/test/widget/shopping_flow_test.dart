@@ -212,6 +212,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(h.api.calls, contains('claim:d8c5c17f-0000-4000-8000-000000000001:AXIS123456789'));
     expect(find.text('Payment confirmed'), findsNothing);
-    expect(find.textContaining('PAYMENT PENDING'), findsWidgets);
+    // Claimed, not paid: the student waits for the cashier.
+    expect(find.textContaining('WAITING FOR THE CASHIER'), findsOneWidget);
   });
 }

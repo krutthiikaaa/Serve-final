@@ -8,7 +8,7 @@ import type { StudentPrincipal } from '../auth/principal.js';
 import { writeNotifications } from '../notifications/notification.writer.js';
 import { canteenTakesOrders } from '../canteens/canteen.dto.js';
 import { orderInclude, toOrderDto } from '../orders/order.dto.js';
-import { queueOrderEvent } from '../orders/order.events.js';
+import { queueOrderEvent, queuePaymentQueueChange } from '../orders/order.events.js';
 import { allocateReceiptNumber } from '../orders/receipt.js';
 import { MockPaymentProvider } from './mock.provider.js';
 import type { PaymentConfirmation, PaymentProvider } from './provider.js';
@@ -28,6 +28,12 @@ interface Deps {
  *   confirm   -> verify signature, verify captured amount server-to-server,
  *                record the event once, Payment SUCCESS + Order PAYMENT_CONFIRMED
  */
+const orderExpired = () =>
+  new ConflictError(
+    'This order expired because payment was not received in time. Place a new order.',
+    'ORDER_EXPIRED',
+  );
+
 export function createPaymentsService({ prisma, events, payments, logger }: Deps) {
   async function ownedOrder(student: StudentPrincipal, orderId: string) {
     const order = await prisma.order.findFirst({
@@ -226,6 +232,7 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
       const { payment } = order;
       if (payment.status === 'SUCCESS')
         throw new ConflictError('This order has already been paid.', 'ALREADY_PAID');
+      if (payment.expiredAt) throw orderExpired();
       if (order.status !== 'PLACED') {
         throw new ConflictError(
           'This order is no longer awaiting payment.',
@@ -260,10 +267,17 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
           );
         }
         providerOrderId = providerOrder.providerOrderId;
-        await prisma.payment.update({
-          where: { id: payment.id },
+        // Never revive a payment that was paid or expired meanwhile.
+        const started = await prisma.payment.updateMany({
+          where: { id: payment.id, status: { in: ['PENDING', 'FAILED'] }, expiredAt: null },
           data: { providerOrderId, status: 'PENDING', failureReason: null },
         });
+        if (started.count === 0) {
+          throw new ConflictError(
+            'This order is no longer awaiting payment.',
+            'ORDER_NOT_AWAITING_PAYMENT',
+          );
+        }
       }
       return {
         orderId: order.id,
@@ -276,24 +290,84 @@ export function createPaymentsService({ prisma, events, payments, logger }: Deps
     },
 
     /**
-     * Store a student-submitted UTR. This is supporting information only —
-     * it never confirms payment.
+     * "I've paid" — the student's claim that they paid by UPI, with an
+     * optional UTR. It is never proof of payment: only the cashier confirms
+     * (or rejects) it. A claim puts the order in the cashier's claimed queue
+     * (oldest claim first) and stops it from expiring.
+     *
+     * Idempotent: the first claim records `claimedAt` and notifies the
+     * canteen's cashiers; repeating it changes nothing, except that a new
+     * UTR is recorded. After the cashier rejects a claim, claiming again
+     * starts a new claim.
      */
     async claim(student: StudentPrincipal, orderId: string, utr: string | null) {
       const order = await ownedOrder(student, orderId);
       if (order.payment.status === 'SUCCESS') {
         throw new ConflictError('This order has already been paid.', 'ALREADY_PAID');
       }
+      if (order.payment.expiredAt) throw orderExpired();
       if (order.status !== 'PLACED') {
         throw new ConflictError(
           'This order is no longer awaiting payment.',
           'ORDER_NOT_AWAITING_PAYMENT',
         );
       }
-      await prisma.payment.updateMany({
-        where: { id: order.payment.id, status: { in: ['PENDING', 'FAILED'] } },
-        data: { status: 'PENDING', utr, failureReason: null },
+      const outbox = new Outbox();
+      const now = new Date();
+      await prisma.$transaction(async (tx) => {
+        // Payment row first, then the order (see payment-window.ts). The
+        // conditions make expiry, cashier decisions and claims exclusive.
+        const claimed = await tx.payment.updateMany({
+          where: {
+            id: order.payment.id,
+            status: { in: ['PENDING', 'FAILED'] },
+            claimedAt: null,
+            expiredAt: null,
+          },
+          data: {
+            status: 'PENDING',
+            claimedAt: now,
+            failureReason: null,
+            ...(utr ? { utr } : {}),
+          },
+        });
+        let changed = claimed.count === 1;
+        if (!changed) {
+          // Already claimed: only a different UTR is worth recording.
+          const fresh = await tx.payment.findUniqueOrThrow({ where: { id: order.payment.id } });
+          if (fresh.status === 'SUCCESS') {
+            throw new ConflictError('This order has already been paid.', 'ALREADY_PAID');
+          }
+          if (fresh.expiredAt) throw orderExpired();
+          if (fresh.status !== 'PENDING' || !fresh.claimedAt) {
+            throw new ConflictError(
+              'This order is no longer awaiting payment.',
+              'ORDER_NOT_AWAITING_PAYMENT',
+            );
+          }
+          if (utr && utr !== fresh.utr) {
+            const updated = await tx.payment.updateMany({
+              where: { id: fresh.id, status: 'PENDING', claimedAt: { not: null } },
+              data: { utr },
+            });
+            changed = updated.count === 1;
+          }
+        }
+        if (!changed) return;
+        // The order must still be awaiting payment (a cancellation may have won).
+        const live = await tx.order.updateMany({
+          where: { id: order.id, status: 'PLACED' },
+          data: { updatedAt: now },
+        });
+        if (live.count === 0) {
+          throw new ConflictError(
+            'This order is no longer awaiting payment.',
+            'ORDER_NOT_AWAITING_PAYMENT',
+          );
+        }
+        queuePaymentQueueChange(outbox, order, 'claimed');
       });
+      outbox.flush(events);
       return currentOrderDto(order.id);
     },
 

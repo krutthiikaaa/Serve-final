@@ -1,11 +1,13 @@
 # SERVE end-to-end tests
 
-Playwright tests that run the real system: the backend (on `serve_test`), the
-Firebase Auth Emulator, the staff dashboard, the admin portal and, on request,
-the Flutter student app's web build.
+Playwright tests that run the real system: the backend (on `serve_test`) with
+the real Better Auth sessions, the staff dashboard, the admin portal and, on
+request, the Flutter student app's web build. Staff and admins sign in through
+the real email + password forms; students' Google sign-in (which cannot run in
+automation) is replaced by the backend's test-only sign-in, with the same SRM
+rule.
 
 ```bash
-npm run emulators                    # separate terminal
 npm run test:e2e                     # from the repository root
 E2E_STUDENT_WEB=1 npm run test:e2e   # also builds + drives the Flutter web app (Flutter on PATH)
 ```
@@ -17,7 +19,7 @@ Playwright starts everything itself (`playwright.config.ts`):
 
 | Service | Port | Notes |
 |---|---|---|
-| Backend | 5101 | `scripts/start-backend.mjs`: resets `serve_test` (refuses other databases), migrates, seeds, creates the E2E admin |
+| Backend | 5101 | `scripts/start-backend.mjs`: resets `serve_test` (refuses other databases), migrates, seeds, creates the E2E admin with a test-only password |
 | Staff dashboard | 5273 | Vite dev server pointed at the E2E backend |
 | Admin portal | 5274 | same |
 | Student web | 5455 | `scripts/serve-student-web.mjs` (only with `E2E_STUDENT_WEB=1`) |
@@ -31,8 +33,9 @@ touches the database directly.
 | `critical-flow` | staff onboarding (UI) → admin approval (UI) → paid order → live kitchen progress → pickup |
 | `realtime-isolation` | events reach only the right canteen, student and admins; foreign REST access is 404 |
 | `operations` | live menu changes in paise, canteen pause/resume, staff deactivation, cancellation with refund |
-| `access-control` | staff, admin and student accounts in the wrong portal; wrong password |
-| `sso` | Staff/Admin authorization-code handoff, invalid/expired/reused codes, logout, session persistence |
+| `auth` | staff register → pending → admin approval → password sign-in; wrong passwords; staff/admin password changes; no Google on the portals; unprovisioned admin refused |
+| `access-control` | accounts in the wrong portal; student Google redirect (PKCE, SRM domain); staff/admin refused by Google; students refused by the password sign-in |
+| `session` | staff/admin sessions across refresh and logout, pending staff, backend role checks |
 | `visual` | screenshots of every staff and admin screen → `test-results/visual/` |
 | `student-web` | the Flutter app: registration, menu, canteen-switch dialog, checkout, payment, live tracking |
 

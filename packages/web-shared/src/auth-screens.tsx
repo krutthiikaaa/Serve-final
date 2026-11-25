@@ -1,5 +1,10 @@
-import { useState, type ReactNode } from 'react';
-import { Button, FormError, Logo, SERVE_TAGLINE } from './ui/components';
+import { useState, type FormEvent, type ReactNode } from 'react';
+import { Button, Field, FormError, Input, Logo, SERVE_TAGLINE } from './ui/components';
+import type { PasswordChange } from './auth';
+
+/** Password rules enforced by the backend (staff and admin accounts). */
+export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MAX_LENGTH = 128;
 
 export function AuthLayout({ subtitle, children }: { subtitle: string; children: ReactNode }) {
   return (
@@ -16,70 +21,179 @@ export function AuthLayout({ subtitle, children }: { subtitle: string; children:
   );
 }
 
-/** Google "G" mark (brand colours), drawn inline: no third-party script or image. */
-function GoogleMark() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <path
-        fill="#EA4335"
-        d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"
-      />
-      <path
-        fill="#4285F4"
-        d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.1 5.3-4.6 7l7.1 5.5c4.2-3.9 7.2-9.6 7.2-16.9z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"
-      />
-      <path
-        fill="#34A853"
-        d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.4-4.6 2.2-8.8 2.2-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z"
-      />
-    </svg>
-  );
+/** Problems with a new password (and its confirmation), or null when it is acceptable. */
+export function newPasswordProblem(password: string, confirmation: string): string | null {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
+  }
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    return `Use at most ${PASSWORD_MAX_LENGTH} characters.`;
+  }
+  if (password !== confirmation) return 'The passwords do not match.';
+  return null;
 }
 
 /**
- * Sign-in with Google (SRM University-AP accounts only). The browser goes to
- * Google and returns signed in; a refused account comes back with a reason.
+ * Email + password sign-in (staff dashboard and admin portal). There is no
+ * Google option here: staff and admins sign in with their password only.
  */
-export function GoogleSignIn({
+export function PasswordSignIn({
   onSignIn,
   error,
-  label = 'Continue with Google',
+  submitLabel = 'Sign in',
 }: {
-  /** Resolves false when sign-in could not start (the reason arrives as `error`). */
-  onSignIn: () => Promise<boolean | void>;
-  /** Why the last sign-in was refused, if it was. */
+  /** Resolves true when signed in, false when refused (the reason arrives as `error`). */
+  onSignIn: (email: string, password: string) => Promise<boolean>;
+  /** Why the last sign-in was refused, or why the session ended. */
   error?: string | null;
-  label?: string;
+  submitLabel?: string;
 }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
 
-  const start = async () => {
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!email.trim() || !password) return;
     setBusy(true);
-    setFailure(null);
     try {
-      // On success the browser is leaving for Google: stay busy until it does.
-      if ((await onSignIn()) === false) setBusy(false);
+      if (!(await onSignIn(email, password))) setBusy(false);
     } catch {
-      setFailure('Unable to reach SERVE. Check your connection and try again.');
       setBusy(false);
     }
   };
 
   return (
-    <div className="form">
-      <FormError error={failure ?? error ?? null} />
-      <Button variant="secondary" icon={<GoogleMark />} loading={busy} onClick={() => void start()}>
-        {label}
+    <form className="form" onSubmit={(e) => void submit(e)} noValidate>
+      <FormError error={error ?? null} />
+      <Field label="Email">
+        {(p) => (
+          <Input
+            {...p}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            inputMode="email"
+            required
+          />
+        )}
+      </Field>
+      <Field label="Password">
+        {(p) => (
+          <Input
+            {...p}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        )}
+      </Field>
+      <Button type="submit" loading={busy} disabled={!email.trim() || !password}>
+        {submitLabel}
       </Button>
-      <p className="muted small">
-        Sign in with your SRM AP institutional Google account (<strong>@srmap.edu.in</strong>).
-        Other accounts are not eligible to use SERVE.
-      </p>
-    </div>
+    </form>
+  );
+}
+
+/**
+ * Change the signed-in account's password (staff Account page, admin
+ * Settings page). The current password is required; other devices are
+ * signed out when it changes.
+ */
+export function ChangePasswordForm({
+  onChange,
+}: {
+  onChange: (change: PasswordChange) => Promise<void>;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [touched, setTouched] = useState(false);
+
+  const problem = newPasswordProblem(newPassword, confirmation);
+  const sameAsCurrent = newPassword.length > 0 && newPassword === currentPassword;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setTouched(true);
+    setDone(false);
+    if (!currentPassword || problem || sameAsCurrent) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onChange({ currentPassword, newPassword });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmation('');
+      setTouched(false);
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldError = touched
+    ? sameAsCurrent
+      ? 'Choose a password different from the current one.'
+      : (problem ?? undefined)
+    : undefined;
+
+  return (
+    <form className="section-body form narrow" onSubmit={(e) => void submit(e)} noValidate>
+      <FormError error={error} />
+      {done ? (
+        <p className="notice notice-info" role="status">
+          Password changed. Other devices signed in to this account have been signed out.
+        </p>
+      ) : null}
+      <Field label="Current password">
+        {(p) => (
+          <Input
+            {...p}
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        )}
+      </Field>
+      <Field label="New password" hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}>
+        {(p) => (
+          <Input
+            {...p}
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+        )}
+      </Field>
+      <Field label="Confirm new password" error={fieldError}>
+        {(p) => (
+          <Input
+            {...p}
+            type="password"
+            value={confirmation}
+            onChange={(e) => setConfirmation(e.target.value)}
+            autoComplete="new-password"
+          />
+        )}
+      </Field>
+      <Button
+        type="submit"
+        loading={busy}
+        disabled={!currentPassword || !newPassword || !confirmation}
+      >
+        Change password
+      </Button>
+    </form>
   );
 }

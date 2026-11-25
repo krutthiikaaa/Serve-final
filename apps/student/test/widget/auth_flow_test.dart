@@ -98,7 +98,7 @@ void main() {
     expect(find.widgetWithText(FilledButton, _google), findsOneWidget);
   });
 
-  testWidgets('staff are sent to the staff dashboard to sign in with Google', (tester) async {
+  testWidgets('staff are sent to the staff dashboard to sign in with email and password', (tester) async {
     usePhoneSize(tester);
     final h = TestHarness();
     await tester.pumpWidget(h.app);
@@ -106,7 +106,8 @@ void main() {
     await tester.pumpAndSettle();
     await _chooseRole(tester, 'Canteen Staff');
     expect(find.text('Staff sign in'), findsOneWidget);
-    expect(find.textContaining('@srmap.edu.in'), findsOneWidget);
+    expect(find.textContaining('email and password'), findsOneWidget);
+    expect(find.textContaining('@srmap.edu.in'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Open staff dashboard'), findsOneWidget);
     expect(find.byType(TextFormField), findsNothing);
     expect(h.google.calls, isEmpty, reason: 'staff never sign in inside the student app');
@@ -121,6 +122,9 @@ void main() {
     await _chooseRole(tester, 'Administrator');
     expect(find.text('Admin sign in'), findsOneWidget);
     expect(find.textContaining('no public admin sign-up'), findsOneWidget);
+    // Admins use email + password with any address: no SRM-domain requirement.
+    expect(find.textContaining('email and password'), findsOneWidget);
+    expect(find.textContaining('@srmap.edu.in'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Open admin portal'), findsOneWidget);
     expect(h.google.calls, isEmpty);
   });

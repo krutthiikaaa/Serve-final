@@ -9,7 +9,8 @@ import type { ApprovedStaffPrincipal } from '../../middleware/auth.js';
 import { writeNotifications } from '../notifications/notification.writer.js';
 import { priceCart, type CartLineInput } from '../orders/pricing.js';
 import { orderInclude, toOrderDto } from '../orders/order.dto.js';
-import { queueOrderEvent } from '../orders/order.events.js';
+import { queueOrderEvent, queuePaymentQueueChange } from '../orders/order.events.js';
+import { paymentDueAt, type PaymentWindowConfig } from '../payments/payment-window.js';
 import { allocateReceiptNumber, toReceiptDto } from '../orders/receipt.js';
 import type { ServicePeriod } from '../canteens/availability.js';
 import type { CanteensService } from '../canteens/canteens.service.js';
@@ -41,10 +42,13 @@ export interface SalesFilter {
   to?: Date | undefined;
 }
 
+export type PendingPaymentSection = 'claimed' | 'unclaimed';
+
 export function createCashierService(
   prisma: PrismaClient,
   events: EventPublisher,
   canteens: CanteensService,
+  config: PaymentWindowConfig,
 ) {
   async function loadCanteenOrder(canteenId: string, orderId: string) {
     const order = await prisma.order.findFirst({
@@ -72,6 +76,12 @@ export function createCashierService(
         throw new ConflictError(
           'This payment has already been processed.',
           'PAYMENT_ALREADY_CONFIRMED',
+        );
+      }
+      if (order.payment.expiredAt) {
+        throw new ConflictError(
+          'This order expired because it was not paid in time.',
+          'ORDER_EXPIRED',
         );
       }
       if (order.payment.status !== 'PENDING') {
@@ -187,19 +197,32 @@ export function createCashierService(
   }
 
   return {
-    async pendingPayments(canteenId: string, page: Pagination) {
-      const rows = await prisma.order.findMany({
+    /**
+     * The cashier's payment queue, one section at a time, oldest first:
+     *  - claimed: the student said "I've paid" — confirm or reject these,
+     *    in claim order (Payment.claimedAt);
+     *  - unclaimed: placed, not claimed yet (they expire when unpaid).
+     * Keyset pagination on (time, payment id): the cursor is a payment id,
+     * so nothing is skipped or repeated while the queue changes.
+     */
+    async pendingPayments(canteenId: string, section: PendingPaymentSection, page: Pagination) {
+      const claimed = section === 'claimed';
+      const rows = await prisma.payment.findMany({
         where: {
-          canteenId,
-          channel: 'APP',
-          status: 'PLACED',
-          payment: { status: 'PENDING' },
+          status: 'PENDING',
+          claimedAt: claimed ? { not: null } : null,
+          order: { canteenId, channel: 'APP', status: 'PLACED' },
         },
-        include: orderInclude,
-        ...pageArgs(page),
+        select: { id: true, order: { include: orderInclude } },
+        orderBy: [claimed ? { claimedAt: 'asc' } : { createdAt: 'asc' }, { id: 'asc' }],
+        take: page.limit + 1,
+        ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}),
       });
       const result = toPage(rows, page);
-      return { ...result, data: result.data.map((order) => toOrderDto(order, 'staff')) };
+      return {
+        ...result,
+        data: result.data.map((row) => toOrderDto(row.order, 'staff')),
+      };
     },
 
     async posMenu(principal: ApprovedStaffPrincipal, canteenId: string, period?: ServicePeriod) {
@@ -271,13 +294,18 @@ export function createCashierService(
             'PAYMENT_ALREADY_CONFIRMED',
           );
         }
+        const now = new Date();
         const rejected = await tx.payment.updateMany({
           where: { id: order.payment.id, status: 'PENDING' },
           data: {
             status: 'FAILED',
             failureReason: reason ?? 'Payment rejected by cashier',
             verifiedByStaffId: staff.id,
-            verifiedAt: new Date(),
+            verifiedAt: now,
+            // The claim is void; the student gets a fresh window to pay and
+            // claim again before the order expires.
+            claimedAt: null,
+            paymentDueAt: paymentDueAt(now, config),
           },
         });
         if (rejected.count === 0) {
@@ -288,6 +316,11 @@ export function createCashierService(
         }
         return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
       });
+      const outbox = new Outbox();
+      queuePaymentQueueChange(outbox, updated, 'rejected');
+      // The student's own view of the order (payment FAILED, with the reason).
+      queueOrderEvent(outbox, updated, updated.status);
+      outbox.flush(events);
       return toOrderDto(updated, 'staff');
     },
 

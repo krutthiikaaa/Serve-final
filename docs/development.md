@@ -1,311 +1,370 @@
-# SERVE — Development guide
+# SERVE — Local development guide
 
-Every command below was run against this repository. Commands are run from
-the repository root unless a step says `backend/`.
+How to run the whole SERVE stack on your own computer: PostgreSQL, the
+backend, the staff dashboard, the admin portal and the Flutter student app.
+Commands are given for **Windows PowerShell** first (VS Code's integrated
+terminal works), with macOS/Linux equivalents where they differ. Run them from
+the repository root unless a step says otherwise.
 
-**Everything running, once set up** (sections 1–6 are the one-time setup):
+## How the pieces connect
 
-```bash
-npm run emulators                                                   # terminal 1: Firebase Auth Emulator
-DEV_SEED_PASSWORD='choose-a-password' npm run db:seed:dev-users --workspace backend   # after each emulator restart
-npm run dev:backend                                                 # terminal 2: API + Socket.IO on :5001
-npm run dev:staff                                                   # terminal 3: http://localhost:5173
-npm run dev:admin                                                   # terminal 4: http://localhost:5174
-npm run dev:student                                                 # terminal 5: http://localhost:5555, or -d <device>
+```
+ Student app (Flutter web)  http://localhost:5555 ─┐   Google sign-in (students only)
+ Staff dashboard (React)    http://localhost:5173 ─┼─► Backend http://localhost:5001 ──► PostgreSQL :5432
+ Admin portal (React)       http://localhost:5174 ─┘   /api (REST) · /socket.io (realtime)   serve_dev
+                                                       /api/auth (Better Auth sessions)
 ```
 
-**How the pieces fit:** every app signs in with Firebase Auth and sends the
-Firebase ID token to the backend, which verifies it and loads the account
-(role, staff status, canteen) from PostgreSQL. All three apps use the same
-REST API (`/api`) and Socket.IO server (`/socket.io`) on the backend; nothing
-is stored or decided on the client. Details:
-[architecture.md](architecture.md) (sections 4 and 7: authentication and
-realtime) and [frontend-integration.md](frontend-integration.md) (the calls
-each app makes).
+* There is **one backend** (Express + Socket.IO + Better Auth + Prisma). Every
+  app calls it at `http://localhost:5001`: the React apps through
+  `VITE_API_URL`, the student app through its development default (or
+  `--dart-define=API_URL=…`).
+* Sign-in is role-specific ([authentication.md](authentication.md)):
+  * **Students**: Google only, verified `@srmap.edu.in` accounts.
+  * **Staff**: email + password (any address, e.g. Gmail or Outlook).
+    Self-registered accounts stay **PENDING** until an admin approves them.
+  * **Admins**: email + password (any address), created only with
+    `npm run admin:create` (no public registration).
+* The session is an HttpOnly cookie set by the backend on `localhost`. Open
+  every app at `http://localhost:…`, **not** `127.0.0.1`, so the browser sends
+  it.
 
-## 1. Prerequisites
+## 1. Required software
 
-| Tool | Version | Why |
-|---|---|---|
-| Node.js | ≥ 22.12 (`nvm use` reads `.nvmrc`) | backend and tooling |
-| npm | ≥ 10 | workspaces |
-| PostgreSQL | 16 on `localhost:5432` | database |
-| Java | 21 | the Firebase Auth Emulator runs on the JVM |
-| Firebase CLI | `npm install -g firebase-tools` (tested with 15.32) | Auth Emulator |
-| Flutter | 3.47 (Dart 3.13) | student app |
+| Software | Version | Notes |
+| --- | --- | --- |
+| Node.js | **22.12 or newer** (`.nvmrc` says 22) | includes npm 10 |
+| PostgreSQL | **16** | server on `localhost:5432`; the Windows installer includes `psql` |
+| Git | any recent | |
+| Flutter SDK | **3.47 or newer** (Dart 3.13) | student app; `flutter` on `PATH` (or set `FLUTTER_BIN`) |
+| Google Chrome | current | Flutter web runs in Chrome; the E2E tests use it on Windows |
+| VS Code | optional | Flutter and ESLint extensions recommended |
 
-The Firebase CLI is installed globally on purpose. It is a developer tool,
-not a dependency of the app.
+Check:
 
-## 2. Install
-
-```bash
-git clone https://github.com/krutthiikaaa/Serve-final.git && cd Serve-final
-npm install
+```powershell
+node --version        # v22.12.0 or newer
+npm --version
+psql --version        # if not found, use the full path shown in section 3
+flutter --version     # Flutter 3.47.x or newer
 ```
 
-## 3. PostgreSQL
+If PowerShell refuses to run `npm` ("running scripts is disabled"), allow
+local scripts once for your user:
 
-```bash
-SERVE_DB_PASSWORD='choose-a-password' npm run db:setup:local
-# If your superuser is only reachable as the postgres OS user:
-SERVE_DB_PASSWORD='…' PSQL_ADMIN="sudo -u postgres psql -d postgres" npm run db:setup:local
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
-This creates the role `serve` and the databases `serve_dev` and `serve_test`.
-It is safe to re-run and never drops anything.
+## 2. Get the code and install dependencies
 
-## 4. Environment files (gitignored)
-
-```bash
-cp .env.example backend/.env
-cp .env.example backend/.env.test
+```powershell
+git clone https://github.com/pranathigit11/Serve-final.git
+cd Serve-final
+git checkout claude/charming-dirac-bmyxw9
+npm ci
+npm run prisma:generate --workspace backend
 ```
 
-**`backend/.env`** (development):
+`npm ci` installs exactly what `package-lock.json` pins. `prisma:generate`
+creates the Prisma client (Prisma 7 does not generate it automatically).
+
+## 3. PostgreSQL: role and databases
+
+Create a role `serve` and two databases: `serve_dev` (your data) and
+`serve_test` (wiped and rebuilt by every automated test run). Choose your own
+password for `serve`.
+
+**Windows (PowerShell)** — adjust `16` if your PostgreSQL version differs;
+`psql` asks for the `postgres` superuser password you chose when installing:
+
+```powershell
+$psql = "C:\Program Files\PostgreSQL\16\bin\psql.exe"
+& $psql -U postgres -c "CREATE ROLE serve LOGIN CREATEDB PASSWORD 'choose-a-db-password';"
+& $psql -U postgres -c "CREATE DATABASE serve_dev OWNER serve;"
+& $psql -U postgres -c "CREATE DATABASE serve_test OWNER serve;"
+```
+
+**macOS / Linux** — the repository script does the same, idempotently:
+
+```bash
+SERVE_DB_PASSWORD='choose-a-db-password' npm run db:setup:local
+# Linux distro packages: add PSQL_ADMIN="sudo -u postgres psql -d postgres"
+```
+
+If your password contains `@`, `:`, `/`, `?` or `#`, percent-encode it in the
+`DATABASE_URL` below (e.g. `@` → `%40`).
+
+## 4. Secrets for your own machine
+
+Generate two random values and keep them only in `backend/.env` (never commit
+them, never share them):
+
+```powershell
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+[Convert]::ToBase64String($bytes)                              # → BETTER_AUTH_SECRET
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+-join ($bytes | ForEach-Object { $_.ToString('x2') })         # → PAYMENT_SECRET
+```
+
+macOS / Linux: `openssl rand -base64 32` and `openssl rand -hex 32`.
+
+## 5. Google OAuth (student sign-in) — you must configure this yourself
+
+Only **students** use Google. Staff and admins work without it, so you can do
+this step later; until then the backend logs a warning and student sign-in is
+unavailable.
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/) with an
+   account that may create projects, and create (or pick) a project.
+2. **Google Auth Platform → Branding**: set the app name (e.g. "SERVE") and a
+   support email.
+3. **Audience**: *Internal* if the project belongs to the `srmap.edu.in` Google
+   Workspace organisation (only SRM accounts can sign in). Otherwise
+   *External*, publishing status *Testing*, and add your `@srmap.edu.in`
+   accounts as **test users**.
+4. **Clients → Create client → Web application**:
+   * **Authorized JavaScript origins**: `http://localhost:5555`
+   * **Authorized redirect URIs**: `http://localhost:5001/api/auth/callback/google`
+     — exactly `<BETTER_AUTH_URL>/api/auth/callback/google`; a mismatch gives
+     Google's `redirect_uri_mismatch` error.
+5. Copy the **Client ID** (ends in `.apps.googleusercontent.com`) and the
+   **Client secret** into `backend/.env` (`GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET`). The secret never goes into a frontend.
+
+SERVE accepts only Google accounts whose email Google has verified and that end
+exactly in `@srmap.edu.in`; with `GOOGLE_REQUIRE_HOSTED_DOMAIN=true` (default)
+Google's `hd` claim must also be `srmap.edu.in`.
+
+## 6. Environment files (all gitignored)
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+Copy-Item backend\.env.example backend\.env.test
+Copy-Item apps\staff\.env.example apps\staff\.env.development.local
+Copy-Item apps\admin\.env.example apps\admin\.env.development.local
+```
+
+(macOS / Linux: `cp` with forward slashes.)
+
+Edit **`backend/.env`** (development) — the template explains every variable;
+these are the ones to fill in:
 
 ```dotenv
 NODE_ENV=development
 PORT=5001
-DATABASE_URL=postgresql://serve:<password>@localhost:5432/serve_dev?schema=public
+DATABASE_URL=postgresql://serve:choose-a-db-password@localhost:5432/serve_dev?schema=public
 CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5555
-FIREBASE_PROJECT_ID=demo-serve
-FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+BETTER_AUTH_URL=http://localhost:5001
+BETTER_AUTH_SECRET=<the base64 value from section 4>
+GOOGLE_CLIENT_ID=<from section 5>
+GOOGLE_CLIENT_SECRET=<from section 5>
+STUDENT_APP_URL=http://localhost:5555
+STAFF_DASHBOARD_URL=http://localhost:5173
+ADMIN_PORTAL_URL=http://localhost:5174
 PAYMENT_MODE=mock
-PAYMENT_SECRET=<openssl rand -hex 32>
-LOG_LEVEL=debug
+PAYMENT_SECRET=<the hex value from section 4>
 ```
 
-**`backend/.env.test`** (automated tests):
+Edit **`backend/.env.test`** (automated tests only):
 
 ```dotenv
 NODE_ENV=test
 PORT=5101
-DATABASE_URL=postgresql://serve:<password>@localhost:5432/serve_test?schema=public
+DATABASE_URL=postgresql://serve:choose-a-db-password@localhost:5432/serve_test?schema=public
 CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5555
-FIREBASE_PROJECT_ID=demo-serve
-FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 PAYMENT_MODE=mock
-PAYMENT_SECRET=<a different openssl rand -hex 32>
+PAYMENT_SECRET=<a different 64-character hex value>
 LOG_LEVEL=silent
 RATE_LIMIT_MAX=100000
 SENSITIVE_RATE_LIMIT_MAX=100000
 ```
 
-Using a `demo-` project id makes the Firebase CLI run fully offline with no
-credentials. Switching to a real Firebase project only needs environment
-changes: set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` and
-`FIREBASE_PRIVATE_KEY`, and remove `FIREBASE_AUTH_EMULATOR_HOST`.
+Leave `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+**empty** in `.env.test`: tests never contact Google.
 
-## 5. Firebase Auth Emulator
+The two `apps/*/.env.development.local` files need no changes: they contain
+`VITE_API_URL=http://localhost:5001`. The student app needs no file at all.
 
-```bash
-npm run emulators          # firebase emulators:start --only auth --project demo-serve
+## 7. Database schema, seed data and the first admin
+
+```powershell
+npm run prisma:migrate:deploy --workspace backend    # applies every migration to serve_dev
+npm run db:seed --workspace backend                  # canteens, hostels, menus (idempotent)
+npm run admin:create --workspace backend -- --email your.name@example.com --name "Your Name"
 ```
 
-It listens on `127.0.0.1:9099` (configured in `firebase.json`). Keep it
-running in a separate terminal while developing. Emulator accounts live in
-memory and disappear when the emulator stops.
+`prisma:migrate:deploy` applies all migrations in `backend/prisma/migrations`,
+including `20261124090000_role_sign_in_methods` (additive: it records each
+session's sign-in method and lets staff use non-SRM addresses). It only
+applies migrations; it never resets data.
 
-## 6. Database schema and seed data
+`admin:create` asks for the admin's password twice without showing it (at
+least 10 characters). Run it again for the same email to reset that admin's
+password. To give an **existing** staff or admin account a password (for
+example one created before password sign-in existed):
 
-```bash
-npm run prisma:migrate:deploy --workspace backend   # apply migrations to serve_dev
-npm run db:seed --workspace backend                 # canteens, hostels, menus (idempotent)
+```powershell
+npm run account:set-password --workspace backend -- --role staff --email someone@gmail.com
+npm run account:set-password --workspace backend -- --role admin --email someone@example.com
 ```
 
-Demo accounts (emulator only; refuses anything else):
+Optional demo accounts (development only):
 
-```bash
-DEV_SEED_PASSWORD='choose-a-password' npm run db:seed:dev-users --workspace backend
+```powershell
+$env:DEV_ADMIN_EMAIL = "your.name@example.com"
+$env:DEV_STAFF_NIGHT_EMAIL = "kg.night@example.com"
+$env:DEV_STAFF_PENDING_EMAIL = "pending.staff@example.com"
+$env:DEV_STUDENT_EMAIL = "your.student@srmap.edu.in"
+npm run db:seed:dev-users --workspace backend         # asks once for the staff/admin password
 ```
 
-This creates `admin@serve.dev`, `staff.kg@serve.dev` (approved, Krishna &
-Godavari), `staff.pending@serve.dev` (pending, with an access request) and
-`student@serve.dev` (Krishna hostel), all with `DEV_SEED_PASSWORD`. Re-run it
-after restarting the emulator; it re-links the existing rows.
+## 8. Start everything (four terminals)
 
-Provision an admin explicitly:
+Open four PowerShell terminals in the repository root (in VS Code: Terminal →
+New Terminal, four times):
 
-```bash
-ADMIN_BOOTSTRAP_PASSWORD='choose-a-password' \
-  npm run admin:create --workspace backend -- --email ops@serve.dev --name "Ops Admin"
+```powershell
+npm run dev:backend      # terminal 1 — API + Socket.IO on http://localhost:5001
 ```
 
-In production the Firebase user must already exist (create it in the Firebase
-console). The script then only links it, requires `--confirm-production`, and
-never accepts a password.
-
-Schema changes (from `backend/`): run
-`npx prisma migrate dev --create-only --name <change>`, review the generated
-SQL, then `npx prisma migrate dev` to apply it.
-
-## 7. Run the backend
-
-```bash
-npm run dev:backend               # tsx watch, http://localhost:5001
-curl localhost:5001/api/health
-curl localhost:5001/api/health/db
+```powershell
+npm run dev:staff        # terminal 2 — staff dashboard on http://localhost:5173
 ```
 
-Production-style:
-
-```bash
-npm run build
-NODE_ENV=development node backend/dist/server.js    # local check of the compiled build
-npm run start --workspace backend                   # NODE_ENV=production: needs production env vars
+```powershell
+npm run dev:admin        # terminal 3 — admin portal on http://localhost:5174
 ```
 
-### Calling the API locally
-
-```bash
-TOKEN=$(curl -s -X POST \
-  'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo' \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"student@serve.dev","password":"<DEV_SEED_PASSWORD>","returnSecureToken":true}' \
-  | node -pe 'JSON.parse(require("fs").readFileSync(0)).idToken')
-curl -H "Authorization: Bearer $TOKEN" localhost:5001/api/auth/me
+```powershell
+npm run dev:student      # terminal 4 — student app in Chrome on http://localhost:5555
 ```
 
-## 8. Client apps
+Check the backend:
 
-```bash
-# Staff dashboard (http://localhost:5173) and admin portal (http://localhost:5174)
-cp apps/staff/.env.example apps/staff/.env.development.local
-cp apps/admin/.env.example apps/admin/.env.development.local
-npm run dev:staff
-npm run dev:admin
+```powershell
+Invoke-RestMethod http://localhost:5001/api/health      # status: ok
+Invoke-RestMethod http://localhost:5001/api/health/db   # database: ok
 ```
 
-The `.env.development.local` files are gitignored and are never read by
-`vite build`. A production build is served under `/staff/` (or `/admin/`),
-needs the public Firebase values from the environment, and refuses emulator
-settings and a localhost or plain-http API URL. Without `VITE_API_URL` it calls
-the origin that serves it:
+Start the backend first; the apps show a connection error until it is up. The
+student app's development defaults point at `http://localhost:5001`, so
+`dev:student` needs no `--dart-define` flags. On an Android emulator use
+`npm run dev:student -- -d emulator-5554` (the app reaches your computer as
+`10.0.2.2`); Google sign-in on an emulator or phone additionally needs the
+backend on a public https URL registered with Google (see
+[authentication.md](authentication.md#native-app-android--ios)).
 
-```bash
-VITE_FIREBASE_API_KEY=… VITE_FIREBASE_PROJECT_ID=… npm run build --workspace @serve/staff
+## 9. Try it: sign-in walkthrough
+
+**Admin** (after `admin:create`):
+
+1. Open <http://localhost:5174>. The page shows **Email** and **Password**
+   fields and a **Sign in** button — there is no Google option.
+2. Sign in with the address and password from `admin:create`. A wrong password
+   shows "Incorrect email or password."
+3. **Settings → Password** changes the password (current password required;
+   other devices are signed out).
+
+**Staff**:
+
+1. Open <http://localhost:5173> → **Request access**.
+2. Fill in full name, any email you use (Gmail/Outlook are fine), a password
+   (10+ characters) twice, and the canteen you work at → **Request access**.
+3. You are signed in and see **Awaiting approval**. Orders, Menu and Cashier
+   are not available, even by typing their URLs; the staff APIs answer 403.
+4. In the admin portal: **Change requests → Approve** (the admin is notified
+   live). The staff screen unlocks by itself.
+5. Sign out and back in with the same email and password: the dashboard opens
+   with the assigned canteen. **Account → Password** changes the password.
+
+**Student**:
+
+1. Open <http://localhost:5555> → **Student** → **Continue with Google**.
+2. Choose an `@srmap.edu.in` account. Any other account (e.g. Gmail) is
+   refused with "This account is not eligible to use SERVE…".
+3. First sign-in: enter your name and hostel. Then browse, order and track.
+4. Using a staff or admin address here is refused with "Google sign-in is for
+   students only. Staff sign in on the SERVE staff dashboard and admins on the
+   admin portal…".
+
+## 10. Automated tests
+
+| What | Command | Needs |
+| --- | --- | --- |
+| Backend unit + integration | `npm test --workspace backend` | PostgreSQL, `backend/.env.test` (recreates `serve_test`) |
+| Shared web code | `npm test --workspace @serve/web-shared` | — |
+| Staff dashboard | `npm test --workspace @serve/staff` | — |
+| Admin portal | `npm test --workspace @serve/admin` | — |
+| Student app | `cd apps/student; flutter analyze; flutter test` | Flutter |
+| End-to-end (Playwright) | `npm run test:e2e` | PostgreSQL, `backend/.env.test`, Chrome |
+
+The backend suite runs the **real** Better Auth instance against `serve_test`;
+the Google redirect flow is tested with only Google's token endpoint replaced
+in-process, and other tests use a test-only sign-in endpoint that exists only
+with `NODE_ENV=test`. The global setup refuses any database whose name does not
+end in `_test`.
+
+The E2E suite starts its **own** backend on port 5101 against `serve_test`
+(reset, migrated and seeded on every run; it provisions its own admin with a
+test-only password), plus the staff and admin apps on 5273 / 5274. On Windows
+it uses your installed Chrome. Do not run it at the same time as the backend
+test suite (both recreate `serve_test`). `$env:E2E_STUDENT_WEB = "1"` also
+builds and tests the Flutter web app.
+
+Optional: the student app's service layer against a running test backend
+(staff need an approved account with the KITCHEN and CASHIER capabilities):
+
+```powershell
+cd apps/student
+$env:SERVE_INTEGRATION = "1"; $env:API_URL = "http://localhost:5101"
+$env:SERVE_STAFF_EMAIL = "<approved staff email>"; $env:SERVE_STAFF_PASSWORD = "<its password>"
+flutter test --tags integration
 ```
 
-`npm run build:web` builds all three apps for the single-domain deployment;
-see [deployment.md](deployment.md).
+Other checks (all workspaces):
 
-Student app (details in [apps/student/README.md](../apps/student/README.md)):
-
-```bash
-npm run dev:student -- -d emulator-5554       # Android emulator (any `flutter devices` id)
-npm run dev:student -- -d <phone-id> --lan    # your own phone; run `npm run emulators:phone` first
-npm run dev:student                           # browser preview, http://localhost:5555
-```
-
-No `--dart-define` flags are needed for local development: the app defaults to
-the backend on `:5001` and the Auth Emulator on `:9099` (`10.0.2.2` from an
-Android emulator). Flutter **web** needs `http://localhost:5555` in the backend
-`CORS_ORIGINS` (already in `.env.example`; restart the backend after changing
-it). Mobile builds send no `Origin`. A real phone can't use `localhost`: start the
-emulator with `npm run emulators:phone` (it listens on your network via
-`firebase.phone.json`) and add `--lan`, which points the app at your computer's
-network address. Phone and computer must be on the same network.
-
-Demo logins (after `db:seed:dev-users`): `student@serve.dev` in the student
-app, `staff.kg@serve.dev` / `staff.pending@serve.dev` in the staff dashboard,
-`admin@serve.dev` in the admin portal.
-
-## 9. Tests
-
-Two equivalent options:
-
-```bash
-# A) emulator already running (npm run emulators)
-npm test
-
-# B) start a temporary emulator just for the run
-npm run test:emulator
-```
-
-| Suite | What it covers |
-|---|---|
-| `tests/unit/` | env validation rules, log redaction, role guards, the full order state-machine table |
-| `tests/integration/health`, `app` | health checks (including database down), security headers, CORS, request ids, error contract, rate limiting |
-| `database` | constraints, cascades, snapshots, partial unique index, seed idempotency |
-| `auth` | Firebase token verification (malformed, forged, revoked, disabled), registration rules, admin bootstrap |
-| `menu` | canteen visibility, menu, staff menu management, cross-canteen isolation |
-| `orders` | quotes, server totals, snapshots, idempotency, paused/inactive canteens, state machine, IDOR |
-| `payments` | mock flow, amount mismatch, replay, signature checks, webhook replay protection |
-| `staff-admin` | approval lifecycle, admin canteen/hostel/staff management, notifications, recommendations |
-| `realtime` | Socket.IO auth, token-expiry disconnect, room isolation, malicious joins, menu subscriptions, post-commit events, assignment moves |
-| `contract-smoke` | the three clients end to end, every response validated against the strict contract in `tests/helpers/contract.ts` |
-| `critical-flow` | the full admin → staff → student → payment → realtime pickup scenario |
-| `security` | 401/403 sweep over every protected route, malformed ids, no leaked internals |
-
-The global setup **recreates `serve_test` from the migrations on every run**.
-It refuses any database whose name does not end in `_test`. Emulator accounts
-are never cleared, so development demo accounts survive test runs.
-
-Client tests:
-
-```bash
-npm run test --workspace @serve/web-shared
-npm run test --workspace @serve/staff
-npm run test --workspace @serve/admin
-(cd apps/student && flutter analyze && flutter test)
-# Student service layer against the running backend + emulator:
-(cd apps/student && SERVE_INTEGRATION=1 DEV_SEED_PASSWORD='…' flutter test --tags integration)
-```
-
-End-to-end (Playwright, `e2e/`):
-
-```bash
-npm run test:e2e                    # needs PostgreSQL, backend/.env.test and the emulator
-E2E_STUDENT_WEB=1 npm run test:e2e  # also builds the Flutter web app (Flutter on PATH)
-```
-
-The suite starts its **own** backend on port 5101 against `serve_test` (reset,
-migrated and seeded on every run; any database not ending in `_test` is
-refused), the web apps on 5273 / 5274 and, on request, the Flutter web build on
-5455. Development data in `serve_dev` is never touched. Don't run it at the
-same time as the backend test suite, which also recreates `serve_test`.
-Visual captures of every screen land in `e2e/test-results/visual/`.
-
-Other checks:
-
-```bash
+```powershell
 npm run typecheck
 npm run lint
 npm run format:check
-npm run build        # web builds need the VITE_* variables, see above
-npm audit
+npm run build
 ```
 
-## 10. Ports
+## 11. Ports
 
 | Service | Port |
-|---|---|
-| Backend | 5001 (5000 is rejected because of macOS AirPlay) |
-| Firebase Auth Emulator | 9099 |
+| --- | --- |
+| Backend (API, Socket.IO, Better Auth) | 5001 (5000 is refused: macOS AirPlay) |
 | PostgreSQL | 5432 |
 | Staff dashboard / admin portal | 5173 / 5174 |
 | Student app (Flutter web, development) | 5555 |
 | E2E stack: backend / staff / admin / student web | 5101 / 5273 / 5274 / 5455 |
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 | Symptom | Fix |
-|---|---|
-| `Firebase Auth Emulator is not reachable` when running tests | Start `npm run emulators`, or use `npm run test:emulator`. |
-| `Invalid environment configuration: …` at startup | The message names each bad variable; compare with `.env.example`. |
-| `Port 5001 is already in use` | Another backend is running; stop it. |
-| `/api/health/db` returns 503 | PostgreSQL is down or `DATABASE_URL` is wrong. |
-| Demo users can't sign in | The emulator was restarted (accounts are in memory); re-run `db:seed:dev-users`. |
-| `AUTH_TOKEN_EXPIRED` | ID tokens last one hour; sign in again. |
-| `Cannot read properties of undefined (reading 'upsert')` from the seed | Run `npm run prisma:generate --workspace backend` after schema changes (Prisma 7 does not auto-generate on migrate). |
-| Web app shows "Missing VITE_API_URL" | Copy `apps/<app>/.env.example` to `apps/<app>/.env.development.local`. |
-| `vite build` fails with "must not be set for production builds" | Production builds read only real environment values; don't export emulator variables when building. |
-| Flutter web: requests blocked by CORS | Add its origin (e.g. `http://localhost:5555`) to `CORS_ORIGINS` and restart the backend. |
-| Flutter web in a headless browser fails with "Incorrect locale information" | The browser reports an invalid language (e.g. `LANG=C`); give it a real locale (Playwright: `locale: 'en-IN'`). |
-| `prisma migrate dev` shows drift | Never resolve drift on shared data with `migrate reset`. Inspect it with `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script`. |
+| --- | --- |
+| `Invalid environment configuration: …` at startup | The message names each bad variable (never its value); compare with `backend/.env.example`. |
+| `BETTER_AUTH_SECRET is required` | Generate one (section 4) and put it in `backend/.env`. |
+| Log: "Google sign-in is unavailable" | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are empty. Staff and admin sign-in still work. |
+| Google shows `redirect_uri_mismatch` | The client's redirect URI must be exactly `http://localhost:5001/api/auth/callback/google`. |
+| Student: "This account is not eligible…" | Use an `@srmap.edu.in` Google account (Gmail is refused by design). |
+| Student: "Google sign-in is for students only…" | That address belongs to a staff/admin account; use the web portal with email + password. |
+| Staff/admin: "Incorrect email or password." | Wrong address or password, or the account has no password yet (`account:set-password`). |
+| Staff/admin: "Staff and admins sign in with their email and password…" | An old Google session was refused; sign in with the password. |
+| Signed in on one app but not another | Open every app at `localhost`, not `127.0.0.1`. |
+| `/api/health/db` fails | PostgreSQL is not running, or `DATABASE_URL` is wrong. |
+| `Port 5001 is already in use` | Another backend is running; stop it (`Get-Process node` / Task Manager). |
+| Web app: "Missing VITE_API_URL" | Copy `apps/<app>/.env.example` to `apps/<app>/.env.development.local`. |
+| Flutter web: requests blocked by CORS | Keep `http://localhost:5555` in `CORS_ORIGINS` and restart the backend. |
+| `Cannot read properties of undefined` from Prisma | Run `npm run prisma:generate --workspace backend`. |
+| `npm run db:setup:local` fails on Windows | It is a bash script; use the `psql` commands in section 3. |
+| `npm run start --workspace backend` fails on Windows | It uses Unix syntax. Run `npm run build`, then `$env:NODE_ENV = "production"; node backend/dist/server.js` (needs production variables). |
+| `prisma migrate dev` shows drift | Never resolve drift on real data with `migrate reset`. Inspect it with `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` (from `backend/`). |
 
-## 12. Conventions
+## 13. Conventions
 
 - TypeScript strict, ESM, module-per-feature under `backend/src/modules/`.
 - Only `src/config/env.ts` reads `process.env`.
@@ -313,4 +372,5 @@ npm audit
 - Multi-record changes run in `prisma.$transaction`. Realtime events go into an `Outbox` and are published only after commit.
 - Throw `AppError` subclasses. The central handler shapes every error response.
 - Never trust client-supplied prices, totals, roles, ids or canteen assignments.
+- Schema changes: `npx prisma migrate dev --create-only --name <change>` (from `backend/`), review the SQL, then apply.
 - Git: feature branch, logical commits, owner-reviewed PRs. No force-push and no direct commits to `main`.

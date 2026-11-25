@@ -294,7 +294,11 @@ class OrderCard extends StatelessWidget {
                     _MetaChip(icon: Icons.payments_outlined, label: formatRupees(order.totalPaise)),
                     _MetaChip(icon: Icons.schedule_rounded, label: formatDateTime(order.createdAt)),
                     if (order.payment?.isSimulated == true) const _MetaChip(icon: Icons.science_outlined, label: 'Simulated'),
-                    if (order.status == OrderStatus.placed) const _MetaChip(icon: Icons.hourglass_top_rounded, label: 'PAYMENT PENDING'),
+                    if (order.status == OrderStatus.placed)
+                      order.payment?.isClaimed == true
+                          ? const _MetaChip(icon: Icons.how_to_reg_rounded, label: 'WAITING FOR CASHIER')
+                          : const _MetaChip(icon: Icons.hourglass_top_rounded, label: 'PAYMENT PENDING'),
+                    if (order.payment?.isExpired == true) const _MetaChip(icon: Icons.timer_off_outlined, label: 'EXPIRED'),
                   ],
                 ),
                 if (order.status.isActive) ...[const SizedBox(height: 14), OrderStageStrip(status: order.status)],

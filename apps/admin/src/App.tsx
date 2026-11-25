@@ -6,7 +6,7 @@ import {
   Button,
   ErrorState,
   NotificationsProvider,
-  GoogleSignIn,
+  PasswordSignIn,
   RealtimeProvider,
   Spinner,
   ToastProvider,
@@ -36,7 +36,7 @@ const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
 export function App() {
   return (
     <ToastProvider>
-      <AuthProvider baseUrl={config.apiUrl} appUrl={config.appUrl}>
+      <AuthProvider baseUrl={config.apiUrl}>
         <BrowserRouter basename={routerBasename}>
           <Gate />
         </BrowserRouter>
@@ -47,8 +47,9 @@ export function App() {
 
 /**
  * Admin access is decided by the backend account (`/api/auth/me`), never by
- * the Google sign-in or the URL. Admin accounts are provisioned by email with
- * the bootstrap script; there is no self-registration here.
+ * the sign-in or the URL. Admins sign in with email + password only (the
+ * backend refuses Google for admin accounts). Admin accounts are provisioned
+ * with the admin:create script; there is no self-registration here.
  */
 export function Gate() {
   return (
@@ -61,7 +62,7 @@ export function Gate() {
 }
 
 function AccountGate() {
-  const { status, me, user, error, api, refreshMe, signInWithGoogle, signInError, signOut } =
+  const { status, me, user, error, api, refreshMe, signInWithPassword, signInError, signOut } =
     useAuth();
   const client = useMemo(() => adminApi(api), [api]);
 
@@ -107,12 +108,10 @@ function AccountGate() {
       <AuthLayout subtitle="Admin portal">
         <section className="section">
           <div className="section-body">
-            <GoogleSignIn onSignIn={signInWithGoogle} error={signInError} />
+            <PasswordSignIn onSignIn={signInWithPassword} error={signInError} />
           </div>
         </section>
-        <p className="auth-switch">
-          Admin access is granted by the SERVE operations team to SRM Google accounts.
-        </p>
+        <p className="auth-switch">Admin accounts are provisioned by the SERVE operations team.</p>
       </AuthLayout>
     );
   }

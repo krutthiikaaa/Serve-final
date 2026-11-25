@@ -11,7 +11,9 @@ import { toNodeHandler } from 'better-auth/node';
 import { createAuthRouter, SERVE_AUTH_PATHS } from './modules/auth/auth.routes.js';
 import { createNativeAuthRouter } from './modules/auth/native-auth.routes.js';
 import { AUTH_BASE_PATH, EXPOSED_AUTH_PATHS, trustedOriginsFor } from './lib/auth.js';
-import { ForbiddenError } from './lib/errors.js';
+import { ForbiddenError, UnauthorizedError } from './lib/errors.js';
+import { principalForSession } from './middleware/auth.js';
+import { sensitiveLimiter } from './middleware/rate-limit.js';
 import { createServices } from './services.js';
 import {
   createCanteensRouter,
@@ -112,9 +114,15 @@ export function createApp(ctx: AppContext): Express {
   // endpoints added by a future Better Auth version stay closed); the rest
   // fall through to the JSON 404.
   const betterAuth = toNodeHandler(ctx.auth);
-  app.all(`${AUTH_BASE_PATH}/*splat`, (req, res, next) => {
+  // Password guessing: the stricter per-client limit on password sign-in and
+  // password changes (on top of the global limit and Better Auth's own).
+  const passwordLimiter = sensitiveLimiter(env);
+  app.post(`${AUTH_BASE_PATH}/sign-in/email`, passwordLimiter);
+  app.post(`${AUTH_BASE_PATH}/change-password`, passwordLimiter);
+  app.all(`${AUTH_BASE_PATH}/*splat`, async (req, res, next) => {
     const path = req.path.slice(AUTH_BASE_PATH.length);
     if (SERVE_AUTH_PATHS.has(path) || !EXPOSED_AUTH_PATHS.has(path)) return next();
+    if (path === '/change-password') await assertPasswordAccount(ctx, req);
     withoutTokenHeader(res);
     void betterAuth(req, res);
   });
@@ -167,6 +175,26 @@ export function createApp(ctx: AppContext): Express {
   app.use(errorHandler);
 
   return app;
+}
+
+/**
+ * Only an active staff member or admin signed in with their password may
+ * change a password (Better Auth also requires the current password). A
+ * student has no password; a Google or pre-existing session of a staff
+ * member/admin is refused and revoked by principalForSession.
+ */
+async function assertPasswordAccount(ctx: AppContext, req: express.Request): Promise<void> {
+  const identity = await ctx.sessions.verify(req.headers);
+  if (!identity) throw new UnauthorizedError('Authentication required', 'AUTH_REQUIRED');
+  const principal = await principalForSession(ctx.prisma, identity);
+  if (!principal || (principal.role !== 'STAFF' && principal.role !== 'ADMIN')) {
+    throw new ForbiddenError(
+      'Only staff and admin accounts have a password.',
+      'PASSWORD_CHANGE_NOT_ALLOWED',
+    );
+  }
+  if (!principal.isActive)
+    throw new ForbiddenError('This account is disabled.', 'ACCOUNT_DISABLED');
 }
 
 /**

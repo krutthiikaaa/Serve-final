@@ -3,19 +3,29 @@ import { fromNodeHeaders } from 'better-auth/node';
 import type { ServeAuth } from './auth.js';
 import { ServiceUnavailableError } from './errors.js';
 import { normalizeEmail, srmIdentityRejection } from '../modules/auth/srm-email.js';
+import {
+  isPasswordIdentityEmail,
+  parseAuthMethod,
+  type AuthMethod,
+} from '../modules/auth/sign-in-method.js';
 
 /**
- * Identity proven by a Better Auth session (Google, verified @srmap.edu.in).
- * Roles are NOT part of this: PostgreSQL decides those (principal.ts).
+ * Identity proven by a Better Auth session: a Google sign-in (verified
+ * @srmap.edu.in) or an email + password sign-in (staff, admins).
+ * Roles are NOT part of this: PostgreSQL decides those (principal.ts), and
+ * middleware/auth.ts checks the method against the role on every request.
  */
 export interface VerifiedIdentity {
   /** Better Auth user id (AuthUser.id); role rows reference it as authUserId. */
   uid: string;
-  /** Lower-cased, Google-verified @srmap.edu.in address. */
+  /** Lower-cased address. Google sessions: Google-verified @srmap.edu.in. */
   email: string;
-  emailVerified: true;
+  /** True only when Google verified the address (never for password identities). */
+  emailVerified: boolean;
   name: string;
   sessionId: string;
+  /** How the session was created; null for sessions from before role-specific sign-in (Google). */
+  authMethod: AuthMethod | null;
   /** When the session stops being valid. */
   expiresAt: Date;
 }
@@ -46,16 +56,21 @@ export function createSessionVerifier(auth: ServeAuth): SessionVerifier {
       }
       if (!result) return null;
       const { user, session } = result;
+      const authMethod = parseAuthMethod(session.authMethod);
       // Sessions are only ever created for qualifying identities; refuse
       // anything else rather than trust it (defence in depth).
-      if (srmIdentityRejection({ email: user.email, emailVerified: user.emailVerified }))
+      if (authMethod === 'password') {
+        if (!isPasswordIdentityEmail(user.email)) return null;
+      } else if (srmIdentityRejection({ email: user.email, emailVerified: user.emailVerified })) {
         return null;
+      }
       return {
         uid: user.id,
         email: normalizeEmail(user.email) ?? user.email,
-        emailVerified: true,
+        emailVerified: user.emailVerified === true,
         name: user.name,
         sessionId: session.id,
+        authMethod,
         expiresAt: new Date(session.expiresAt),
       };
     },

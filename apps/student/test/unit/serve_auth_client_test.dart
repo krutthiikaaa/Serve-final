@@ -117,6 +117,31 @@ void main() {
       expect(signInErrorMessage('Error: stack trace at line 3'), 'Authentication failed. Please try again.');
     });
 
+    test('a staff or admin address is sent to the web portals', () {
+      for (final code in ['STAFF_ADMIN_USE_PASSWORD', 'SIGN_IN_METHOD_NOT_ALLOWED']) {
+        expect(signInErrorMessage(code), staffAdminPortalMessage);
+      }
+      expect(staffAdminPortalMessage, contains('staff dashboard'));
+      expect(staffAdminPortalMessage, contains('admin portal'));
+      expect(signInErrorMessage('account_not_linked'), contains('email and password'));
+    });
+
+    test('a native sign-in refused for a staff/admin address reports why', () async {
+      final client = ServeAuthClient(
+        config,
+        httpClient: MockClient((_) async => http.Response('{}', 500)),
+        browser: (_, _) async => 'app.serve.student://auth?error=STAFF_ADMIN_USE_PASSWORD',
+      );
+      await expectLater(
+        client.nativeSignIn(),
+        throwsA(
+          isA<AuthException>()
+              .having((e) => e.code, 'code', 'STAFF_ADMIN_USE_PASSWORD')
+              .having((e) => e.message, 'message', staffAdminPortalMessage),
+        ),
+      );
+    });
+
     test('an expired or reused code maps to a friendly message', () async {
       final client = ServeAuthClient(
         config,

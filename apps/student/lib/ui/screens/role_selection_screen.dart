@@ -298,14 +298,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> with TickerPr
       _Pane.staffLogin => AuthInfoPane(
         icon: Icons.storefront_rounded,
         heading: 'Staff sign in',
-        body: 'Canteen staff sign in on the staff dashboard with their SRM Google account (@srmap.edu.in). New staff request access there; an admin approves it.',
+        body: 'Canteen staff sign in on the staff dashboard with their email and password. New staff create an account there; an admin approves it.',
         actionLabel: 'Open staff dashboard',
         onAction: () => _openPortal(config.staffDashboardUrl, 'staff dashboard'),
       ),
       _Pane.adminLogin => AuthInfoPane(
         icon: Icons.admin_panel_settings_rounded,
         heading: 'Admin sign in',
-        body: 'Administrators sign in on the admin portal with their SRM Google account (@srmap.edu.in). Admin access is granted by the SERVE operations team; there is no public admin sign-up.',
+        body: 'Administrators sign in on the admin portal with their email and password. Admin access is granted by the SERVE operations team; there is no public admin sign-up.',
         actionLabel: 'Open admin portal',
         onAction: () => _openPortal(config.adminPortalUrl, 'admin portal'),
       ),

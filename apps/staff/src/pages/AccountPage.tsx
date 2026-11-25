@@ -1,6 +1,7 @@
 import type { ChangeRequest, MeStaff } from '@serve/contracts';
 import {
   CanteenTypeBadge,
+  ChangePasswordForm,
   EmptyState,
   ErrorState,
   IconInbox,
@@ -13,10 +14,10 @@ import {
 } from '@serve/web-shared';
 import { useStaffApi } from '../useStaffApi';
 
-/** Profile, the account's dedicated canteen and past access requests. */
+/** Profile, the account's dedicated canteen, password and past access requests. */
 export function AccountPage({ me }: { me: MeStaff }) {
   const api = useStaffApi();
-  const { refreshMe } = useAuth();
+  const { refreshMe, changePassword } = useAuth();
   const history = useResource(() => api.changeRequests(), [api, me.pendingChangeRequest?.id]);
 
   useServerEvent('change_request.updated', () => {
@@ -56,6 +57,13 @@ export function AccountPage({ me }: { me: MeStaff }) {
           This login is dedicated to {me.canteen?.name}. Each canteen, Day or Night, has its own
           staff account, and only an admin can change which canteen an account belongs to.
         </p>
+      </section>
+
+      <section className="section" aria-label="Password">
+        <div className="section-header">
+          <h2>Password</h2>
+        </div>
+        <ChangePasswordForm onChange={changePassword} />
       </section>
 
       <section className="section">

@@ -25,36 +25,51 @@ function renderGate(me: Me | null, path = '/', overrides: Partial<AuthContextVal
 }
 
 describe('staff routing (decided only by /api/auth/me)', () => {
-  it('shows Google sign-in (SRM accounts) when signed out', () => {
+  it('shows email + password sign-in when signed out, and never Google', () => {
     renderGate(null);
-    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
-    expect(screen.getByText('@srmap.edu.in')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
-  });
-
-  it('shows why a Google sign-in was refused', () => {
-    renderGate(null, '/', { signInError: 'Use your SRM University-AP Google account.' });
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Use your SRM University-AP Google account.',
+    expect(screen.getByRole('heading', { name: 'Staff dashboard' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toHaveAttribute('type', 'email');
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByText(/google/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Request access' })).toHaveAttribute(
+      'href',
+      '/create-account',
     );
   });
 
-  it('request-access starts with Google sign-in too', () => {
+  it('shows why a sign-in was refused', () => {
+    renderGate(null, '/', { signInError: 'Incorrect email or password.' });
+    expect(screen.getByRole('alert')).toHaveTextContent('Incorrect email or password.');
+  });
+
+  it('request access is a registration form, without Google', () => {
     renderGate(null, '/create-account');
     expect(screen.getByRole('heading', { name: 'Request staff access' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+    for (const label of ['Full name', 'Email', 'Password', 'Confirm password']) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument();
+    }
+    expect(screen.getByLabelText('Canteen you work at')).toBeInTheDocument();
+    expect(screen.queryByText(/google/i)).not.toBeInTheDocument();
   });
 
-  it('old SSO handoff links open the dashboard with the shared session', () => {
+  it('protected pages are never shown while signed out', () => {
+    renderGate(null, '/orders');
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
+  });
+
+  it('old SSO handoff links open the dashboard with the existing session', () => {
     renderGate(meStaff(), '/sso/callback?code=old-one-time-code');
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Continue with Google' })).not.toBeInTheDocument();
   });
 
-  it('asks a newly signed-in Google user to complete staff registration', () => {
+  it('turns away an unregistered (student Google) identity', () => {
     renderGate({ registered: false, role: null, authUserId: 'u', email: 'new@srmap.edu.in' });
-    expect(screen.getByRole('heading', { name: 'Your staff details' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Request access' })).toBeDisabled();
+    expect(
+      screen.getByText('Use the SERVE mobile app to order.', { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
   });
 
   it('keeps pending staff on the awaiting-approval screen', () => {

@@ -7,6 +7,8 @@ import type { SessionVerifier } from '../lib/session.js';
 import type { PrismaClient } from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { resolvePrincipal, type Principal } from '../modules/auth/principal.js';
+import type { AuthMethod } from '../modules/auth/sign-in-method.js';
+import { principalForSession } from '../middleware/auth.js';
 import { canSeeCanteen } from '../modules/canteens/canteens.service.js';
 import {
   rooms,
@@ -21,6 +23,7 @@ interface SocketData {
   email: string;
   principal: Principal;
   sessionId: string;
+  authMethod: AuthMethod | null;
   tokenExpiresAt: number;
 }
 
@@ -63,8 +66,9 @@ function connectError(code: string, message: string): Error {
  *
  * Handshake: the web apps send Better Auth's session cookie (withCredentials);
  * the native app sends `io(url, { auth: { token: <session token> } })`. The
- * session is verified by Better Auth and the principal is loaded from
- * PostgreSQL, exactly like REST. Rooms are assigned by the server; the only
+ * session is verified by Better Auth, the principal is loaded from
+ * PostgreSQL and the session's sign-in method must match the role, exactly
+ * like REST (students: Google; staff and admins: email + password). Rooms are assigned by the server; the only
  * client-initiated membership is the read-only public menu room of a canteen
  * the caller is allowed to see.
  */
@@ -101,7 +105,8 @@ export function createRealtimeServer(
       }
       const identity = await sessions.verify(headers);
       if (!identity) return connectError('AUTH_REQUIRED', 'Authentication required');
-      const principal = await resolvePrincipal(prisma, identity);
+      // Refuses (and revokes) a session whose sign-in method the role does not allow.
+      const principal = await principalForSession(prisma, identity);
       if (!principal) {
         return connectError('ACCOUNT_NOT_REGISTERED', 'Complete your SERVE registration first.');
       }
@@ -111,6 +116,7 @@ export function createRealtimeServer(
         email: identity.email,
         principal,
         sessionId: identity.sessionId,
+        authMethod: identity.authMethod,
         tokenExpiresAt: identity.expiresAt.getTime(),
       } satisfies SocketData;
       return null;
@@ -126,7 +132,7 @@ export function createRealtimeServer(
   });
 
   io.on('connection', (socket) => {
-    const { principal, uid, email, sessionId, tokenExpiresAt } = dataOf(socket);
+    const { principal, uid, email, sessionId, authMethod, tokenExpiresAt } = dataOf(socket);
     void socket.join(roomsFor(principal));
 
     // A socket never outlives the session it was opened with: at expiry, or
@@ -171,7 +177,7 @@ export function createRealtimeServer(
       }
       try {
         // Re-read the principal so permissions reflect the latest database state.
-        const current = (await resolvePrincipal(prisma, { uid, email })) ?? principal;
+        const current = (await resolvePrincipal(prisma, { uid, email, authMethod })) ?? principal;
         const canteen = await prisma.canteen.findUnique({
           where: { id: parsed.data.canteenId },
           select: { id: true, isActive: true },

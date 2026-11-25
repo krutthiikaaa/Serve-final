@@ -212,6 +212,14 @@ const envSchema = z
     PAYMENT_SECRET: optional(
       z.string().min(32, { error: 'PAYMENT_SECRET must be at least 32 characters' }),
     ),
+    /**
+     * Minutes a student has to pay for an app order before an unpaid order
+     * that was never claimed ("I've paid") expires. Claimed orders never
+     * expire automatically: the cashier always decides those.
+     */
+    UNPAID_ORDER_EXPIRY_MINUTES: z.coerce.number().int().min(1).max(1440).default(20),
+    /** How often (seconds) the server looks for unpaid orders to expire. */
+    UNPAID_ORDER_EXPIRY_CHECK_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
     RAZORPAY_KEY_ID: optional(z.string()),
     RAZORPAY_KEY_SECRET: optional(z.string()),
     RAZORPAY_WEBHOOK_SECRET: optional(z.string()),

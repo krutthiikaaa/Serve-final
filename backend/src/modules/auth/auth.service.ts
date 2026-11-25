@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { areaCanteenSelect, defaultCanteenOf } from '../canteens/service-areas.js';
+import { CREDENTIAL_PROVIDER_ID, createIdentity } from './password-accounts.js';
 import { canteenAvailability, canteenSelect } from '../canteens/canteen.dto.js';
 import type { PrismaClient } from '../../lib/prisma.js';
 import type { VerifiedIdentity } from '../../lib/session.js';
@@ -19,10 +21,13 @@ export interface StudentRegistration {
   hostelId: string;
 }
 
-export interface StaffRegistration {
+/** Staff self-registration with email + password (no session needed). */
+export interface StaffSignUp {
   name: string;
-  /** Optional confirmation only: the address always comes from the session. */
-  email?: string | undefined;
+  /** Lower-cased; any address (e.g. a personal Gmail). Not verified. */
+  email: string;
+  /** Already validated and hashed (password-accounts.ts hashNewPassword). */
+  passwordHash: string;
   /** Optional: request access to a canteen immediately. */
   requestedCanteenId?: string | undefined;
 }
@@ -71,6 +76,16 @@ export function createAuthService({ prisma, events }: Deps) {
       const emailAddress = verifiedEmail(identity, input.email);
       await assertUnregistered(identity.uid);
 
+      // A staff/admin address is not a student address (Google refuses it at
+      // sign-in; this also covers sessions from before that rule).
+      const [staffWithEmail, adminsWithEmail] = await Promise.all([
+        prisma.staff.count({ where: { email: emailAddress } }),
+        prisma.admin.count({ where: { email: emailAddress } }),
+      ]);
+      if (staffWithEmail > 0 || adminsWithEmail > 0) {
+        throw new ConflictError('This email is already registered.', 'EMAIL_IN_USE');
+      }
+
       const hostel = await prisma.hostel.findUnique({ where: { id: input.hostelId } });
       if (!hostel) throw new ValidationError('Select a valid hostel.', undefined, 'INVALID_HOSTEL');
       if (!hostel.isActive) {
@@ -95,11 +110,13 @@ export function createAuthService({ prisma, events }: Deps) {
       }
     },
 
-    /** Creates a PENDING Staff account; an admin must approve and assign a canteen. */
-    async registerStaff(identity: VerifiedIdentity, input: StaffRegistration) {
-      const emailAddress = verifiedEmail(identity, input.email);
-      await assertUnregistered(identity.uid);
-
+    /**
+     * Staff self-registration: creates a password identity and a PENDING Staff
+     * account in one transaction. An admin must approve it and assign a
+     * canteen before it can operate anything; the staff member can sign in
+     * meanwhile to see that status. No session is created here.
+     */
+    async signUpStaff(input: StaffSignUp) {
       if (input.requestedCanteenId) {
         const canteen = await prisma.canteen.findUnique({
           where: { id: input.requestedCanteenId },
@@ -108,12 +125,32 @@ export function createAuthService({ prisma, events }: Deps) {
           throw new NotFoundError('Canteen not found.', 'CANTEEN_NOT_FOUND');
         }
       }
+      // Any account (or sign-in identity) with this address already exists.
+      const [identities, students, staffRows, admins] = await Promise.all([
+        prisma.authUser.count({ where: { email: input.email } }),
+        prisma.student.count({ where: { email: input.email } }),
+        prisma.staff.count({ where: { email: input.email } }),
+        prisma.admin.count({ where: { email: input.email } }),
+      ]);
+      if (identities + students + staffRows + admins > 0) {
+        throw new ConflictError('This email is already registered.', 'EMAIL_IN_USE');
+      }
 
       const outbox = new Outbox();
       try {
         await prisma.$transaction(async (tx) => {
+          const authUserId = await createIdentity(tx, { email: input.email, name: input.name });
+          await tx.authAccount.create({
+            data: {
+              id: randomUUID(),
+              userId: authUserId,
+              accountId: authUserId,
+              providerId: CREDENTIAL_PROVIDER_ID,
+              password: input.passwordHash,
+            },
+          });
           const staff = await tx.staff.create({
-            data: { authUserId: identity.uid, email: emailAddress, name: input.name },
+            data: { authUserId, email: input.email, name: input.name, status: 'PENDING' },
           });
           if (input.requestedCanteenId) {
             const request = await tx.canteenChangeRequest.create({

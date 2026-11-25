@@ -3,7 +3,13 @@ import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { truncateAll } from '../helpers/db.js';
-import { createTestUser, uniqueEmail } from '../helpers/identity.js';
+import {
+  TEST_PASSWORD,
+  createTestUser,
+  passwordSignIn,
+  uniqueEmail,
+  uniquePersonalEmail,
+} from '../helpers/identity.js';
 import { bearer, idempotencyKey, newAdmin, type Actor } from '../helpers/actors.js';
 import { nextEvent, startTestServer, subscribeMenu, type TestServer } from '../helpers/realtime.js';
 import {
@@ -29,6 +35,7 @@ import {
   quoteSchema,
   staffDashboardSchema,
   staffOrderSchema,
+  staffSignUpResultSchema,
   staffSummarySchema,
   studentOrderSchema,
   studentPaymentConfigSchema,
@@ -192,16 +199,20 @@ describe('student client', () => {
 
 describe('staff and admin clients', () => {
   it('staff registers and stays pending; admin reviews and approves', async () => {
-    const user = await createTestUser(uniqueEmail('react-staff'));
-    staff.token = user.token;
+    const email = uniquePersonalEmail('react-staff');
     const adminSocket = await server.connect(admin.token);
     const requestEvent = nextEvent(adminSocket, 'change_request.created');
     const registered = await api()
-      .post('/api/auth/staff/register')
-      .set(bearer(user.token))
-      .send({ name: 'React Staff', email: user.email, requestedCanteenId: canteenId })
+      .post('/api/auth/staff/sign-up')
+      .send({ name: 'React Staff', email, password: TEST_PASSWORD, requestedCanteenId: canteenId })
       .expect(201);
-    const me = expectShape(meStaffSchema, registered.body.data);
+    expectShape(staffSignUpResultSchema, registered.body.data);
+    const user = await passwordSignIn(email);
+    staff.token = user.token;
+    const me = expectShape(
+      meStaffSchema,
+      (await api().get('/api/auth/me').set(bearer(user.token)).expect(200)).body.data,
+    );
     staff.id = me.id;
     expect(me).toMatchObject({ status: 'PENDING', canteen: null });
     expectShape(z.strictObject({ changeRequest: changeRequestSchema }), await requestEvent);

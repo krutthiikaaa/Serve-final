@@ -186,6 +186,9 @@ Map<String, dynamic> orderJson({
       'refundedAt': null,
       'failureReason': null,
       'isSimulated': false,
+      'claimedAt': null,
+      'paymentDueAt': null,
+      'expiredAt': null,
     },
     'createdAt': '2026-10-06T19:42:58.710Z',
     'updatedAt': updatedAt,
@@ -209,12 +212,41 @@ StudentOrder order({
   String updatedAt = '2026-10-06T19:43:00.000Z',
   bool simulated = false,
   String? servicePeriod = 'NIGHT',
+  Map<String, Object?> payment = const {},
+  String? cancelReason,
+}) => StudentOrder.fromJson(
+  orderMap(
+    status: status,
+    number: number,
+    total: total,
+    updatedAt: updatedAt,
+    simulated: simulated,
+    servicePeriod: servicePeriod,
+    payment: payment,
+    cancelReason: cancelReason,
+  ),
+);
+
+/// [orderJson] with optional payment fields (claim, deadline, expiry …).
+Map<String, dynamic> orderMap({
+  String status = 'PAYMENT_CONFIRMED',
+  String number = 'SV1002',
+  int total = 22500,
+  String updatedAt = '2026-10-06T19:43:00.000Z',
+  bool simulated = false,
+  String? servicePeriod = 'NIGHT',
+  Map<String, Object?> payment = const {},
+  String? cancelReason,
 }) {
   final json = orderJson(status: status, number: number, total: total, updatedAt: updatedAt);
   json['servicePeriod'] = servicePeriod;
-  final payment = json['payment'] as Map<String, dynamic>?;
-  if (payment != null) payment['isSimulated'] = simulated;
-  return StudentOrder.fromJson(json);
+  final paymentJson = json['payment'] as Map<String, dynamic>?;
+  if (paymentJson != null) {
+    paymentJson['isSimulated'] = simulated;
+    paymentJson.addAll(payment);
+  }
+  if (cancelReason != null) json['cancelReason'] = cancelReason;
+  return json;
 }
 
 Map<String, dynamic> paymentConfigJson({

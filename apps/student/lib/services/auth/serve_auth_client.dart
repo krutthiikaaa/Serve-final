@@ -131,13 +131,22 @@ class ServeAuthClient {
   }
 }
 
-/// Plain-language reasons for sign-in refusals (same wording as the web
-/// apps). Never internal details: unknown codes get the generic message.
+/// Shown when a staff or admin account tries to sign in to the student app.
+const staffAdminPortalMessage =
+    'Google sign-in is for students only. Staff sign in on the SERVE staff dashboard and admins on the admin portal, with their email and password.';
+
+/// Plain-language reasons for sign-in refusals. Never internal details:
+/// unknown codes get the generic message.
 String signInErrorMessage(String code) => switch (code) {
-  'EMAIL_DOMAIN_NOT_ALLOWED' || 'SIGN_IN_METHOD_NOT_ALLOWED' =>
+  'EMAIL_DOMAIN_NOT_ALLOWED' =>
     'This account is not eligible to use SERVE. Please sign in using your SRM AP institutional account (@srmap.edu.in).',
+  // A staff or admin address tried Google (students only), or a staff/admin
+  // session reached the student app. They sign in on the web portals.
+  'STAFF_ADMIN_USE_PASSWORD' || 'SIGN_IN_METHOD_NOT_ALLOWED' => staffAdminPortalMessage,
   'EMAIL_NOT_VERIFIED' => 'Your account could not be verified. Make sure your Google account email is verified, then try again.',
-  'account_not_linked' => 'This Google account is not the one linked to your SERVE account. Ask a SERVE administrator for help.',
+  // Google cannot attach to an address that already signs in another way
+  // (a staff/admin password account) or to another student's account.
+  'account_not_linked' => 'This email already has a SERVE account that does not sign in with Google. Staff and admins: use the staff dashboard or admin portal with your email and password. Students: ask a SERVE administrator for help.',
   'access_denied' => 'Google sign-in was cancelled.',
   'network-request-failed' => 'Unable to reach SERVE. Check your connection.',
   'NATIVE_CODE_INVALID' => 'That sign-in expired. Please try again.',

@@ -4,11 +4,20 @@ import type { Express } from 'express';
 import type { Env } from '../../src/config/env.js';
 import type { PrismaClient } from '../../src/lib/prisma.js';
 import { bootstrapAdmin } from '../../src/modules/auth/admin-bootstrap.js';
-import { createTestUser, uniqueEmail } from './identity.js';
+import { hashNewPassword, setAccountPassword } from '../../src/modules/auth/password-accounts.js';
+import {
+  TEST_PASSWORD,
+  createTestUser,
+  passwordSignIn,
+  uniqueEmail,
+  uniquePersonalEmail,
+} from './identity.js';
 
 /**
- * Test actors created through the REAL flows: Better Auth sign-in (SRM gate),
- * the registration API, the admin bootstrap, and the admin approval API.
+ * Test actors created through the REAL flows: students via the Google
+ * stand-in (SRM gate) and the registration API; staff via password sign-up
+ * and email + password sign-in; admins via the provisioning bootstrap with a
+ * password; approvals via the admin API.
  */
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -35,26 +44,35 @@ export async function newStudent(
   return { id: res.body.data.id as string, uid: user.uid, email: user.email, token: user.token };
 }
 
-/** Admin provisioned by email (the only way), then signed in: the first request links it. */
+/** Hashed once: scrypt is deliberately slow. */
+let testPasswordHash: Promise<string> | null = null;
+const passwordHash = () => (testPasswordHash ??= hashNewPassword(TEST_PASSWORD));
+
+/** Admin provisioned with a password (the only way), then signed in with it. */
 export async function newAdmin(prisma: PrismaClient, _env?: Env): Promise<Actor> {
   const email = uniqueEmail('admin');
   const result = await bootstrapAdmin({ prisma }, { email, name: 'Test Admin' });
-  const user = await createTestUser(email);
+  await setAccountPassword(prisma, { role: 'ADMIN', email, passwordHash: await passwordHash() });
+  const user = await passwordSignIn(email);
   return { id: result.adminId, uid: user.uid, email: user.email, token: user.token };
 }
 
+/** Staff self-registration (email + password, personal address), then password sign-in. */
 export async function newPendingStaff(app: Express, requestedCanteenId?: string): Promise<Actor> {
-  const user = await createTestUser(uniqueEmail('staff'));
+  const email = uniquePersonalEmail('staff');
   const res = await request(app)
-    .post('/api/auth/staff/register')
-    .set(bearer(user.token))
+    .post('/api/auth/staff/sign-up')
     .send({
       name: 'Test Staff',
-      email: user.email,
+      email,
+      password: TEST_PASSWORD,
       ...(requestedCanteenId ? { requestedCanteenId } : {}),
     });
-  if (res.status !== 201) throw new Error(`staff registration failed: ${JSON.stringify(res.body)}`);
-  return { id: res.body.data.id as string, uid: user.uid, email: user.email, token: user.token };
+  if (res.status !== 201) throw new Error(`staff sign-up failed: ${JSON.stringify(res.body)}`);
+  const user = await passwordSignIn(email);
+  const me = await request(app).get('/api/auth/me').set(bearer(user.token));
+  if (me.status !== 200) throw new Error(`staff /me failed: ${JSON.stringify(me.body)}`);
+  return { id: me.body.data.id as string, uid: user.uid, email: user.email, token: user.token };
 }
 
 /** Staff registers with an access request; an admin approves it through the API. */

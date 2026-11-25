@@ -12,7 +12,7 @@ function client(
   overrides: Partial<ConstructorParameters<typeof ApiClient>[0]> = {},
 ) {
   const fetchImpl = vi.fn(async () => responses.shift()!);
-  const getToken = vi.fn(async (force?: boolean) => (force ? 'fresh-token' : 'cached-token'));
+  const getToken = vi.fn(async () => 'cached-token');
   const onUnauthorized = vi.fn();
   const api = new ApiClient({
     baseUrl: 'http://localhost:5001',
@@ -71,38 +71,24 @@ describe('ApiClient', () => {
     expect(getToken).not.toHaveBeenCalled();
   });
 
-  it('retries exactly once with a force-refreshed token after AUTH_TOKEN_EXPIRED', async () => {
-    const { api, fetchImpl, getToken, onUnauthorized } = client([
-      json(401, errorBody('AUTH_TOKEN_EXPIRED')),
-      json(200, { data: 'ok' }),
+  it('signs out on a 401, passing on the error code, and never retries', async () => {
+    const { api, fetchImpl, onUnauthorized } = client([
+      json(401, errorBody('SIGN_IN_METHOD_NOT_ALLOWED', 'Use your password')),
     ]);
-    await expect(api.get('/auth/me')).resolves.toBe('ok');
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(getToken).toHaveBeenLastCalledWith(true);
-    const retry = (fetchImpl.mock.calls[1] as unknown as [string, RequestInit])[1];
-    expect((retry.headers as Record<string, string>).Authorization).toBe('Bearer fresh-token');
-    expect(onUnauthorized).not.toHaveBeenCalled();
-  });
-
-  it('signs out on other 401s and surfaces the error code', async () => {
-    const { api, onUnauthorized } = client([json(401, errorBody('AUTH_TOKEN_REVOKED', 'Revoked'))]);
     await expect(api.get('/auth/me')).rejects.toMatchObject({
       status: 401,
-      code: 'AUTH_TOKEN_REVOKED',
+      code: 'SIGN_IN_METHOD_NOT_ALLOWED',
     });
-    expect(onUnauthorized).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).toHaveBeenCalledExactlyOnceWith('SIGN_IN_METHOD_NOT_ALLOWED');
   });
 
-  it('does not sign out when an anonymous 401 is returned (SSO exchange)', async () => {
-    const { api, onUnauthorized } = client([
-      json(401, errorBody('SSO_CODE_INVALID', 'This sign-in link is invalid or has expired.')),
-    ]);
-    await expect(
-      api.data('POST', '/auth/sso/exchange', {
-        body: { code: 'already-used-or-expiredxx', audience: 'STAFF' },
-        anonymous: true,
-      }),
-    ).rejects.toMatchObject({ status: 401, code: 'SSO_CODE_INVALID' });
+  it('does not sign out when an anonymous request gets a 401', async () => {
+    const { api, onUnauthorized } = client([json(401, errorBody('AUTH_REQUIRED', 'No'))]);
+    await expect(api.data('GET', '/hostels', { anonymous: true })).rejects.toMatchObject({
+      status: 401,
+      code: 'AUTH_REQUIRED',
+    });
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 

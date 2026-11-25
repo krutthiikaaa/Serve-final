@@ -20,7 +20,6 @@ import { StaffApiContext } from './useStaffApi';
 import { StaffCanteenProvider, useStaffCanteen } from './staffCanteen';
 import { LoginPage } from './pages/LoginPage';
 import { CreateAccountPage } from './pages/CreateAccountPage';
-import { CompleteRegistrationPage } from './pages/CompleteRegistrationPage';
 import { AccessStatusPage, WrongPortalPage } from './pages/AccessStatusPage';
 import { StaffLayout } from './components/StaffLayout';
 import { DashboardPage } from './pages/DashboardPage';
@@ -36,7 +35,7 @@ const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
 export function App() {
   return (
     <ToastProvider>
-      <AuthProvider baseUrl={config.apiUrl} appUrl={config.appUrl}>
+      <AuthProvider baseUrl={config.apiUrl}>
         <BrowserRouter basename={routerBasename}>
           <Gate />
         </BrowserRouter>
@@ -46,9 +45,10 @@ export function App() {
 }
 
 /**
- * Routes purely on the backend account (`/api/auth/me`). The Google sign-in
- * (Better Auth session) only proves identity; nothing here trusts a
- * client-side role.
+ * Routes purely on the backend account (`/api/auth/me`). The email +
+ * password sign-in (Better Auth session) only proves identity; nothing here
+ * trusts a client-side role, and the backend refuses any other sign-in
+ * method for staff accounts.
  */
 export function Gate() {
   return (
@@ -102,10 +102,13 @@ function AccountGate() {
       );
     }
     return (
-      <Routes>
-        <Route path="/create-account" element={<CreateAccountPage />} />
-        <Route path="*" element={<LoginPage />} />
-      </Routes>
+      // Registration (signed out) reads the public canteen directory and signs up.
+      <StaffApiContext.Provider value={client}>
+        <Routes>
+          <Route path="/create-account" element={<CreateAccountPage />} />
+          <Route path="*" element={<LoginPage />} />
+        </Routes>
+      </StaffApiContext.Provider>
     );
   }
 
@@ -127,7 +130,8 @@ function AccountGate() {
       >
         <NotificationsProvider api={api}>
           {!me.registered ? (
-            <CompleteRegistrationPage />
+            // Only a student's Google identity can be unregistered.
+            <WrongPortalPage role="STUDENT" />
           ) : me.role !== 'STAFF' ? (
             <WrongPortalPage role={me.role} />
           ) : me.status !== 'APPROVED' || !me.canteen ? (

@@ -208,7 +208,8 @@ class FakeServeApi extends ServeApi {
   Future<StudentOrder> claimPayment(String orderId, {String? utr}) async {
     calls.add('claim:$orderId:${utr ?? ''}');
     if (onClaim != null) return onClaim!(orderId, utr);
-    return fx.order(status: 'PLACED', total: 99900);
+    // Like the server: the claim is recorded, the payment stays PENDING.
+    return fx.order(status: 'PLACED', total: 99900, payment: {'utr': utr, 'claimedAt': DateTime.now().toUtc().toIso8601String()});
   }
 
   @override

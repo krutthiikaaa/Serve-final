@@ -60,7 +60,7 @@ String errorMessage(Object error) {
   return 'Something went wrong. Please try again.';
 }
 
-/// Firebase Authentication failure with a friendly message.
+/// Sign-in failure (Google via Better Auth) with a friendly message.
 class AuthException implements Exception {
   const AuthException(this.code, this.message);
   final String code;
