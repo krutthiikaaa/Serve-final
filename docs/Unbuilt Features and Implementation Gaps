@@ -1,0 +1,127 @@
+# 02 — Unbuilt Features and Implementation Gaps
+
+## 1. Current System Overview
+
+SERVE is a campus canteen ordering and kitchen-management platform connecting students, staff and administrators through a shared backend.
+
+- **Student Application:** Students authenticate using their SRM University-AP Google accounts, browse their assigned canteen's menu, place orders, make payments using the canteen's UPI QR code, submit payment claims and track order progress in real time.
+- **Staff Dashboard:** Staff authenticate using email and password. They manage payment claims, process kitchen orders, update menu availability, handle counter sales and control incoming orders.
+- **Admin Dashboard:** Administrators manage staff approvals, Day/Night canteen operations, service schedules, payment modes and sales reports.
+
+The platform supports the complete order lifecycle, from placement and payment confirmation to preparation and collection.
+
+**Verification:** On the audited commit, the recorded test results were 613 backend tests, 188 web tests, 197 Flutter tests and 39 end-to-end tests passed. The platform is prepared for local operation but has not yet been deployed publicly.
+
+## 2. Implementation Status
+
+### Fully Implemented and Verified
+
+- Role-based authentication for students, staff and administrators.
+- Staff approval and role-based permissions.
+- Order placement with server-side price validation and duplicate-order protection.
+- Complete order lifecycle: Placed → Payment Confirmed → Preparing → Ready → Collected.
+- UPI payment claim queue with cashier verification and automatic expiry of unpaid orders after the configured deadline.
+- Kitchen dashboard with real-time order updates.
+- Manual pause and resume controls for incoming orders.
+- Day/Night canteen management with time-based service switching.
+- Cashier counter sales and receipt generation.
+- Canteen-specific staff permissions.
+- Administrative dashboards, sales reports and menu recommendations.
+
+### Partially Implemented
+
+- **Razorpay Integration:** Signature verification code exists, but live payment processing and provider API integration are incomplete.
+- **Refund Management:** Refund handling is incomplete for UPI payments confirmed manually by cashiers. Such refunds are handled outside SERVE.
+- **Mobile Authentication:** Mobile sign-in functionality is present but requires a publicly accessible HTTPS backend for deployment testing.
+- **Activity History:** Activity information is available through server logs, but a searchable administrative activity history is not implemented.
+- **Favourites:** Favourite items are stored locally on the device rather than synchronised with user accounts.
+- **Sales Reports:** Reports provide daily summaries but do not include hourly or peak-period analysis.
+- **Deployment:** Docker configurations, server setup and deployment documentation are available, but public deployment is pending.
+
+### Not Implemented
+
+- Estimated order waiting times.
+- Automatic kitchen capacity management.
+- Demand forecasting and predictive analytics.
+- Market Intelligence.
+- Quantity-based inventory tracking.
+- Scheduled or advance ordering.
+- Customer ratings and feedback.
+- Push notifications.
+- Self-service password reset.
+- Pickup verification using a separate collection code.
+
+## 3. Pause Kitchen — Current Functionality and Limitations
+
+SERVE provides staff and administrators with a manual control to pause or resume incoming orders.
+
+When orders are paused:
+
+- The backend rejects new order requests.
+- Students are informed that the canteen is not accepting orders.
+- Orders already accepted continue through the kitchen workflow.
+- The pause remains active until an authorised staff member or administrator resumes ordering.
+
+**Operational Value:** Kitchen capacity is limited by available staff, preparation time and equipment. Accepting more orders than the kitchen can process creates backlogs, increases waiting times and affects service quality. Manual pausing provides management with control over incoming demand without interrupting existing orders.
+
+**Current Limitation:** The functionality depends on manual intervention. SERVE does not currently calculate kitchen capacity, enforce active-order limits or automatically adjust incoming order volume.
+
+**Future Enhancement:** Capacity-aware order management can use configurable active-order limits and preparation status to regulate incoming orders. This would help kitchens manage workload more consistently while maintaining service efficiency.
+
+## 4. Market Intelligence — Current Status and Future Direction
+
+**Market Intelligence is not currently implemented in SERVE.**
+
+The existing reporting system provides descriptive insights from SERVE's own order history, including sales by canteen, Day/Night service, ordering channel, payment method, daily totals and the top eight ordered items.
+
+| Capability | Current Status |
+|---|---|
+| External market trends and competitor analysis | Not implemented |
+| Analysis of customer ordering patterns | Partially supported through existing reports |
+| Demand forecasting | Not implemented |
+| Operational controls | Implemented through manual scheduling and order-management controls |
+| Data-driven operational recommendations | Not implemented as an automated intelligence system |
+
+The order history already collected by SERVE provides a foundation for future demand analysis.
+
+**Future Direction:** Market Intelligence can analyse historical sales, customer preferences and demand patterns to support better inventory planning, preparation decisions and resource allocation. With sufficient data across multiple canteens, it could also identify differences in item demand and recommend inventory redistribution. Such recommendations would require management review before implementation.
+
+## 5. Implementation Gaps and Development Priorities
+
+| Feature | Current Status | Missing Capability | Potential Benefit | Priority |
+|---|---|---|---|---|
+| Order waiting-time estimates | Not implemented | Estimated preparation and collection time | Improves student planning and reduces uncertainty | High |
+| Kitchen capacity management | Manual pause only | Configurable capacity limits and automated intake control | Reduces kitchen overload and improves order throughput | High |
+| Live payment integration | Incomplete | End-to-end provider payment processing | Reduces manual payment handling | High |
+| UPI refund records | Partial | Complete refund tracking for manually confirmed payments | Improves financial accountability | High |
+| Public deployment | Prepared, not deployed | Production hosting and live access | Enables real-world adoption and validation | High |
+| Peak-time reports | Daily reports available | Hourly sales and demand analysis | Supports preparation and staffing decisions | Medium |
+| Push notifications | Not implemented | Notifications for order status and collection | Improves communication with students | Medium |
+| Activity history | Server logs only | Searchable administrative activity records | Improves operational transparency | Medium |
+| Inventory tracking | Availability controls only | Quantity-based stock management | Reduces stock mismatches and unavailable-item issues | Medium |
+| Pickup verification | Order number | Dedicated collection verification code | Strengthens collection control | Medium |
+| Demand forecasting | Not implemented | Predictions based on historical orders | Supports preparation and resource planning | Future |
+| Market Intelligence | Not implemented | Market, competitor and cross-canteen analysis | Supports informed business decisions | Future |
+| Scheduled ordering | Not implemented | Advance ordering and scheduled collection | Helps distribute demand across time slots | Future |
+| Customer feedback | Not implemented | Ratings and feedback collection | Helps identify customer preferences | Future |
+| Password reset | Operator-assisted | Self-service password recovery | Reduces administrative workload | Future |
+
+## 6. Development Constraints and Scope
+
+The repository identifies several capabilities as pending or future enhancements. The following implementation constraints are established:
+
+- **Payment Integration:** Live Razorpay processing remains incomplete. The specific reason for not completing the integration requires team confirmation.
+- **Deployment and Notifications:** These are identified as future enhancements in the project documentation. Their implementation timelines require team confirmation.
+- **Password Recovery:** Password recovery currently relies on an operator-assisted process because automated email delivery is not configured.
+- **Demand Forecasting and Market Intelligence:** These capabilities require sufficient historical order data and, where applicable, reliable external data sources. Their implementation reasons and timelines require team confirmation.
+- **Other Identified Gaps:** The specific development constraints for the remaining features require team confirmation.
+
+## 7. Conclusion and Future Scope
+
+SERVE currently provides an integrated student ordering experience and a management platform for handling payments, kitchen operations, menu availability and administrative activities.
+
+The next development phase should prioritise reliable deployment, estimated waiting times, payment and refund completeness, and improved kitchen capacity management.
+
+Further enhancements can introduce advanced reporting, inventory tracking, demand forecasting and Market Intelligence. These capabilities would help SERVE progress from a digital ordering and operations platform towards a data-driven canteen management solution.
+
+**Overall, the current implementation establishes the core ordering and operational workflow, while the identified gaps provide a clear and achievable roadmap for future development.**
