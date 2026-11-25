@@ -1,0 +1,166 @@
+# 01 — Problem Statement and Field Evidence
+
+## 1. Project Scope
+
+SERVE is a food-ordering and kitchen-operations platform designed for the hostel canteens of SRM University-AP, covering Day and Night canteen operations.
+
+The platform consists of three applications connected through a common backend:
+
+- **Student App:** Enables students to browse menus, place orders, submit payment claims and track order progress.
+- **Staff Dashboard:** Supports payment verification, kitchen order management, menu availability and incoming-order control.
+- **Admin Portal:** Supports staff management, canteen scheduling, operational controls and sales reporting.
+
+Although the project explores challenges in the broader restaurant industry, its current prototype is designed for campus canteen operations. The relationship between Slice of Life and the campus implementation requires further clarification from the team.
+
+## 2. Customer-Side Problem
+
+**Affected stakeholders:** Students using hostel canteens, particularly during peak evening and late-night hours.
+
+During busy periods, students experience long queues while ordering and paying at the counter. They often lack visibility into:
+
+- Expected waiting time.
+- Availability of food items.
+- Order preparation and collection status.
+
+This uncertainty can result in wasted time, unnecessary waiting and repeated visits to the counter.
+
+These problems form the initial problem statement documented in the project's README. Their actual frequency and impact have not yet been measured through field data.
+
+## 3. Restaurant Management-Side Problem
+
+Restaurant and canteen operations also involve challenges related to order handling, payment verification and kitchen workload.
+
+| Stakeholder | Operational Challenge |
+|---|---|
+| Kitchen Staff | Managing incoming orders during peak periods while maintaining preparation efficiency |
+| Cashier | Manually checking UPI payments and resolving payment discrepancies |
+| Shift Lead | Managing incoming orders when kitchen capacity is limited |
+| Administrator | Coordinating multiple Day/Night outlets, staff access and sales information |
+
+These challenges are inferred from the system's design and implemented workflows. Their direct confirmation through the Slice of Life discussion requires team validation.
+
+## 4. Consolidated Problem Statement
+
+> During peak hours, students at SRM University-AP's hostel canteens face uncertainty about food availability, waiting times and order status, while canteen staff must manage incoming orders, manual payment verification and limited kitchen capacity without sufficient operational visibility or control.
+
+**Why both perspectives matter**
+
+Improving only the customer experience does not solve the operational challenges behind food preparation and order fulfilment. Increasing incoming orders without considering kitchen workload can create preparation delays and customer dissatisfaction.
+
+SERVE connects customer actions with management operations:
+
+| Customer Action | Management Function | Customer Benefit |
+|---|---|---|
+| Places an order and submits a payment claim | Cashier verifies payment | Payment confirmation |
+| Tracks an order | Kitchen updates preparation status | Live order visibility |
+| Attempts to order during an operational pause | Staff control incoming orders | Clear availability information |
+| Browses the menu | Staff update item availability | Updated menu information |
+
+Market Intelligence is considered a future business opportunity rather than an established problem, since it is not currently implemented or supported by recorded field evidence.
+
+## 5. Slice of Life — Manager Discussion
+
+The team interacted with the manager of Slice of Life to understand challenges from both customer and restaurant-management perspectives.
+
+| Area | Details |
+|---|---|
+| Interviewee | Manager of Slice of Life |
+| Purpose | Understand customer difficulties and restaurant operational challenges |
+| Topics Explored | Customer experience, kitchen operations, order management and business challenges |
+| Project Relevance | Explore improvements that benefit customers and restaurant management |
+| Interview Date and Duration | Requires team confirmation |
+| Recorded Findings and Quotes | Requires team confirmation |
+
+The discussion provided an opportunity to explore how customer-facing difficulties connect with restaurant operations.
+
+Potential connections to SERVE include remote ordering, live order tracking, payment verification and incoming-order controls. The exact findings that influenced each implementation require confirmation from the team.
+
+## 6. University Entrepreneurship Cell Interaction
+
+The team also interacted with the university's Entrepreneurship Cell to explore the broader business direction of the project.
+
+The discussion contributed to exploring how SERVE could extend beyond customer-facing ordering and address management and business requirements.
+
+**Market Intelligence** emerged as an important direction for further exploration, focusing on:
+
+- Understanding market conditions and trends.
+- Analysing customer demand.
+- Supporting business planning.
+- Improving operational and management decisions.
+
+Market Intelligence remains a proposed future capability. The existing platform provides descriptive reports using its own order data but does not currently perform external market analysis, competitor analysis or demand forecasting.
+
+The date, participants and specific feedback from the E-Cell interaction require team confirmation.
+
+## 7. Problem Clarity
+
+| Requirement | Project Explanation | Evidence Status |
+|---|---|---|
+| Affected people | Hostel students, kitchen staff, cashiers, shift leads and canteen administrators | Stakeholders identified |
+| Frequency | Customer difficulties occur during peak periods; frequency has not been measured | Measurement pending |
+| Time and financial impact | Queueing, delayed orders, wasted trips and manual payment-verification effort | No measured figures |
+| Existing alternatives | Counter-based ordering, manual order coordination and UPI verification | Requires field confirmation |
+| Limitations of existing methods | Limited order visibility and manual coordination during busy periods | Supported by project problem framing |
+| Why the problem matters | Customer delays and kitchen workload affect the same service process | Requires further field validation |
+| Connection between stakeholders | Customer orders directly influence payment handling, kitchen workload and collection | Reflected in system workflow |
+
+**Available project figures:** The prototype includes 10 canteens and 8 hostels in its seed data, along with a default 20-minute payment window. These are system configuration values, not real-world research statistics.
+
+Waiting times, daily order volumes and financial impact have not yet been measured.
+
+**Real-world interaction:** The team spoke with the manager of Slice of Life. The manager's specific statements and observations must be confirmed using the original discussion notes.
+
+## 8. Field Evidence
+
+The project involved two separate research interactions: a discussion with the Slice of Life manager and an interaction with the university Entrepreneurship Cell.
+
+| Research Requirement | Available Evidence | Status |
+|---|---|---|
+| Number of people consulted | Slice of Life manager and E-Cell representatives; total count unavailable | Requires confirmation |
+| People and roles | Restaurant manager and E-Cell representatives | Partially documented |
+| Questions asked | Research topics are identified; exact questions are unavailable | Requires confirmation |
+| Actual responses | No recorded interview responses available in the repository | Requires confirmation |
+| Unexpected findings | Not documented | Requires confirmation |
+| Changes to project direction | Expanded focus towards customer experience, management operations and Market Intelligence | Requires supporting details |
+| Interview notes | No interview notes available in the repository | Not documented |
+
+**Preparation for Evaluation**
+
+- Maintain interview notes containing the date and role of each participant.
+- Record actual statements in the interviewees' own words wherever available.
+- Carry the research notes in printed or digital format.
+- Present findings honestly, including observations that challenged the team's initial assumptions.
+
+## 9. Research and Project Evolution
+
+1. **Initial Problem Identification:** The project began by addressing peak-hour queues, waiting-time uncertainty and limited order visibility in campus canteens.
+2. **Slice of Life Discussion:** The team explored customer experience alongside kitchen operations, payment handling and management challenges.
+3. **Management-Side Development:** The project expanded to include counter sales, payment workflows, Day/Night scheduling and the UPI payment claim queue.
+4. **Entrepreneurship Cell Interaction:** The broader business direction was explored, introducing Market Intelligence as a potential future capability.
+5. **Current Solution:** SERVE connects student ordering with staff operations and administrative management, while Market Intelligence remains part of its future scope.
+
+The specific links between research discussions and individual implementation decisions require confirmation from the team.
+
+## 10. Information Required From Team
+
+| No. | Information Required |
+|---|---|
+| 1 | Slice of Life discussion date, duration and format |
+| 2 | Team members who attended the discussion |
+| 3 | Actual questions asked and responses received from the manager |
+| 4 | At least one verified statement from the manager, if recorded |
+| 5 | Clarification of Slice of Life's relationship to the SRM AP canteen implementation |
+| 6 | E-Cell interaction date, format and participant roles |
+| 7 | Actual feedback received from E-Cell representatives |
+| 8 | Total number of people consulted across both interactions |
+| 9 | Observations that surprised the team or changed its initial direction |
+| 10 | Measured figures such as waiting times, daily orders and peak-hour periods, with sources and dates |
+| 11 | Confirmation of which research findings influenced Pause Orders, payment claims and Day/Night scheduling |
+
+## Conclusion
+
+SERVE addresses connected challenges in student food ordering and canteen management. Its current implementation provides a common platform for ordering, payment-claim verification, kitchen coordination and administrative operations.
+
+The research discussions helped the team explore both customer and management requirements, while the Entrepreneurship Cell interaction contributed to the broader business direction of Market Intelligence.
+
+Further field validation and documented research evidence will strengthen the problem statement and demonstrate how real-world observations influenced the final solution.
