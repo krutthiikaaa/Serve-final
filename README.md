@@ -1,491 +1,1182 @@
-# SERVE
+# SERVE — Order. Track. Collect.
 
-### Order. Track. Collect.
+A digital food-ordering and kitchen-operations platform for the hostel canteens of SRM University-AP.
 
-> **Under active development.** The **backend** (PostgreSQL, Google sign-in
-> through Better Auth, REST API, mock payments, Socket.IO realtime) and **all three
-> client apps** (Flutter Student App, React Staff Dashboard, React Admin
-> Portal) are implemented and integrated, with unit, widget, integration and
-> end-to-end tests. Not done yet: real Razorpay payments, push notifications
-> and production deployment. See
-> [Current Development Status](#17-current-development-status).
+SERVE helps students order food ahead, track their orders in real time and collect them when ready. Canteen staff can manage incoming orders, verify payment claims, update food availability and coordinate kitchen operations. Administrators manage canteens, staff access, permissions and reports through a centralized dashboard.
 
-> **Sign-in is role-specific (Better Auth).** Students: Google only, verified
-> `@srmap.edu.in` accounts. Staff: email + password (any address; PENDING until
-> an admin approves). Admins: email + password (any address), provisioned only
-> with `admin:create`. The backend enforces the method per role.
-> [docs/authentication.md](docs/authentication.md) is authoritative, and
-> [docs/development.md](docs/development.md) is the local setup guide
-> (Windows PowerShell included); some older pages under `docs/` still describe
-> Firebase.
+> **Project status:** Under active development. The backend and all three client applications are implemented and integrated, with unit, widget, integration and end-to-end tests. Real Razorpay payment processing, push notifications and public production deployment are not yet complete.
+
+> **Role-specific authentication**
+>
+> - Students: Google sign-in using verified `@srmap.edu.in` accounts.
+> - Staff: Email and password; new accounts remain pending until approved by an administrator.
+> - Admins: Email and password; accounts are provisioned through the `admin:create` command.
 
 ---
 
-## 2. Overview
+## Table of Contents
 
-SERVE is a digital night-canteen ordering platform designed for university
-students. It reduces long queues and uncertainty during peak night-canteen
-hours by allowing students to browse menus, place orders, make online
-payments, receive an order number, track order status in real time, and
-collect their food when it is ready.
+1. Project Overview
+2. Features
+3. Technology Stack
+4. System Architecture
+5. Repository Structure
+6. Prerequisites
+7. Clone and Setup
+8. Run the Complete Application
+9. Authentication and API
+10. Database
+11. Testing and Build
+12. Troubleshooting
+13. GitHub Contribution Guide
+14. Project Status and License
 
-## 3. Problem We Solve
+---
 
-During peak hours, students queue at the night canteen in person, and they
-don't know:
+## 1. Project Overview
 
-- how long the queue will take
-- whether the food they want is available
-- whether their order is ready
-- what stage their order is at
+### The problem
 
-## 4. How SERVE Works
+During peak hours, students queue in person at hostel night canteens to order and pay for food. They often do not know:
 
-1. A student signs in to the mobile app and picks a night canteen. It
-   defaults to the canteen linked to their hostel.
-2. They browse that canteen's menu, add items to their cart and check out.
-3. They pay online. There is **no cash on delivery** and **no delivery to
-   rooms**.
-4. They get an order number (for example `SV1024`) and follow its status live.
-5. Canteen staff see the order immediately, then mark it preparing, ready
-   and collected.
-6. When the order is **ready**, the student walks over and collects it.
+- How long the queue will take.
+- Whether their preferred food is available.
+- Whether their order is ready.
+- What stage their order is currently at.
 
-<img width="1482" height="555" alt="image" src="https://github.com/user-attachments/assets/5c71d512-858f-44a8-af08-70808d5e8287" />
+Behind the counter, staff handle incoming orders, check UPI payments and coordinate food preparation. They also need a way to manage incoming orders when the kitchen is overloaded.
 
+### Our solution
 
-## 5. Key Features
+SERVE provides a centralized digital platform connecting students, canteen staff and administrators.
 
-Implemented in the backend (API + realtime):
+Students can browse menus, place orders, submit payment claims and track their orders. Staff can manage the kitchen queue, verify payments and update order statuses. Administrators can manage canteens, staff permissions and operational reports.
 
-- Canteen-specific menus served from PostgreSQL. Unavailable items stay
-  visible but cannot be ordered.
-- Server-side pricing and totals. Prices, totals, roles and identities sent by
-  clients are never trusted.
-- Orders with immutable item snapshots, public order numbers (`SV1001`, …)
-  and `Idempotency-Key` protection against duplicates.
-- Online payment through a provider abstraction: a mock provider for
-  development and a Razorpay adapter (signature verification done; API calls
-  pending). Amounts are verified and every payment event is processed once.
-- Realtime order status, menu, canteen and staff-assignment updates over
-  authenticated Socket.IO, with rooms assigned by the server.
-- Staff menu management and pausing/resuming orders, strictly limited to the
-  staff member's assigned canteen.
-- Admin management of canteens, hostels, staff approval, assignment and
-  deactivation.
-- Persistent notifications for order and staff events.
+### How SERVE works
 
-Implemented in the client apps:
+1. A student signs in to the app and selects a night canteen. The default canteen is linked to their hostel.
+2. The student browses the menu, adds items to the cart and checks out.
+3. The student completes the displayed UPI payment process and submits a payment claim.
+4. The student receives an order number, such as `SV1024`, and can track the order.
+5. Staff see the order after payment confirmation and update its preparation status.
+6. When the order is ready, the student visits the canteen and collects it.
 
-- **Student App:** registration with hostel, canteen selection, menu with
-  live availability, one-canteen cart with a switch confirmation, server
-  quotes, pickup-only checkout, mock payment, a large order number, live
-  order tracking, order history, notifications and profile.
-- **Staff Dashboard:** onboarding and approval states, live counters, an
-  order board (New → Preparing → Ready → Collected) fed by paid orders only,
-  menu management with prices in rupees, pause/resume, notifications.
-- **Admin Portal:** platform dashboard, canteen activation and pausing,
-  staff change-request review, staff assignment and deactivation,
-  notifications.
+**SERVE is a pickup-based platform.** It does not provide room delivery or cash on delivery.
 
-## 6. Three Interfaces
+---
 
-| Interface | Users | Form factor | Status |
-|---|---|---|---|
-| **Student App** | Students | Mobile (Flutter: Android, iOS); not published to the App Store or Google Play. The same code's web build runs in the browser on the demo domain for testing and demos. Bottom navigation: Home · Menu · Orders · Profile; cart in the header | **Implemented** |
-| **Staff Dashboard** | Canteen staff | Desktop/tablet web, sidebar navigation; installable from Chrome/Edge | **Implemented** |
-| **Admin Portal** | Administrators | Desktop/tablet web, sidebar navigation; installable from Chrome/Edge | **Implemented** |
+## 2. Features
 
-All three talk to **one shared backend**.
+Feature status: **Implemented**, **Partially Implemented** or **Planned**.
 
-## 7. System Architecture
+### Student Application
+
+| Feature                                               | Status                |
+| ----------------------------------------------------- | --------------------- |
+| Google sign-in with verified `@srmap.edu.in` accounts | Implemented           |
+| Student registration with hostel selection            | Implemented           |
+| Home screen with recommendations                      | Implemented           |
+| Menu browsing, search, filters and live availability  | Implemented           |
+| Day/Night pricing                                     | Implemented           |
+| Cart and server-generated price quotes                | Implemented           |
+| Pickup-only checkout                                  | Implemented           |
+| UPI payment claim submission                          | Implemented           |
+| Order number and live order tracking                  | Implemented           |
+| Order history and cancellation before preparation     | Implemented           |
+| In-app notifications and profile                      | Implemented           |
+| Favourites and recently viewed (saved on device)      | Partially Implemented |
+| Native Android/iOS Google sign-in                     | Partially Implemented |
+| Push notifications through FCM/APNs                   | Planned               |
+
+### Staff Dashboard
+
+| Feature                                           | Status      |
+| ------------------------------------------------- | ----------- |
+| Email and password sign-in                        | Implemented |
+| Staff registration and admin approval workflow    | Implemented |
+| Live dashboard counters                           | Implemented |
+| Kitchen order board                               | Implemented |
+| Order status: New → Preparing → Ready → Collected | Implemented |
+| Menu and price management                         | Implemented |
+| Food availability management                      | Implemented |
+| UPI payment claim verification                    | Implemented |
+| Counter sales (cash/UPI) and receipts             | Implemented |
+| Pause and resume incoming orders (manual)         | Implemented |
+| Account and password management                   | Implemented |
+| Automatic capacity-based order pausing            | Planned     |
+
+Staff permissions are controlled through capabilities assigned by an administrator:
+
+- `KITCHEN`
+- `MENU`
+- `PAUSE`
+- `CASHIER`
+
+### Admin / Management Portal
+
+| Feature                                        | Status                |
+| ---------------------------------------------- | --------------------- |
+| Admin email and password sign-in               | Implemented           |
+| Dashboard with order and operational summaries | Implemented           |
+| Canteen activation and pausing                 | Implemented           |
+| Day/Night service area management              | Implemented           |
+| Staff approval and rejection                   | Implemented           |
+| Staff assignment and permissions               | Implemented           |
+| Staff deactivation                             | Implemented           |
+| Menu catalogue and Day/Night pricing           | Implemented           |
+| DEMO/LIVE payment mode configuration           | Implemented           |
+| Official UPI QR upload                         | Implemented           |
+| Orders and sales reports                       | Implemented           |
+| Top-selling items and daily sales series       | Implemented           |
+| Searchable activity history                    | Partially Implemented |
+| Real Razorpay payment processing               | Planned               |
+| Demand forecasting                             | Planned               |
+
+### Three Interfaces
+
+| Interface       | Users          | Technology | Status      |
+| --------------- | -------------- | ---------- | ----------- |
+| Student App     | Students       | Flutter    | Implemented |
+| Staff Dashboard | Canteen staff  | React      | Implemented |
+| Admin Portal    | Administrators | React      | Implemented |
+
+All three interfaces communicate with one shared backend.
+
+---
+
+## 3. Technology Stack
+
+| Layer                  | Technology                       | Version / Details           | Purpose                             |
+| ---------------------- | -------------------------------- | --------------------------- | ----------------------------------- |
+| Student Application    | Flutter, Dart                    | Flutter 3.47+, Dart 3.13.3  | Cross-platform student app          |
+| State Management       | Provider                         | Flutter package             | Application state                   |
+| API Communication      | HTTP                             | Flutter package             | REST API requests                   |
+| Realtime Client        | Socket.IO Client                 | 4.x                         | Live order updates                  |
+| Staff Dashboard        | React, TypeScript                | React 19.3                  | Staff web interface                 |
+| Admin Portal           | React, TypeScript                | React 19.3                  | Admin web interface                 |
+| Build Tool             | Vite                             | 8.3                         | Web development and builds          |
+| Routing                | React Router                     | 7.18                        | Dashboard navigation                |
+| Backend                | Node.js, Express                 | Node.js ≥22.12, Express 5.2 | Server and REST APIs                |
+| Backend Language       | TypeScript                       | 6.x                         | Backend development                 |
+| Database               | PostgreSQL                       | 16                          | Persistent data storage             |
+| ORM                    | Prisma                           | 7.10                        | Database access and migrations      |
+| Authentication         | Better Auth                      | 1.7.25                      | Authentication and sessions         |
+| Realtime Communication | Socket.IO                        | 4.8                         | Live events                         |
+| Validation             | Zod                              | 4.6                         | Request and API contract validation |
+| Testing                | Vitest, Playwright, flutter_test | Repository versions         | Automated testing                   |
+| Security               | Helmet, express-rate-limit       | Repository versions         | Security headers and rate limiting  |
+
+---
+
+## 4. System Architecture
+
+SERVE follows a client-server architecture.
+
+The three client applications communicate with a shared Node.js and Express backend. The backend handles authentication, authorization, business logic, database operations and realtime communication.
+
+### Architecture diagram
 
 ```
- Student App (Flutter)   Staff Dashboard (React)   Admin Portal (React)
-          │                        │                        │
-          │  1. Sign-in (Better Auth): students Google (@srmap.edu.in);
-          │     staff and admins email + password -> session
-          │  2. REST over HTTPS   HttpOnly session cookie (web) or Bearer (mobile)
-          │  3. Socket.IO         session-authenticated, server-assigned rooms
-          ▼                        ▼                        ▼
- ┌──────────────── Shared backend: Node.js · Express · Socket.IO ───────────────┐
- │  Better Auth proves identity -> PostgreSQL decides role, status, canteen access │
- └───────────────────────────────────┬──────────────────────────────────────────┘
-                                     ▼  Prisma
-                               PostgreSQL
+flowchart TD
+    S["Student App<br/>Flutter"]
+    ST["Staff Dashboard<br/>React"]
+    A["Admin Portal<br/>React"]
+
+    AUTH["Better Auth<br/>Authentication"]
+    API["REST API<br/>Express"]
+    RT["Socket.IO<br/>Realtime Updates"]
+    JOB["Background Jobs"]
+
+    DB[("PostgreSQL<br/>Prisma ORM")]
+    GOOGLE["Google OAuth<br/>Students"]
+
+    S --> AUTH
+    ST --> AUTH
+    A --> AUTH
+
+    AUTH --> GOOGLE
+
+    S --> API
+    ST --> API
+    A --> API
+
+    S <--> RT
+    ST <--> RT
+    A <--> RT
+
+    AUTH --> DB
+    API --> DB
+    RT --> DB
+    JOB --> DB
 ```
 
-- **PostgreSQL is the source of truth** for users, roles, hostels, canteens,
-  menus, prices, availability, staff assignments, change requests, orders,
-  payments and notifications.
-- The backend works out who the caller is, and which canteen they may act on,
-  from the verified Better Auth session. It never trusts IDs, roles, canteen
-  assignments, prices or totals sent by a client.
+### How the architecture works
 
-For a deployment, one backend process can also serve the three built apps on
-a single domain: the student app at `/`, the staff dashboard at `/staff/`, the
-admin portal at `/admin/`, with `/api` and `/socket.io` on the same origin.
-See [docs/deployment.md](docs/deployment.md).
+1. **Client applications:** Students, staff and administrators use their respective interfaces.
+2. **Authentication:** Better Auth verifies user identity and manages sessions.
+3. **Backend:** Express handles API requests, validates input and applies business rules.
+4. **Database:** PostgreSQL stores users, menus, orders, payments, assignments and notifications.
+5. **Prisma:** Provides database access and manages migrations.
+6. **Realtime communication:** Socket.IO sends updates to the relevant connected clients.
+7. **Background jobs:** The backend handles Day/Night switching and unpaid-order expiry.
 
-Details: [docs/architecture.md](docs/architecture.md).
+### Important architectural decisions
 
-## 8. Tech Stack
+- All applications use one shared backend.
+- Clients never connect directly to PostgreSQL.
+- The backend determines user roles and permissions.
+- Prices and totals are calculated and verified server-side.
+- Staff access is restricted to their assigned canteen.
+- Socket.IO rooms are assigned by the server, not selected by clients.
 
-| Layer | Technology | Status |
-|---|---|---|
-| Student App | Flutter 3.47.4 + Dart 3.13.3 (provider, http, socket_io_client) | **Implemented** |
-| Staff Dashboard | React 19 + TypeScript + Vite 8 | **Implemented** |
-| Admin Portal | React 19 + TypeScript + Vite 8 | **Implemented** |
-| Shared web code | `packages/contracts` (zod contract + types), `packages/web-shared` | **Implemented** |
-| Backend | Node.js + TypeScript + Express + Socket.IO | **Implemented** |
-| Database | PostgreSQL + Prisma | **Implemented** (schema, migration, seed) |
-| Authentication | Better Auth: Google OAuth for students (verified `@srmap.edu.in` only); email + password (scrypt) for staff and admins | **Implemented** (automated tests use a test-only stand-in for Google; real Google sign-in needs your own OAuth client) |
-| Payments | Mock provider, Razorpay-ready | Mock **implemented**; Razorpay API calls pending |
+For deployment, the backend can serve the built applications from one domain:
 
-## 10. Canteen Structure
+- Student App: `/`
+- Staff Dashboard: `/staff/`
+- Admin Portal: `/admin/`
+- API: `/api`
+- Socket.IO: `/socket.io`
 
-Each student belongs to a **hostel**, and each hostel belongs to a **night
-canteen**. Hostels and canteens are stored as separate database records, so
-new hostel towers can be added without code changes.
+---
 
-| Hostels | Night canteen |
-|---|---|
-| Krishna + Godavari | Krishna & Godavari Night Canteen |
-| Yamuna + Narmada | Yamuna & Narmada Night Canteen |
-| New Hostel | New Hostel Night Canteen |
-| Vedavathi | Vedavathi Night Canteen |
-| Ganga A + Ganga B | Ganga A & Ganga B Night Canteen |
-
-A student's default canteen comes from their hostel. They may also order from
-any other canteen that is **active** and **accepting orders**. The backend
-re-checks this on every order. The mapping above is seed data in PostgreSQL,
-not application code. Admins can add hostels or remap them through the API.
-
-## 12. Project Structure
-
-The monorepo layout:
+## 5. Repository Structure
 
 ```
-serve/
-├── backend/              Node.js + TypeScript + Express + Socket.IO + Prisma
+Serve-final/
+│
 ├── apps/
-│   ├── student/          Flutter student app (Android, iOS, web)
-│   ├── staff/            React staff dashboard (Vite, port 5173)
-│   └── admin/            React admin portal (Vite, port 5174)
+│   ├── student/              # Flutter student application
+│   ├── staff/                # React staff dashboard
+│   └── admin/                # React admin portal
+│
+├── backend/
+│   ├── prisma/
+│   │   ├── schema.prisma     # Database schema
+│   │   ├── migrations/       # Database migrations
+│   │   └── seed.ts           # Initial seed data
+│   │
+│   ├── scripts/              # Admin creation and database scripts
+│   ├── src/
+│   │   ├── config/           # Configuration and environment validation
+│   │   ├── lib/              # Shared backend utilities and auth
+│   │   ├── middleware/       # Authentication and authorization
+│   │   ├── modules/          # Backend feature modules
+│   │   ├── realtime/         # Socket.IO and event handling
+│   │   ├── web/              # Built web application hosting
+│   │   ├── app.ts            # Express application
+│   │   └── server.ts         # Server entry point
+│   │
+│   └── tests/                # Backend tests
+│
 ├── packages/
-│   ├── contracts/        Frozen API contract: zod schemas + TypeScript types
-│   └── web-shared/       API client, auth, realtime, UI kit shared by staff + admin
-├── e2e/                  Playwright end-to-end tests (isolated stack)
-├── deploy/               Caddy and nginx configs, production env template
-├── scripts/              dev-student, build-web (single-domain build), smoke-deploy
-├── docs/                 Architecture, API, database, development, frontend, deployment
-├── brand/                Official logo location and palette (logo pending)
-├── .env.example          Documented environment variables (all apps)
-├── Dockerfile            Optional single-domain image (backend + prebuilt web apps)
-├── package.json          npm workspaces
+│   ├── contracts/            # Shared Zod schemas and API types
+│   └── web-shared/           # Shared web authentication and API code
+│
+├── e2e/                      # Playwright end-to-end tests
+├── deploy/                   # Deployment and reverse-proxy configs
+├── scripts/                  # Development and build scripts
+├── docs/                     # Project documentation
+├── brand/                    # Official branding assets
+│
+├── .env.example              # Environment variable overview
+├── Dockerfile
+├── package.json              # npm workspaces
+├── package-lock.json
 └── README.md
 ```
 
-Backend layout:
+The Flutter application is managed separately using `pubspec.yaml`; it is not an npm workspace.
+
+---
+
+## 6. Prerequisites
+
+Install the following software before setting up SERVE.
+
+| Software      | Required version      | Download                                                                                                     |
+| ------------- | --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Git           | Recent version        | [https://git-scm.com/downloads](https://git-scm.com/downloads)                                               |
+| Node.js       | 22.12 or newer        | [https://nodejs.org/](https://nodejs.org/)                                                                   |
+| npm           | Included with Node.js | Included                                                                                                     |
+| PostgreSQL    | 16                    | [https://www.postgresql.org/download/](https://www.postgresql.org/download/)                                 |
+| Flutter SDK   | 3.47 or newer         | [https://docs.flutter.dev/get-started/install/windows](https://docs.flutter.dev/get-started/install/windows) |
+| Google Chrome | Current version       | [https://www.google.com/chrome/](https://www.google.com/chrome/)                                             |
+| VS Code       | Recommended           | [https://code.visualstudio.com/](https://code.visualstudio.com/)                                             |
+
+A Google Cloud account is required to configure real Google sign-in for students.
+
+### Verify installations
+
+Open PowerShell and run:
 
 ```
-backend/
-├── prisma/            schema.prisma, migrations/, seed.ts
-├── scripts/           db-setup-local.sh, create-admin.ts, seed-dev-users.ts
-├── src/
-│   ├── config/        env validation, logger
-│   ├── lib/           errors, Prisma, Better Auth configuration, session verifier
-│   ├── middleware/    authentication + role guards, rate limits, logging, errors
-│   ├── modules/       auth, canteens, menu, orders, payments, change-requests,
-│   │                  staff, admin, notifications, students, health
-│   ├── realtime/      event outbox + Socket.IO server
-│   ├── web/           single-domain hosting of the built web apps (WEB_ROOT)
-│   ├── app.ts         Express composition
-│   └── server.ts      HTTP + Socket.IO entry point
-└── tests/             unit + integration (PostgreSQL + Better Auth)
+git --version
+node --version
+npm --version
+psql --version
+flutter --version
 ```
 
-## 13. Local Development Setup
+If `psql` is not recognized, use its full installation path, for example:
 
-### Prerequisites
+```
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" --version
+```
 
-- Node.js 22.12 or newer (see `.nvmrc`) and npm 10+
-- PostgreSQL 16 running locally on port 5432
-- A Google OAuth web client of your own for **student** sign-in (Google Cloud
-  console → Google Auth Platform → Clients). Staff and admin sign-in need no
-  Google client. Step by step: [docs/development.md](docs/development.md).
-- Flutter 3.47 (Dart 3.13) for the student app
+---
 
-### Steps
+## 7. Clone and Setup
 
-```bash
-# 1. Install dependencies (npm workspaces)
-npm install
+The following instructions primarily use Windows PowerShell.
 
-# 2. Create the local PostgreSQL role "serve" and databases serve_dev + serve_test.
-#    Safe to re-run; never drops anything.
-SERVE_DB_PASSWORD='choose-a-password' npm run db:setup:local
-#    If your superuser is only reachable as the postgres OS user:
-#    SERVE_DB_PASSWORD='...' PSQL_ADMIN="sudo -u postgres psql -d postgres" npm run db:setup:local
+### 7.1 Clone the GitHub repository
 
-# 3. Create env files from the templates (both are gitignored), then fill in
-#    your own values. Never copy anyone else's secrets.
-cp backend/.env.example backend/.env
-cp backend/.env.example backend/.env.test   # then apply the TEST notes at its end
-#    BETTER_AUTH_SECRET:  openssl rand -base64 32
-#    PAYMENT_SECRET:      openssl rand -hex 32
-#    GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (student sign-in): your own Google
-#      OAuth web client with redirect URI http://localhost:5001/api/auth/callback/google
-#      and JavaScript origin http://localhost:5555
+Open the SERVE repository on GitHub.
 
-# 4. Apply migrations and seed canteens, hostels and menus
-#    (back up an existing database first: pg_dump serve_dev > backup.sql)
+1. Click the green **Code** button.
+2. Select **HTTPS**.
+3. Copy the repository URL.
+
+Repository:
+
+[https://github.com/pranathigit11/Serve-final](https://github.com/pranathigit11/Serve-final)
+
+Open PowerShell:
+
+```
+cd $HOME
+git clone https://github.com/pranathigit11/Serve-final.git
+cd Serve-final
+```
+
+### 7.2 Open in VS Code
+
+```
+code .
+```
+
+If the command is unavailable, open VS Code and select **File → Open Folder**, then select the `Serve-final` directory.
+
+### 7.3 Verify the repository
+
+```
+git status
+git branch
+```
+
+### 7.4 Install dependencies
+
+From the repository root:
+
+```
+npm ci
+```
+
+Install Flutter dependencies:
+
+```
+cd apps\student
+flutter pub get
+cd ..\..
+```
+
+`npm ci` installs the npm workspaces using the committed lockfile.
+
+If PowerShell blocks npm scripts, run:
+
+```
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+### 7.5 Create environment files
+
+From the repository root:
+
+```
+Copy-Item backend\.env.example backend\.env
+Copy-Item backend\.env.example backend\.env.test
+Copy-Item apps\staff\.env.example apps\staff\.env.development.local
+Copy-Item apps\admin\.env.example apps\admin\.env.development.local
+```
+
+These files contain local configuration and must not be committed to GitHub.
+
+### 7.6 Configure environment variables
+
+Open the backend environment file:
+
+```
+notepad backend\.env
+```
+
+Configure the following values:
+
+| Variable               | Example / Purpose                                                   |
+| ---------------------- | ------------------------------------------------------------------- |
+| `NODE_ENV`             | `development`                                                       |
+| `PORT`                 | `5001`                                                              |
+| `DATABASE_URL`         | PostgreSQL connection string                                        |
+| `CORS_ORIGINS`         | `http://localhost:5173,http://localhost:5174,http://localhost:5555` |
+| `BETTER_AUTH_URL`      | `http://localhost:5001`                                             |
+| `BETTER_AUTH_SECRET`   | Your generated secret                                               |
+| `GOOGLE_CLIENT_ID`     | Your Google OAuth client ID                                         |
+| `GOOGLE_CLIENT_SECRET` | Your Google OAuth client secret                                     |
+| `STUDENT_APP_URL`      | `http://localhost:5555`                                             |
+| `STAFF_DASHBOARD_URL`  | `http://localhost:5173`                                             |
+| `ADMIN_PORTAL_URL`     | `http://localhost:5174`                                             |
+| `PAYMENT_MODE`         | `mock`                                                              |
+| `PAYMENT_SECRET`       | Your generated payment secret                                       |
+
+Check `backend/.env.example` for the complete variable list and optional configuration.
+
+### Generate secrets
+
+Run these commands in PowerShell and copy their outputs into the corresponding environment variables.
+
+For `BETTER_AUTH_SECRET`:
+
+```
+$b = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+[Convert]::ToBase64String($b)
+```
+
+For `PAYMENT_SECRET`:
+
+```
+$b = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+-join ($b | ForEach-Object { $_.ToString('x2') })
+```
+
+Use your own secrets. Never commit them.
+
+### Configure the test environment
+
+Edit `backend\.env.test` for automated tests.
+
+Use:
+
+- `NODE_ENV=test`
+- `PORT=5101`
+- `DATABASE_URL` pointing to `serve_test`
+- `PAYMENT_MODE=mock`
+- A separate `PAYMENT_SECRET`
+- `LOG_LEVEL=silent`
+
+Follow the test-specific notes in `backend/.env.example`. Do not point the test configuration at a database containing data you need.
+
+The staff and admin development environment files use:
+
+```
+VITE_API_URL=http://localhost:5001
+```
+
+The Flutter student app uses its development API defaults and does not require an environment file for the standard local setup.
+
+### 7.7 Configure PostgreSQL
+
+Start your PostgreSQL service.
+
+On Windows, you can check for the service using:
+
+```
+Get-Service postgresql*
+```
+
+Open PowerShell and create the project role and databases.
+
+```
+$psql = "C:\Program Files\PostgreSQL\16\bin\psql.exe"
+
+& $psql -U postgres -c "CREATE ROLE serve LOGIN CREATEDB PASSWORD 'choose-a-db-password';"
+
+& $psql -U postgres -c "CREATE DATABASE serve_dev OWNER serve;"
+
+& $psql -U postgres -c "CREATE DATABASE serve_test OWNER serve;"
+```
+
+Use the same database password in `DATABASE_URL`.
+
+Example:
+
+```
+DATABASE_URL=postgresql://serve:your-password@localhost:5432/serve_dev?schema=public
+```
+
+If your password contains special characters such as `@`, `:`, `/`, `?` or `#`, URL-encode them in the connection string.
+
+The `serve_test` database is rebuilt during automated test runs. Never use it for important data.
+
+### 7.8 Prisma: Generate, migrate and seed
+
+Run the following commands from the repository root:
+
+```
+npm run prisma:generate --workspace backend
 npm run prisma:migrate:deploy --workspace backend
 npm run db:seed --workspace backend
+```
 
-# 5. Provision your admin account (asks for its password at a hidden prompt)
-npm run admin:create --workspace backend -- --email you@example.com --name "Your Name"
+What these commands do:
 
-# 6. Optional: development staff/admin/student accounts
-#    (set DEV_*_EMAIL variables; see .env.example; asks for one password)
-npm run db:seed:dev-users --workspace backend
+- `prisma:generate`: Generates the Prisma Client.
+- `prisma:migrate:deploy`: Applies existing database migrations.
+- `db:seed`: Adds initial hostel, canteen and menu data.
 
-# 7. Run the backend with live reload on http://localhost:5001
+The seed operation is safe to rerun without creating duplicate seed records.
+
+### 7.9 Create an administrator account
+
+SERVE does not provide public administrator registration.
+
+Create an administrator using:
+
+```
+npm run admin:create --workspace backend -- --email your.name@example.com --name "Your Name"
+```
+
+The script asks for a password through a hidden prompt.
+
+Keep the credentials secure.
+
+### 7.10 Configure Google OAuth
+
+Student sign-in requires a Google OAuth web client.
+
+1. Open [https://console.cloud.google.com/](https://console.cloud.google.com/)
+2. Create or select a Google Cloud project.
+3. Configure Google Auth Platform branding and audience.
+4. Create a Web Application OAuth client.
+5. Configure the following URLs:
+
+**Authorized JavaScript origin:**
+
+```
+http://localhost:5555
+```
+
+**Authorized redirect URI:**
+
+```
+http://localhost:5001/api/auth/callback/google
+```
+
+6. Copy the Client ID and Client Secret into `backend\.env`.
+
+Students must use verified `@srmap.edu.in` accounts.
+
+Staff registration does not require Google OAuth.
+
+---
+
+## 8. Run the Complete Application
+
+This section explains how to start the entire SERVE application locally.
+
+### 8.1 Start PostgreSQL
+
+Make sure PostgreSQL is running before starting the backend.
+
+The local database should be accessible at:
+
+```
+localhost:5432
+```
+
+### 8.2 Start the backend
+
+Open a new PowerShell terminal in the repository root:
+
+```
 npm run dev:backend
-curl http://localhost:5001/api/health
-curl http://localhost:5001/api/health/db
 ```
 
-Then the client apps (each in its own terminal):
+The backend runs at:
 
-```bash
-# Staff dashboard (http://localhost:5173) and admin portal (http://localhost:5174)
-cp apps/staff/.env.example apps/staff/.env.development.local
-cp apps/admin/.env.example apps/admin/.env.development.local
+```
+http://localhost:5001
+```
+
+Check its health:
+
+```
+Invoke-RestMethod http://localhost:5001/api/health
+```
+
+Check database connectivity:
+
+```
+Invoke-RestMethod http://localhost:5001/api/health/db
+```
+
+### 8.3 Start the Staff Dashboard
+
+Open another terminal in the repository root:
+
+```
 npm run dev:staff
+```
+
+Open:
+
+[http://localhost:5173](http://localhost:5173)
+
+### 8.4 Start the Admin Portal
+
+Open another terminal:
+
+```
 npm run dev:admin
-
-# Student app (mobile; needs Flutter 3.47+). See apps/student/README.md.
-npm run dev:student                           # browser on http://localhost:5555
-npm run dev:student -- -d emulator-5554       # Android emulator (`flutter devices` lists ids)
 ```
 
-Open the apps at `http://localhost:…` (not `127.0.0.1`), so the session cookie
-is sent. Students sign in to the student app with **Continue with Google**
-using a verified `@srmap.edu.in` account, then register (name + hostel). Staff
-use **Request access** on the staff dashboard (name, any email, password,
-canteen) and stay pending until an admin approves them; then they sign in with
-their email and password. Admins sign in to the admin portal with the email
-and password from `admin:create`; there is no public admin registration.
+Open:
 
-The student app's development defaults point at the local backend (Android
-emulators reach your machine as `10.0.2.2`). Google sign-in on a phone or
-emulator needs the backend on a public https URL (`BETTER_AUTH_URL`, e.g. a
-tunnel): see [docs/authentication.md](docs/authentication.md#native-app-android--ios).
-If the student app doesn't start, see
-[apps/student/README.md](apps/student/README.md#troubleshooting).
+[http://localhost:5174](http://localhost:5174)
 
-Production-style build and start:
+### 8.5 Start the Student Application
 
-```bash
-npm run build
-npm run start --workspace backend    # sets NODE_ENV=production; needs production variables
+Open another terminal:
+
+```
+npm run dev:student
 ```
 
-Deployment on one domain (student `/`, staff `/staff/`, admin `/admin/`, API
-`/api`) with installable web apps and demo payments: see
-[docs/deployment.md](docs/deployment.md). In short:
+Open:
 
-```bash
-npm run build:web                                            # → dist/web (WEB_ROOT)
-npm run smoke:deploy -- https://YOUR_DOMAIN                  # read-only checks after deploying
+[http://localhost:5555](http://localhost:5555)
+
+This runs the Flutter student application in Chrome.
+
+### 8.6 Quick-start reference
+
+Start PostgreSQL first, then run each application in its own terminal.
+
+| Terminal | Service         | Command                  | Local URL        |
+| -------- | --------------- | ------------------------ | ---------------- |
+| —        | PostgreSQL      | Start PostgreSQL service | `localhost:5432` |
+| 1        | Backend         | `npm run dev:backend`    | `localhost:5001` |
+| 2        | Staff Dashboard | `npm run dev:staff`      | `localhost:5173` |
+| 3        | Admin Portal    | `npm run dev:admin`      | `localhost:5174` |
+| 4        | Student App     | `npm run dev:student`    | `localhost:5555` |
+
+Keep all four application terminals running while using SERVE.
+
+Use `localhost`, not `127.0.0.1`, for the local browser applications.
+
+### 8.7 Run the Student App on Android
+
+First check available devices:
+
+```
+flutter devices
 ```
 
-The backend uses port **5001**. Port 5000 is rejected because it conflicts
-with macOS AirPlay Receiver. The full guide is in
-[docs/development.md](docs/development.md).
+For an Android emulator:
 
-## 14. Environment Variables
+```
+npm run dev:student -- -d emulator-5554
+```
 
-Every backend variable is documented in [`backend/.env.example`](backend/.env.example)
-(all apps: [`.env.example`](.env.example)) and validated
-at startup. The server refuses to start on invalid configuration, and the
-error names the variable without printing its value.
+Use the actual device ID displayed by `flutter devices`.
 
-| Variable | Required | Notes |
-|---|---|---|
-| `NODE_ENV` | no | `development` (default), `test`, `production` |
-| `PORT` | no | Default `5001`; `5000` rejected |
-| `DATABASE_URL` | yes | `postgresql://…` |
-| `CORS_ORIGINS` | yes | Comma-separated exact origins; production requires https and no localhost |
-| `BETTER_AUTH_URL` | production | Public backend URL; Google redirect URI is `<it>/api/auth/callback/google`. Development default `http://localhost:5001` |
-| `BETTER_AUTH_SECRET` | yes (not in tests) | At least 32 characters (`openssl rand -base64 32`); unique per environment and per developer |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for Google sign-in; production | Your own Google OAuth web client; both or neither |
-| `GOOGLE_REQUIRE_HOSTED_DOMAIN` | no | `true` (default) also requires Google's `hd=srmap.edu.in` claim |
-| `AUTH_TEST_SIGN_IN` | tests only | Test-only sign-in endpoint; refused unless `NODE_ENV=test` |
-| `STUDENT_APP_URL`, `STAFF_DASHBOARD_URL`, `ADMIN_PORTAL_URL` | production | App URLs trusted as sign-in return addresses; local ports by default |
-| `PAYMENT_MODE` | no | `mock` (default; in production only with `DEMO_MODE=true`) or `razorpay` |
-| `DEMO_MODE` | no | `true` declares a public demo: mock payments allowed in production, no real money moves; every other production rule still applies |
-| `WEB_ROOT` | no | Folder of built web apps (`npm run build:web`) to serve on the same domain; unset = API only |
-| `PAYMENT_SECRET` | mock mode | At least 32 characters |
-| `UNPAID_ORDER_EXPIRY_MINUTES` | no | Default `20`: unpaid app orders that were never claimed ("I've paid") expire after this; claimed orders never expire automatically |
-| `UNPAID_ORDER_EXPIRY_CHECK_SECONDS` | no | Default `60`: how often the server checks for orders to expire |
-| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | razorpay mode | Placeholders only until the Razorpay integration is completed |
-| `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_*`, `SENSITIVE_RATE_LIMIT_*` | no | See `.env.example` |
+Android emulators access the host computer through:
 
-| Environment | Configuration source | Database |
-|---|---|---|
-| development | `backend/.env` | `serve_dev` |
-| test | `backend/.env.test` | `serve_test` |
-| production | Platform environment / secrets manager only (no file is read) | Managed PostgreSQL |
+```
+http://10.0.2.2:5001
+```
 
-## 15. Testing
+For a physical Android phone connected to the same Wi-Fi:
 
-```bash
-npm test                # backend suite (needs PostgreSQL and backend/.env.test), then every workspace
-npm run typecheck
+```
+npm run dev:student -- -d <device-id> --lan
+```
+
+Allow port `5001` through Windows Firewall if required.
+
+Google sign-in on an emulator or physical device additionally requires the backend to be accessible through a public HTTPS URL registered with Google. Refer to `docs/authentication.md`.
+
+### 8.8 Test the complete workflow
+
+Before demonstrating SERVE, verify the following workflow.
+
+**Step 1 — Administrator**
+
+- Open `http://localhost:5174`.
+- Sign in using the account created through `admin:create`.
+
+**Step 2 — Staff registration**
+
+- Open `http://localhost:5173` in a separate browser profile.
+- Select **Request access**.
+- Enter name, email, password and canteen.
+- The account remains pending until approved.
+
+**Step 3 — Approve staff**
+
+- Return to the Admin Portal.
+- Open **Change requests**.
+- Approve the staff member.
+- Open the Staff page and select that staff member.
+- Assign the required capabilities.
+- Tick `CASHIER` if payment verification is needed.
+- Click **Save permissions**.
+
+Note: Approval grants `KITCHEN`, `MENU` and `PAUSE`. `CASHIER` must be assigned separately.
+
+**Step 4 — Student sign-in**
+
+- Open `http://localhost:5555` in a third browser profile.
+- Select **Continue with Google**.
+- Sign in using a verified `@srmap.edu.in` account.
+- Register with the appropriate hostel.
+
+**Step 5 — Place an order**
+
+- Browse the menu.
+- Add food items to the cart.
+- Proceed to checkout.
+- Submit the payment claim.
+
+In DEMO mode, the app displays a labelled test QR. No real money is transferred.
+
+**Step 6 — Verify payment**
+
+- Open the Staff Dashboard.
+- Go to the Cashier section.
+- Review the pending payment claim.
+- Confirm the payment.
+
+**Step 7 — Prepare the order**
+
+- Open the Orders section.
+- Update the order through:
+
+  `New → Preparing → Ready → Collected`
+- Verify that the student app receives the status updates.
+
+**Step 8 — Test order control**
+
+- Use **Pause orders** in the Staff Dashboard.
+- Verify that the canteen stops accepting new orders.
+- Resume orders afterward.
+
+**Step 9 — Verify reports**
+
+- Open the Admin Portal.
+- Check the Reports page for the order.
+
+### Important: Browser sessions
+
+All three web applications currently share one session cookie on `localhost`.
+
+Signing in or signing out in one portal can replace or invalidate the session used by another portal.
+
+For a multi-role demonstration, use separate browser profiles or Chrome Guest windows:
+
+- Profile 1: Admin
+- Profile 2: Staff
+- Profile 3: Student
+
+This is the expected workaround with the current authentication design.
+
+---
+
+## 9. Authentication and API
+
+### Authentication
+
+SERVE uses Better Auth for authentication and session management.
+
+| Role    | Sign-in method     | Access rules                            |
+| ------- | ------------------ | --------------------------------------- |
+| Student | Google OAuth       | Verified `@srmap.edu.in` accounts       |
+| Staff   | Email and password | Registration requires admin approval    |
+| Admin   | Email and password | Accounts created through `admin:create` |
+
+The backend validates the sign-in method and role.
+
+Passwords are hashed using scrypt.
+
+Web applications use HttpOnly session cookies. The native student application uses Bearer tokens.
+
+Sessions last seven days.
+
+### API structure
+
+All main API routes are under `/api`.
+
+| Base path        | Purpose                                             |
+| ---------------- | --------------------------------------------------- |
+| `/auth`          | Authentication, registration and session management |
+| `/native-auth`   | Native mobile authentication                        |
+| `/hostels`       | Hostel information                                  |
+| `/service-areas` | Service area information                            |
+| `/canteens`      | Canteen information                                 |
+| `/menu`          | Menu browsing and management                        |
+| `/cart`          | Cart quotes                                         |
+| `/orders`        | Order creation, tracking and cancellation           |
+| `/payments`      | Payment configuration and payment claims            |
+| `/staff`         | Staff operations and kitchen management             |
+| `/admin`         | Administrative operations and reports               |
+| `/notifications` | Notification retrieval and read status              |
+| `/health`        | Server and database health checks                   |
+
+Examples of important endpoints:
+
+| Method | Endpoint                 | Purpose                       |
+| ------ | ------------------------ | ----------------------------- |
+| GET    | `/api/health`            | Backend health                |
+| GET    | `/api/health/db`         | Database health               |
+| GET    | `/api/canteens`          | Retrieve canteens             |
+| POST   | `/api/cart/quote`        | Calculate cart quote          |
+| POST   | `/api/orders`            | Create an order               |
+| GET    | `/api/orders/:id`        | Retrieve order details        |
+| POST   | `/api/orders/:id/cancel` | Cancel an eligible order      |
+| GET    | `/api/staff/orders`      | Retrieve staff orders         |
+| GET    | `/api/admin/dashboard`   | Retrieve admin dashboard data |
+
+The backend uses a consistent error response structure:
+
+```
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Description of the error"
+  }
+}
+```
+
+For complete API details, see `docs/api.md`.
+
+### Realtime communication
+
+SERVE uses Socket.IO for live updates.
+
+Important events include:
+
+- `order.created`
+- `order.payment_confirmed`
+- `order.preparing`
+- `order.ready`
+- `order.collected`
+- `order.cancelled`
+- `payment.queue_changed`
+- `menu.item_updated`
+- `menu.item_availability_changed`
+- `canteen.status_changed`
+- `staff.approved`
+- `staff.rejected`
+- `notification.created`
+- `auth.expired`
+
+The backend assigns Socket.IO rooms according to the authenticated user's access.
+
+---
+
+## 10. Database
+
+SERVE uses PostgreSQL with Prisma ORM.
+
+The database contains 26 models and 11 migrations in the current repository.
+
+### Important database models
+
+| Model                       | Purpose                                      |
+| --------------------------- | -------------------------------------------- |
+| `ServiceArea`               | Groups related hostel and canteen operations |
+| `Canteen`                   | Stores canteen information                   |
+| `Hostel`                    | Stores hostel information                    |
+| `Student`                   | Stores student profiles                      |
+| `MenuCategory`              | Organizes menu categories                    |
+| `MenuItem`                  | Stores food item information                 |
+| `MenuItemService`           | Stores Day/Night pricing and availability    |
+| `Order`                     | Stores student orders                        |
+| `OrderItem`                 | Stores ordered items and price snapshots     |
+| `Payment`                   | Stores payment status and claim information  |
+| `Staff`                     | Stores staff information                     |
+| `Admin`                     | Stores administrator information             |
+| `StaffCanteenAssignment`    | Assigns staff to a canteen                   |
+| `StaffAssignmentCapability` | Stores staff permissions                     |
+| `AuthUser`                  | Authentication identities                    |
+| `AuthSession`               | Authentication sessions                      |
+| `Notification`              | Stores in-app notifications                  |
+| `CanteenChangeRequest`      | Stores staff access requests                 |
+
+### Database relationship overview
+
+```
+erDiagram
+    ServiceArea ||--o{ Canteen : contains
+    ServiceArea ||--o{ Hostel : serves
+    Hostel ||--o{ Student : houses
+
+    Canteen ||--o{ MenuCategory : has
+    MenuCategory ||--o{ MenuItem : contains
+    MenuItem ||--o{ MenuItemService : pricing
+
+    Student ||--o{ Order : places
+    Canteen ||--o{ Order : receives
+    Order ||--o{ OrderItem : contains
+    Order ||--|| Payment : has
+
+    Canteen ||--o{ Staff : assigns
+    Staff ||--|| StaffCanteenAssignment : assigned
+    StaffCanteenAssignment ||--o{ StaffAssignmentCapability : grants
+
+    AuthUser ||--o{ AuthSession : owns
+    AuthUser ||--o| Student : linked
+    AuthUser ||--o| Staff : linked
+    AuthUser ||--o| Admin : linked
+```
+
+### Database design decisions
+
+- PostgreSQL provides persistent relational data storage.
+- Prisma manages database access and migrations.
+- IDs use UUIDs.
+- Monetary values are stored as integer paise.
+- Order items preserve price snapshots.
+- Staff assignments and permissions are stored separately.
+- The backend enforces order and payment rules.
+
+For more information, see `docs/database.md`.
+
+---
+
+## 11. Testing and Build
+
+SERVE uses multiple testing tools to verify application behaviour.
+
+### Available testing commands
+
+Run commands from the repository root unless specified otherwise.
+
+| Task                    | Command                                        |
+| ----------------------- | ---------------------------------------------- |
+| Backend tests           | `npm test --workspace backend`                 |
+| Shared web tests        | `npm test --workspace @serve/web-shared`       |
+| Staff dashboard tests   | `npm test --workspace @serve/staff`            |
+| Admin portal tests      | `npm test --workspace @serve/admin`            |
+| Flutter analysis        | `cd apps\student; flutter analyze`             |
+| Flutter tests           | `cd apps\student; flutter test`                |
+| Playwright E2E tests    | `npm run test:e2e`                             |
+| Type checking           | `npm run typecheck`                            |
+| Linting                 | `npm run lint`                                 |
+| Formatting check        | `npm run format:check`                         |
+| Build npm applications  | `npm run build`                                |
+| Build Flutter web       | `cd apps\student; flutter build web --release` |
+| Single-domain web build | `npm run build:web`                            |
+
+### End-to-end testing
+
+Playwright tests verify important workflows, including:
+
+- Staff registration and approval.
+- Payment confirmation.
+- Order preparation and pickup.
+- Realtime updates.
+- Menu changes.
+- Canteen pausing.
+- Staff access restrictions.
+
+The E2E suite uses its own test database and test application ports.
+
+> **Warning:** Automated backend and E2E tests rebuild `serve_test`. Do not point the test environment at a database containing important data.
+
+---
+
+## 12. Troubleshooting
+
+| Problem                                     | Possible solution                                       |
+| ------------------------------------------- | ------------------------------------------------------- |
+| `npm ci` fails                              | Check that Node.js 22.12 or newer is installed          |
+| `psql` is not recognized                    | Use the full PostgreSQL installation path               |
+| Backend environment validation fails        | Compare `backend/.env` with `backend/.env.example`      |
+| `BETTER_AUTH_SECRET` is missing             | Generate and configure the secret                       |
+| PostgreSQL connection refused               | Start PostgreSQL and check port 5432                    |
+| Database password authentication fails      | Verify the database username and password               |
+| Prisma Client is missing                    | Run `npm run prisma:generate --workspace backend`       |
+| Database tables are missing                 | Run `npm run prisma:migrate:deploy --workspace backend` |
+| Canteen dropdown is empty                   | Run `npm run db:seed --workspace backend`               |
+| Flutter command not found                   | Install Flutter and add it to PATH                      |
+| Flutter SDK version mismatch                | Install the required Flutter/Dart version               |
+| Port already in use                         | Stop the process using that port                        |
+| Staff or admin dashboard cannot reach SERVE | Check that the backend is running                       |
+| `VITE_API_URL` missing                      | Create the relevant dashboard environment file          |
+| Google redirect URI mismatch                | Verify the OAuth redirect URI                           |
+| Student is not eligible                     | Use a verified `@srmap.edu.in` account                  |
+| Staff cannot access Cashier                 | Ask an admin to grant the `CASHIER` capability          |
+| Session expires after using another portal  | Use separate browser profiles                           |
+| Android emulator cannot connect             | Use `10.0.2.2` instead of `localhost`                   |
+| `db:setup:local` fails on Windows           | Use the PostgreSQL `psql` commands in section 7         |
+
+For more setup help, see `docs/development.md`.
+
+---
+
+## 13. GitHub Contribution Guide
+
+Contributions should be made through feature branches and pull requests.
+
+Do not commit directly to `main`.
+
+### Step 1: Fork the repository
+
+If you do not have direct write access:
+
+1. Open the SERVE repository on GitHub.
+2. Click **Fork**.
+3. Select your GitHub account.
+
+### Step 2: Clone your fork
+
+```
+git clone https://github.com/<your-username>/Serve-final.git
+cd Serve-final
+```
+
+### Step 3: Add the original repository
+
+```
+git remote add upstream https://github.com/pranathigit11/Serve-final.git
+git remote -v
+```
+
+- `origin` refers to your fork.
+- `upstream` refers to the original repository.
+
+### Step 4: Create a feature branch
+
+```
+git checkout main
+git pull upstream main
+git checkout -b feature/short-description
+```
+
+Example:
+
+```
+git checkout -b feature/student-order-history
+```
+
+### Step 5: Make changes and test
+
+Before committing, run the relevant checks:
+
+```
 npm run lint
-npm run format:check
+npm run typecheck
 npm run build
 ```
 
-The backend suite runs against the real `serve_test` database, which every run
-recreates from the migrations, and the real Better Auth stack (the Google flow
-runs with only Google's token endpoint replaced in-process). It covers:
-- database constraints and seed idempotency
-- role-specific sign-in (Google for students, passwords for staff and admins),
-  the `@srmap.edu.in` rule, sessions, password changes and registration
-- menu management and cross-canteen isolation
-- cart quotes, orders, idempotency and the state machine
-- payments, including amount mismatch and replayed events
-- staff approval and admin operations
-- notifications
-- Socket.IO authentication and room isolation
-- a security sweep over every protected route
-- a critical end-to-end flow (admin approval through to realtime pickup)
+Run the appropriate tests for the modules you changed.
 
-HTTP, the database and authentication are not mocked.
+### Step 6: Commit your changes
 
-Client apps and end-to-end:
-
-```bash
-npm run test --workspace @serve/web-shared   # shared API client, realtime, formatting
-npm run test --workspace @serve/staff        # staff dashboard components
-npm run test --workspace @serve/admin        # admin portal components
-(cd apps/student && flutter analyze && flutter test)
-npm run test:e2e                             # Playwright: isolated backend on serve_test + both web apps
-E2E_STUDENT_WEB=1 npm run test:e2e           # also builds and drives the Flutter web app
-npm run test:e2e:single-domain               # built apps + API + Socket.IO on one origin (needs Flutter)
+```
+git add <changed-files>
+git commit -m "feat: add student order history"
 ```
 
-The end-to-end suite starts its own backend on `serve_test` (reset and seeded
-per run) and its own copies of the web apps, so development data is never
-touched. It covers the critical flow (staff onboarding, admin approval, paid
-order, live kitchen progress, pickup), realtime isolation between canteens and
-students, live menu changes, canteen pausing, staff deactivation, cancellation
-with refund, cross-portal access control, and visual captures of every
-screen.
+Use clear commit messages.
 
-## 16. Security
+Common prefixes:
 
-Implemented:
+| Prefix     | Purpose            |
+| ---------- | ------------------ |
+| `feat`     | New feature        |
+| `fix`      | Bug fix            |
+| `docs`     | Documentation      |
+| `refactor` | Code restructuring |
+| `test`     | Tests              |
+| `chore`    | Maintenance        |
 
-- Role-specific sign-in through Better Auth, enforced by the backend on every
-  session, REST request and Socket.IO connection: Google for students
-  (verified `@srmap.edu.in` only), email + password (scrypt) for staff and
-  admins. Database-backed sessions in HttpOnly cookies (Bearer tokens on
-  mobile). Roles, staff status and canteen scope come from PostgreSQL only.
-- Strict per-canteen isolation for staff, and per-student isolation for orders
-  and notifications. Out-of-scope resources return 404.
-- Server-side prices and totals, a backend-enforced order state machine,
-  idempotent order creation, and amount-verified, replay-safe payments.
-- Authenticated Socket.IO with rooms assigned by the server.
-- Startup validation of all configuration. Production rejects localhost or
-  plain-http CORS origins or auth URLs, missing Google credentials, the
-  test-only sign-in and the mock payment provider (unless `DEMO_MODE=true` explicitly declares a demo).
-- `helmet` headers with a strict CSP (`default-src 'none'` on the API; a
-  same-origin script policy on the served web apps), an exact-origin CORS allowlist, global
-  and per-user rate limits, request-size limits, and zod validation of all
-  input.
-- Redacted structured logs, and a central error handler that never exposes
-  internals.
-- `.gitignore` rules for env files, private keys and service-account JSON.
+### Step 7: Push your branch
 
-Client apps:
+```
+git push -u origin feature/short-description
+```
 
-- Routing is decided only by `/api/auth/me`; no client trusts a role from the
-  token, the URL or local storage.
-- Clients never send prices, totals, user ids or canteen assignments; totals
-  shown come from the backend quote or order.
-- Only public configuration (the API URL) is built into the apps; no sign-in
-  secret or client ID is. Production builds refuse localhost/plain-http API
-  URLs.
-- Socket.IO clients never name rooms.
+### Step 8: Create a Pull Request
 
-A pre-deployment audit (configuration, secrets, authorization, realtime
-isolation, a live end-to-end check against PostgreSQL)
-is complete. Still planned: an independent security review of a deployed
-instance and the real Razorpay integration.
+1. Open your fork on GitHub.
+2. Select **Compare & pull request**.
+3. Set the original repository as the base repository.
+4. Select `main` as the base branch.
+5. Add a clear title and description.
+6. Explain what changed and how it was tested.
+7. Submit the Pull Request for review.
 
-## 17. Current Development Status
+### Step 9: Synchronize your fork
 
-The backend master task combined database, authentication, REST APIs,
-payments and realtime into backend Phases 2–5. Phase 6 built and integrated
-the three client apps.
+```
+git checkout main
+git fetch upstream
+git merge upstream/main
+git push origin main
+```
 
-| Phase | Scope | Status |
-|---|---|---|
-| 1 | Monorepo, backend foundation, environment configuration, health endpoints | **Complete** |
-| 2 | Database schema, migration, seed data | **Complete** |
-| 3 | Authentication, roles, authorization (now role-specific via Better Auth) | **Complete** |
-| 4 | REST APIs: canteens, menus, cart, orders, mock payments, staff, admin, notifications | **Complete** |
-| 5 | Socket.IO realtime and the critical end-to-end backend flow | **Complete** |
-| — | Backend audit and contract freeze | **Complete** |
-| 6 | Student App (Flutter) | **Complete** |
-| 6 | Staff Dashboard (React) | **Complete** |
-| 6 | Admin Portal (React) | **Complete** |
-| 6 | Cross-application end-to-end tests | **Complete** |
-| — | Single-domain demo deployment preparation (routing, installable apps, configs, docs) | **Complete** (not deployed) |
-| — | UI/UX polish and official branding | **Complete** (approved) |
-| — | Pre-deployment integration and security audit | **Complete** (local stack; see [docs/deployment.md](docs/deployment.md#14-readiness)) |
-| — | Real Razorpay integration | Not started |
-| — | Independent security review of a deployed instance | Not started |
+Resolve merge conflicts carefully and test the project before pushing.
 
-## 18. Future Enhancements
+---
 
-- Razorpay payments in place of the mock provider
-- Background push notifications (FCM / APNs)
-- A live deployment on the owner's domain (prepared: [docs/deployment.md](docs/deployment.md))
-- A Socket.IO Redis adapter for running several backend instances
-- Student hostel/canteen change requests (the data model leaves room for this)
+## 14. Project Status and License
 
-## Brand
+### Current development status
 
-The official SERVE logo (a hand-drawn food/leaf mark supplied by the project
-owner) is in [`brand/`](brand/) with the rules for using it; the tagline is
-"Order. Track. Collect.". All three apps and the app icons use that file;
-nothing redraws or imitates it. Palette: olive `#879F2D`, dark olive
-`#6F8425`, orange `#E86A2E`, black `#111111`, warm off-white `#F8F7F2`,
-white `#FFFFFF`, plus the accessible shades listed in
-[brand/README.md](brand/README.md).
+| Component                                        | Status                 |
+| ------------------------------------------------ | ---------------------- |
+| Backend foundation                               | Complete               |
+| PostgreSQL schema, migrations and seed           | Complete               |
+| Authentication and authorization                 | Complete               |
+| REST APIs                                        | Complete               |
+| Socket.IO realtime communication                 | Complete               |
+| Flutter Student App                              | Complete               |
+| React Staff Dashboard                            | Complete               |
+| React Admin Portal                               | Complete               |
+| Unit, integration, widget and E2E tests          | Complete               |
+| Single-domain deployment preparation             | Complete, not deployed |
+| Real Razorpay integration                        | Not started            |
+| Independent security review of deployed instance | Not started            |
 
-## 19. Contributors
+### Planned enhancements
 
-Maintained by the owner of this repository. The project owner will add
-contributor credits.
+- Complete real Razorpay payment integration.
+- Add push notifications through FCM/APNs.
+- Deploy SERVE on a public domain.
+- Add Redis adapter support for multiple backend instances.
+- Explore student hostel/canteen change requests.
+- Explore demand forecasting and operational analytics.
 
-Contributions follow an owner-reviewed workflow: work happens on feature
-branches with logical commits, and the owner reviews pull requests before
-merging. Nobody commits directly to `main`, force-pushes or rewrites shared
-history.
+### License
 
-## Further documentation
+No license file is currently included in this repository.
 
-- [docs/architecture.md](docs/architecture.md)
-- [docs/api.md](docs/api.md)
-- [docs/database.md](docs/database.md)
-- [docs/development.md](docs/development.md)
-- [docs/frontend-integration.md](docs/frontend-integration.md)
-- [docs/frontend-architecture.md](docs/frontend-architecture.md)
-- [docs/deployment.md](docs/deployment.md)
-- [apps/student/README.md](apps/student/README.md)
+Until the project owners specify a license, ask for permission before reusing or redistributing the code.
+
+### Brand
+
+The official SERVE logo and colour palette are maintained in `brand/`.
+
+The project tagline is:
+
+**Order. Track. Collect.**
+
+### Further documentation
+
+- Architecture
+- API Reference
+- Database
+- Authentication
+- Development Setup
+- Deployment
+- Frontend Architecture
+- Frontend Integration
+- Student Application
+
+---
+
+**SERVE — Order. Track. Collect.**
+
+A connected platform for a more organized campus canteen experience.
