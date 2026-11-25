@@ -32,6 +32,7 @@ export type RealtimeEventName =
   | 'order.ready'
   | 'order.collected'
   | 'order.cancelled'
+  | 'payment.queue_changed'
   | 'menu.item_updated'
   | 'menu.item_price_changed'
   | 'menu.item_availability_changed'

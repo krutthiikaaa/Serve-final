@@ -28,7 +28,8 @@ import {
   type StaffSettableStatus,
 } from './order-state.js';
 import { orderInclude, toOrderDto, type OrderWithDetails } from './order.dto.js';
-import { queueOrderEvent } from './order.events.js';
+import { queueOrderEvent, queuePaymentQueueChange } from './order.events.js';
+import { paymentDueAt, type PaymentWindowConfig } from '../payments/payment-window.js';
 
 export interface CreateOrderInput {
   canteenId: string;
@@ -83,6 +84,7 @@ export function createOrdersService(deps: {
   events: EventPublisher;
   payments: PaymentProvider;
   logger: Logger;
+  env: PaymentWindowConfig;
   clock?: Clock;
 }) {
   const { prisma, events, payments, logger } = deps;
@@ -197,7 +199,14 @@ export function createOrdersService(deps: {
                   lineTotalPaise: line.lineTotalPaise,
                 })),
               },
-              payment: { create: { provider: payments.name, amountPaise: priced.totalPaise } },
+              payment: {
+                create: {
+                  provider: payments.name,
+                  amountPaise: priced.totalPaise,
+                  // Unclaimed and unpaid by then, the order expires.
+                  paymentDueAt: paymentDueAt(now(), deps.env),
+                },
+              },
             },
             include: orderInclude,
           });
@@ -209,6 +218,7 @@ export function createOrdersService(deps: {
             data: { orderNumber: created.orderNumber, status: created.status },
           });
           queueOrderEvent(outbox, created, null);
+          queuePaymentQueueChange(outbox, created, 'placed');
           return created;
         });
       } catch (err) {
@@ -256,6 +266,12 @@ export function createOrdersService(deps: {
       }
       const outbox = new Outbox();
       const updated = await prisma.$transaction(async (tx) => {
+        // Payment row first, then the order (the order every payment state
+        // change takes; see payments/payment-window.ts).
+        await tx.payment.updateMany({
+          where: { orderId: order.id, status: 'PENDING' },
+          data: { status: 'FAILED', failureReason: 'Order cancelled before payment' },
+        });
         const changed = await tx.order.updateMany({
           where: { id: order.id, status: 'PLACED' },
           data: {
@@ -270,15 +286,12 @@ export function createOrdersService(deps: {
             'ORDER_STATE_CHANGED',
           );
         }
-        await tx.payment.updateMany({
-          where: { orderId: order.id, status: 'PENDING' },
-          data: { status: 'FAILED', failureReason: 'Order cancelled before payment' },
-        });
         const fresh = await tx.order.findUniqueOrThrow({
           where: { id: order.id },
           include: orderInclude,
         });
         queueOrderEvent(outbox, fresh, order.status);
+        queuePaymentQueueChange(outbox, fresh, 'cancelled');
         return fresh;
       });
       outbox.flush(events);

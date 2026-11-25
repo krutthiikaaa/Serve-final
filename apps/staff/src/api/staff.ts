@@ -8,6 +8,7 @@ import type {
   MenuItem,
   OrderStatus,
   Page,
+  PendingPaymentSection,
   Receipt,
   ServiceAreaDirectory,
   ServicePeriod,
@@ -113,10 +114,19 @@ export function staffApi(api: ApiClient, canteenId?: string | null) {
     disableItem: (id: string) =>
       api.data<MenuItem>('DELETE', `/staff/menu/items/${id}`, { query: scoped() }),
 
-    pendingPayments: async (options: { cursor?: string | null } = {}) =>
+    /** The payment queue: claimed ("I've paid", oldest claim first) or unclaimed. */
+    pendingPayments: async (options: {
+      section: PendingPaymentSection;
+      cursor?: string | null;
+      limit?: number;
+    }) =>
       (
         await api.request<Page<StaffOrder>>('GET', '/staff/payments/pending', {
-          query: scoped({ limit: 50, cursor: options.cursor }),
+          query: scoped({
+            section: options.section,
+            limit: options.limit ?? 25,
+            cursor: options.cursor,
+          }),
         })
       ).body,
     confirmPayment: (id: string, body: { paymentReceived: true; utr?: string | null }) =>

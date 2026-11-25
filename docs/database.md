@@ -15,6 +15,7 @@ item, price, order, payment and notification.
 | `backend/prisma/migrations/20261103020000_canteen_day_night_services/` | Additive day/night services, period prices, payment config, staff capabilities; backfills NIGHT + FORCE_OPEN only |
 | `backend/prisma/migrations/20261103070000_cashier_walkin_receipts/` | Cashier verification fields, walk-in channel, receipt numbers; existing APP orders unchanged |
 | `backend/prisma/migrations/20261103120000_canteen_payment_mode/` | Per-canteen DEMO/LIVE mode, demo payment configs for existing canteens, Payment.isSimulated; historical payments stay live |
+| `backend/prisma/migrations/20261121090000_upi_claim_queue/` | Additive: `Payment.claimedAt`, `paymentDueAt`, `expiredAt`, two indexes, CHECK (expired ⇒ FAILED); no row changed. Existing payments keep no deadline and never expire automatically |
 | `backend/prisma.config.ts` | Prisma CLI config: schema and migrations paths, `DATABASE_URL`, seed command |
 | `backend/src/db/seed.ts` / `backend/prisma/seed.ts` | Idempotent development seed |
 | `backend/scripts/seed-dev-users.ts` | Emulator-only demo accounts |
@@ -58,7 +59,7 @@ ProcessedPaymentEvent (provider, eventId) — replay protection
 | **MenuItemService** | `menuItemId` + `period` unique, `pricePaise` (authoritative sell price), `isAvailable` | belongs to one MenuItem; do not duplicate MenuItem rows for DAY vs NIGHT |
 | **Order** | `orderNumber` unique, `receiptNumber?` unique (`RC` + `receipt_number_seq`, SUCCESS only), `channel` (`APP` default / `WALK_IN`), `studentId?`, `guestName?`, `canteenId`, `status`, `servicePeriod?`, `totalPaise`, `idempotencyKey`, `requestHash`, status timestamps, `cancelReason` | Student (required for APP, null for WALK_IN), Canteen, items, payment |
 | **OrderItem** | `orderId`, `menuItemId?`, `itemName`, `unitPricePaise`, `quantity`, `lineTotalPaise` | Order (cascade), MenuItem (set null); the menu item must belong to the order's canteen (trigger) |
-| **Payment** | `orderId` unique, `provider` (MOCK / RAZORPAY / UPI / CASH), `status` (PENDING / SUCCESS / FAILED / REFUNDED), `amountPaise`, `currency`, `utr?`, `verifiedByStaffId?`, `verifiedAt?`, `isSimulated` (default false), `providerOrderId` unique, `providerPaymentId` unique, `signature`, `failureReason`, `paidAt`, `refundedAt` | one per Order; optional verifying Staff; simulated rows are DEMO-only and excluded from revenue |
+| **Payment** | `orderId` unique, `provider` (MOCK / RAZORPAY / UPI / CASH), `status` (PENDING / SUCCESS / FAILED / REFUNDED), `amountPaise`, `currency`, `utr?`, `verifiedByStaffId?`, `verifiedAt?`, `isSimulated` (default false), `providerOrderId` unique, `providerPaymentId` unique, `signature`, `failureReason`, `paidAt`, `refundedAt`, `claimedAt?`, `paymentDueAt?`, `expiredAt?` | one per Order; optional verifying Staff; simulated rows are DEMO-only and excluded from revenue |
 | **ProcessedPaymentEvent** | `provider`, `eventId`, `processedAt` | unique (`provider`, `eventId`) |
 | **Notification** | `studentId?`, `staffId?`, `adminId?`, `orderId?`, `type`, `title`, `message`, `data`, `readAt` | exactly one recipient |
 | **SsoAuthorizationCode** | `codeHash` unique (SHA-256 of the one-time code), `firebaseUid`, `audience` (STAFF / ADMIN), `expiresAt`, `consumedAt?` | no relations; consumed atomically |
@@ -142,6 +143,13 @@ of the order's canteen (`OrderItem_same_canteen`). Item prices are limited to
 - A Firebase UID maps to exactly one of Student, Staff or Admin. Registration refuses UIDs that already have an account.
 - Staff may operate `Staff.canteenId` (primary) or another assigned canteen when `?canteenId=` is present **and** a `StaffCanteenAssignment` row exists for that staff member. Client-supplied canteen ids that are not assigned are rejected. Switching canteen does not grant extra capabilities. Additive `StaffCanteenAssignment` rows record per-canteen capabilities (`KITCHEN`, `MENU`, `PAUSE`, `CASHIER`). `CASHIER` is admin-assigned and is never granted by migration or seed.
 - Students order from any canteen with `isActive AND isAcceptingOrders`. The default canteen is `Student → Hostel → Canteen` (night default). Daytime selection is a later student-app change.
+
+## UPI claims and unpaid-order expiry
+
+- A student's "I've paid" sets `Payment.claimedAt` (first claim only; repeats are idempotent, a new UTR is recorded). A claim is never proof of payment: only cashier confirmation moves an order to `PAYMENT_CONFIRMED`.
+- The cashier queue (`GET /api/staff/payments/pending?section=claimed|unclaimed`, CASHIER only) lists claimed payments by `claimedAt` and unclaimed ones by creation time, oldest first, with keyset pagination (cursor = payment id). Changes reach the canteen room as `payment.queue_changed` with ids only.
+- An app order gets `paymentDueAt = placed + UNPAID_ORDER_EXPIRY_MINUTES` (default 20). The server's expiry job (every `UNPAID_ORDER_EXPIRY_CHECK_SECONDS`, default 60) cancels orders still unpaid and unclaimed after that: Payment `FAILED` + `expiredAt`, Order `CANCELLED` with a reason, student notified. Claimed, paid, cancelled and pre-migration orders (no deadline) are never expired. A rejected claim clears `claimedAt` and gets a fresh deadline.
+- Every one of these changes is a conditional update on the Payment row, then the Order row, so claims, cashier decisions, cancellations and expiry passes (from any number of processes) serialise on the payment row: exactly one wins.
 
 ## Canteen / hostel mapping (seed)
 

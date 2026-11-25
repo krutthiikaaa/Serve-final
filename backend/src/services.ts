@@ -23,7 +23,7 @@ export function createServices(ctx: AppContext) {
     changeRequests: createChangeRequestsService(ctx.prisma, ctx.events, ctx.logger),
     notifications: createNotificationsService(ctx.prisma),
     staff: createStaffService(ctx.prisma, ctx.events, ctx.clock),
-    cashier: createCashierService(ctx.prisma, ctx.events, canteens),
+    cashier: createCashierService(ctx.prisma, ctx.events, canteens, ctx.env),
     admin: createAdminService(ctx.prisma, ctx.events, ctx.logger, ctx.clock),
     recommendations: createRecommendationsService(ctx.prisma, canteens, ctx.clock),
     qrCodes: createQrCodesService(ctx.prisma, ctx.events, ctx.logger),

@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import type { CanteenPaymentConfig, Menu } from '@serve/contracts';
+import type { CanteenPaymentConfig, Menu, StaffOrder } from '@serve/contracts';
 import { CashierPage } from '../src/pages/CashierPage';
 import {
   CANTEEN_ID,
@@ -126,10 +126,17 @@ describe('cashier workflows', () => {
         refundedAt: null,
         failureReason: null,
         isSimulated: false,
+        claimedAt: '2026-10-06T19:02:00.000Z',
+        paymentDueAt: '2026-10-06T19:20:00.000Z',
+        expiredAt: null,
       },
       timeline: [{ status: 'PLACED', at: '2026-10-06T19:00:00.000Z' }],
     });
-    api.pendingPayments.mockResolvedValue({ data: [pending], nextCursor: null });
+    api.pendingPayments.mockImplementation(async ({ section }) =>
+      section === 'claimed'
+        ? { data: [pending], nextCursor: null }
+        : { data: [], nextCursor: null },
+    );
     api.paymentConfig.mockResolvedValue({
       canteenId: CANTEEN_ID,
       mode: 'DEMO',
@@ -393,6 +400,9 @@ describe('cashier workflows', () => {
         refundedAt: null,
         failureReason: null,
         isSimulated: false,
+        claimedAt: null,
+        paymentDueAt: null,
+        expiredAt: null,
       },
     });
     const appSale = order('PAYMENT_CONFIRMED', {
@@ -410,6 +420,9 @@ describe('cashier workflows', () => {
         refundedAt: null,
         failureReason: null,
         isSimulated: true,
+        claimedAt: null,
+        paymentDueAt: null,
+        expiredAt: null,
       },
     });
     api.sales.mockResolvedValue({ data: [walkIn, appSale], nextCursor: null });
@@ -523,5 +536,124 @@ describe('cashier workflows', () => {
       'Something went wrong. Please try again.',
     );
     expect(screen.getByLabelText('Payment method')).toBeInTheDocument();
+  });
+});
+
+describe('payment queue (claimed vs unclaimed)', () => {
+  const NOW = Date.now();
+  const iso = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
+  const pendingOrder = (orderNumber: string, payment: Partial<StaffOrder['payment'] & object>) =>
+    order('PLACED', {
+      orderNumber,
+      paidAt: null,
+      payment: {
+        provider: 'MOCK',
+        status: 'PENDING',
+        amountPaise: 12_000,
+        currency: 'INR',
+        utr: null,
+        verifiedAt: null,
+        paidAt: null,
+        refundedAt: null,
+        failureReason: null,
+        isSimulated: false,
+        claimedAt: null,
+        paymentDueAt: iso(12 * 60_000),
+        expiredAt: null,
+        ...payment,
+      },
+    });
+
+  it('shows claims first (with Reject) and unclaimed orders with their expiry', async () => {
+    const api = fakeStaffApi();
+    stubCashier(api);
+    const claimedOld = pendingOrder('SV2001', { claimedAt: iso(-9 * 60_000), utr: 'UTR-OLD' });
+    const claimedNew = pendingOrder('SV2002', { claimedAt: iso(-60_000) });
+    const unclaimed = pendingOrder('SV2003', { paymentDueAt: iso(12.5 * 60_000) });
+    api.pendingPayments.mockImplementation(async ({ section }) =>
+      section === 'claimed'
+        ? { data: [claimedOld, claimedNew], nextCursor: null }
+        : { data: [unclaimed], nextCursor: null },
+    );
+    renderStaff(<CashierPage />, { api, me: cashierMe() });
+
+    const claimedTable = await screen.findByRole('table', { name: 'claimed payments' });
+    const rows = within(claimedTable).getAllByRole('row').slice(1);
+    // Oldest claim first, as the server returns them.
+    expect(rows.map((row) => within(row).getByText(/^SV\d+$/).textContent)).toEqual([
+      'SV2001',
+      'SV2002',
+    ]);
+    expect(within(rows[0]!).getByText('UTR-OLD')).toBeInTheDocument();
+    expect(within(rows[0]!).getByText('9 min ago')).toBeInTheDocument();
+    expect(within(rows[0]!).getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+
+    const unclaimedTable = screen.getByRole('table', { name: 'unclaimed orders' });
+    expect(within(unclaimedTable).getByText('SV2003')).toBeInTheDocument();
+    expect(within(unclaimedTable).getByText('Expires in 13 min')).toBeInTheDocument();
+    // Nothing was claimed, so there is nothing to reject.
+    expect(within(unclaimedTable).queryByRole('button', { name: 'Reject' })).toBeNull();
+
+    expect(api.pendingPayments).toHaveBeenCalledWith(
+      expect.objectContaining({ section: 'claimed' }),
+    );
+    expect(api.pendingPayments).toHaveBeenCalledWith(
+      expect.objectContaining({ section: 'unclaimed' }),
+    );
+  });
+
+  it('updates live when a student claims, an order expires or another cashier confirms', async () => {
+    const api = fakeStaffApi();
+    stubCashier(api);
+    const claim = pendingOrder('SV3001', { claimedAt: iso(-30_000) });
+    let claimed: StaffOrder[] = [];
+    api.pendingPayments.mockImplementation(async ({ section }) =>
+      section === 'claimed' ? { data: claimed, nextCursor: null } : { data: [], nextCursor: null },
+    );
+    const { fake } = renderStaff(<CashierPage />, { api, me: cashierMe() });
+    expect(await screen.findByText('No claims waiting')).toBeInTheDocument();
+
+    claimed = [claim];
+    act(() =>
+      fake.serverEmit('payment.queue_changed', {
+        canteenId: claim.canteen.id,
+        orderId: claim.id,
+        change: 'claimed',
+      }),
+    );
+    expect(await screen.findByText('SV3001')).toBeInTheDocument();
+
+    claimed = [];
+    act(() =>
+      fake.serverEmit('order.payment_confirmed', {
+        order: { ...claim, status: 'PAYMENT_CONFIRMED' },
+        previousStatus: 'PLACED',
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText('SV3001')).toBeNull());
+    expect(screen.getByText('No claims waiting')).toBeInTheDocument();
+  });
+
+  it('loads older claims page by page instead of dropping them', async () => {
+    const api = fakeStaffApi();
+    stubCashier(api);
+    const first = pendingOrder('SV4001', { claimedAt: iso(-20 * 60_000) });
+    const second = pendingOrder('SV4002', { claimedAt: iso(-10 * 60_000) });
+    api.pendingPayments.mockImplementation(async ({ section, cursor }) => {
+      if (section !== 'claimed') return { data: [], nextCursor: null };
+      return cursor === 'cursor-1'
+        ? { data: [second], nextCursor: null }
+        : { data: [first], nextCursor: 'cursor-1' };
+    });
+    renderStaff(<CashierPage />, { api, me: cashierMe() });
+    expect(await screen.findByText('SV4001')).toBeInTheDocument();
+    expect(screen.queryByText('SV4002')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    expect(await screen.findByText('SV4002')).toBeInTheDocument();
+    expect(screen.getByText('SV4001')).toBeInTheDocument();
+    expect(api.pendingPayments).toHaveBeenCalledWith(
+      expect.objectContaining({ section: 'claimed', cursor: 'cursor-1' }),
+    );
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
   });
 });

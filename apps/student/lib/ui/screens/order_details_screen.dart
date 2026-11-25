@@ -187,7 +187,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> with WidgetsBin
     return switch (p.status) {
       'SUCCESS' => p.failureReason != null ? 'Paid · refund pending' : 'Paid',
       'REFUNDED' => 'Refunded',
+      'FAILED' when p.isExpired => 'Expired · not paid in time',
+      'FAILED' when p.isRejected => 'Not confirmed by the cashier',
       'FAILED' => 'Failed · payment not received',
+      _ when p.isClaimed => 'Waiting for the cashier to confirm',
       _ => 'PAYMENT PENDING',
     };
   }

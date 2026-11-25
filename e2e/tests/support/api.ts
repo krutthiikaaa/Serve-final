@@ -178,6 +178,29 @@ export class StudentActor extends ApiActor {
     return this.data<{ order: StudentOrder }>('POST', `/payments/${orderId}/mock-complete`, {});
   }
 
+  /** "I've paid": records the claim (never confirms payment). */
+  claim(orderId: string, utr?: string) {
+    return this.call<{ data: StudentOrder; error?: { code: string } }>(
+      'POST',
+      `/payments/${orderId}/claim`,
+      utr ? { utr } : {},
+    );
+  }
+
+  order(orderId: string) {
+    return this.data<StudentOrder>('GET', `/orders/${orderId}`);
+  }
+
+  /** Orders the first available item of the default canteen, without paying. */
+  async orderUnpaid(quantity = 1) {
+    const menu = await this.menu();
+    const item = menu.categories.flatMap((c) => c.items).find((i) => i.isOrderable);
+    if (!item) throw new Error('No orderable item');
+    const placed = await this.placeOrder(menu.canteen.id, [{ menuItemId: item.id, quantity }]);
+    if (placed.status !== 201) throw new Error(`Order failed: ${JSON.stringify(placed.body)}`);
+    return placed.body.data;
+  }
+
   /** Orders and pays for the first available items of the default canteen. */
   async orderAndPay(quantity = 2) {
     const menu = await this.menu();

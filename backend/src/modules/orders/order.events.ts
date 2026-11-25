@@ -42,3 +42,23 @@ export function queueOrderEvent(
   }
   outbox.emit(name, [rooms.admins()], { order: toOrderDto(order, 'admin'), previousStatus });
 }
+
+export type PaymentQueueChange = 'placed' | 'claimed' | 'rejected' | 'expired' | 'cancelled';
+
+/**
+ * Tell the canteen's cashiers that its payment queue changed. IDs only: the
+ * kitchen never receives unpaid orders, so cashiers re-read the queue through
+ * the CASHIER-only API. App orders only (walk-in bills are paid at once).
+ */
+export function queuePaymentQueueChange(
+  outbox: Outbox,
+  order: { id: string; canteenId: string; channel: string },
+  change: PaymentQueueChange,
+): void {
+  if (order.channel !== 'APP') return;
+  outbox.emit('payment.queue_changed', [rooms.canteen(order.canteenId)], {
+    canteenId: order.canteenId,
+    orderId: order.id,
+    change,
+  });
+}

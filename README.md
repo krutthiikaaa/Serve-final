@@ -328,6 +328,8 @@ error names the variable without printing its value.
 | `DEMO_MODE` | no | `true` declares a public demo: mock payments allowed in production, no real money moves; every other production rule still applies |
 | `WEB_ROOT` | no | Folder of built web apps (`npm run build:web`) to serve on the same domain; unset = API only |
 | `PAYMENT_SECRET` | mock mode | At least 32 characters |
+| `UNPAID_ORDER_EXPIRY_MINUTES` | no | Default `20`: unpaid app orders that were never claimed ("I've paid") expire after this; claimed orders never expire automatically |
+| `UNPAID_ORDER_EXPIRY_CHECK_SECONDS` | no | Default `60`: how often the server checks for orders to expire |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | razorpay mode | Placeholders only until the Razorpay integration is completed |
 | `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_*`, `SENSITIVE_RATE_LIMIT_*` | no | See `.env.example` |
 

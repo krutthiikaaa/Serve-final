@@ -134,10 +134,11 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
         _order = order;
         _busy = false;
       });
-      showSnack(context, 'Reference saved. Payment is still pending cashier confirmation.');
+      showSnack(context, 'Sent to the cashier. Payment is still pending cashier confirmation.');
     } on ApiException catch (e) {
       if (!mounted) return;
-      if (e.code == 'ALREADY_PAID') {
+      if (e.code == 'ALREADY_PAID' || e.code == 'ORDER_EXPIRED' || e.code == 'ORDER_NOT_AWAITING_PAYMENT') {
+        // The order moved on (paid, expired, cancelled): show its real state.
         await _refreshOrder();
       } else {
         setState(() => _error = e.userMessage);
@@ -156,6 +157,10 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
     final changed = widget.quotedTotalPaise != null && widget.quotedTotalPaise != order.totalPaise;
     final demo = config?.isDemo == true;
     final live = config?.mode == PaymentMode.live;
+    final payment = order.payment;
+    // Expired or cancelled: nothing to pay or claim any more.
+    final closed = order.status == OrderStatus.cancelled || payment?.isExpired == true;
+    final claimed = payment?.isClaimed == true;
     return Scaffold(
       appBar: AppBar(title: const Text('Payment')),
       body: SingleChildScrollView(
@@ -189,10 +194,7 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
               ),
             ),
             const SizedBox(height: 12),
-            const NoticeBanner(
-              message: 'PAYMENT PENDING. Submitting a reference does not confirm payment.',
-              icon: Icons.hourglass_top_rounded,
-            ),
+            PaymentStateBanner(order: order),
             if (changed) ...[
               const SizedBox(height: 12),
               const NoticeBanner(message: 'A price changed since your cart was quoted. This is the confirmed total.'),
@@ -287,7 +289,7 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
             TextField(
               key: const Key('utr-field'),
               controller: _utr,
-              enabled: !_busy,
+              enabled: !_busy && !closed,
               textCapitalization: TextCapitalization.characters,
               inputFormatters: [LengthLimitingTextInputFormatter(64)],
               decoration: InputDecoration(hintText: demo ? 'Optional' : 'Enter the reference after you pay'),
@@ -314,10 +316,18 @@ class _PaymentScreenState extends State<PaymentScreen> with WidgetsBindingObserv
             mainAxisSize: MainAxisSize.min,
             children: [
               FilledButton(
-                onPressed: _busy || (live && config?.incomplete == true) ? null : _claim,
+                onPressed: _busy || closed || (live && config?.incomplete == true) ? null : _claim,
                 child: _busy
                     ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: ServeColors.white))
-                    : Text(demo ? 'Save reference' : 'Submit UPI reference'),
+                    : Text(
+                        closed
+                            ? 'Order expired'
+                            : claimed
+                            ? 'Update UPI reference'
+                            : demo
+                            ? 'Save reference'
+                            : 'Submit UPI reference',
+                      ),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
@@ -340,4 +350,67 @@ class FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.titleSmall);
+}
+
+/// Where this order stands with payment, in plain words. A claim ("I've
+/// paid") is never shown as paid: only the cashier confirms payment.
+class PaymentStateBanner extends StatelessWidget {
+  const PaymentStateBanner({super.key, required this.order, this.now});
+  final StudentOrder order;
+
+  /// For tests; defaults to the current time.
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final payment = order.payment;
+    if (payment?.isExpired == true) {
+      return NoticeBanner(
+        key: const Key('payment-state-expired'),
+        danger: true,
+        icon: Icons.timer_off_outlined,
+        message: 'ORDER EXPIRED. ${order.cancelReason ?? 'Payment was not received in time.'} Place a new order to try again.',
+      );
+    }
+    if (order.status == OrderStatus.cancelled) {
+      return NoticeBanner(
+        key: const Key('payment-state-cancelled'),
+        danger: true,
+        icon: Icons.cancel_outlined,
+        message: 'This order was cancelled.${order.cancelReason != null ? ' ${order.cancelReason}' : ''}',
+      );
+    }
+    if (payment?.isClaimed == true) {
+      return NoticeBanner(
+        key: const Key('payment-state-claimed'),
+        icon: Icons.how_to_reg_rounded,
+        message:
+            'WAITING FOR THE CASHIER. You said you paid at ${formatTime(payment!.claimedAt!)}. The cashier confirms once the money reaches the canteen, then your order goes to the kitchen. A claimed order does not expire.',
+      );
+    }
+    final deadline = _deadline(payment?.paymentDueAt);
+    if (payment?.isRejected == true) {
+      return NoticeBanner(
+        key: const Key('payment-state-rejected'),
+        danger: true,
+        icon: Icons.error_outline_rounded,
+        message:
+            'The cashier could not confirm your payment${payment!.failureReason != null ? ': ${payment.failureReason}' : ''}. If you paid, check the UPI reference and submit it again$deadline.',
+      );
+    }
+    return NoticeBanner(
+      key: const Key('payment-state-pending'),
+      icon: Icons.hourglass_top_rounded,
+      message:
+          'PAYMENT PENDING. Pay, then submit your reference$deadline, or this order expires. Submitting a reference does not confirm payment.',
+    );
+  }
+
+  /// " by 9:42 PM (12 min left)" — empty when the order has no deadline.
+  String _deadline(DateTime? due) {
+    if (due == null) return '';
+    final minutes = due.difference(now ?? DateTime.now()).inSeconds / 60;
+    final left = minutes <= 0 ? 'expiring now' : '${minutes.ceil()} min left';
+    return ' by ${formatTime(due)} ($left)';
+  }
 }

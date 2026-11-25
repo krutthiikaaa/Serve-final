@@ -210,6 +210,12 @@ export const studentOrderSchema = z.strictObject({
       refundedAt: isoDate.nullable(),
       failureReason: z.string().nullable(),
       isSimulated: z.boolean(),
+      /** When the student said "I've paid". Not proof of payment. */
+      claimedAt: isoDate.nullable(),
+      /** An unclaimed payment expires at this moment (null: never automatically). */
+      paymentDueAt: isoDate.nullable(),
+      /** Set when the order was cancelled because it was not paid or claimed in time. */
+      expiredAt: isoDate.nullable(),
     })
     .nullable(),
   createdAt: isoDate,
@@ -473,6 +479,14 @@ export type Menu = z.infer<typeof menuSchema>;
 export type Quote = z.infer<typeof quoteSchema>;
 export type StudentOrder = z.infer<typeof studentOrderSchema>;
 export type StaffOrder = z.infer<typeof staffOrderSchema>;
+
+/**
+ * The cashier's payment queue (`GET /staff/payments/pending?section=`):
+ * claimed — the student said "I've paid", oldest claim first;
+ * unclaimed — placed but not claimed yet, oldest first (these expire).
+ */
+export const PENDING_PAYMENT_SECTIONS = ['claimed', 'unclaimed'] as const;
+export type PendingPaymentSection = (typeof PENDING_PAYMENT_SECTIONS)[number];
 export type Notification = z.infer<typeof notificationSchema>;
 export type NotificationPage = Page<Notification> & { unreadCount: number };
 export type MeUnregistered = z.infer<typeof meUnregisteredSchema>;
@@ -829,6 +843,18 @@ export interface RealtimeEnvelope<T> {
 }
 
 export type OrderEventData<O> = { order: O; previousStatus: OrderStatus | null };
+
+/**
+ * Why the cashier's payment queue changed. IDs only: unpaid orders are never
+ * pushed to the canteen room; cashiers re-read the queue through the
+ * CASHIER-only API.
+ */
+export type PaymentQueueChange = 'placed' | 'claimed' | 'rejected' | 'expired' | 'cancelled';
+export type PaymentQueueChangedData = {
+  canteenId: string;
+  orderId: string;
+  change: PaymentQueueChange;
+};
 export type StaffAssignmentData = {
   staffId: string;
   status: StaffStatus;
@@ -842,6 +868,7 @@ export interface ServerEvents<O = StaffOrder> {
   'order.ready': OrderEventData<O>;
   'order.collected': OrderEventData<O>;
   'order.cancelled': OrderEventData<O>;
+  'payment.queue_changed': PaymentQueueChangedData;
   'menu.item_updated': { item: MenuItem; change: 'created' | 'updated' };
   'menu.item_price_changed': {
     itemId: string;

@@ -670,6 +670,17 @@ model Payment {
   failureReason     String?
   paidAt            DateTime?
   refundedAt        DateTime?
+  /// When the student first said they had paid ("I've paid"). Not proof of
+  /// payment: it only orders the cashier queue (oldest claim first). Cleared
+  /// when the cashier rejects the claim.
+  claimedAt         DateTime?
+  /// An unclaimed app payment expires after this moment (order placed, or
+  /// claim rejected, + UNPAID_ORDER_EXPIRY_MINUTES). Null on payments created
+  /// before the expiry window existed: those never expire automatically.
+  paymentDueAt      DateTime?
+  /// Set when the order was cancelled automatically because it was neither
+  /// paid nor claimed in time.
+  expiredAt         DateTime?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -678,6 +689,8 @@ model Payment {
 
   @@index([status])
   @@index([verifiedByStaffId])
+  @@index([status, claimedAt])
+  @@index([status, paymentDueAt])
 }
 
 /// One-time SSO handoff from the student app to a staff or admin dashboard.

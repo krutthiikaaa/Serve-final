@@ -61,6 +61,9 @@ const env = {
   // (intercepted in the browser); no request ever reaches Google.
   GOOGLE_CLIENT_ID: 'e2e-test-client.apps.googleusercontent.com',
   GOOGLE_CLIENT_SECRET: 'e2e-test-client-secret-not-real',
+  // Expiry of abandoned orders: check every 2 s so the E2E expiry flow is quick
+  // (the window itself stays the default; tests move one order's deadline).
+  UNPAID_ORDER_EXPIRY_CHECK_SECONDS: '2',
   STUDENT_APP_URL: singleDomain ? E2E.apiUrl : E2E.studentUrl,
   STAFF_DASHBOARD_URL: singleDomain ? `${E2E.apiUrl}/staff` : E2E.staffUrl,
   ADMIN_PORTAL_URL: singleDomain ? `${E2E.apiUrl}/admin` : E2E.adminUrl,

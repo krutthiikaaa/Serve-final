@@ -9,6 +9,7 @@ import { createRealtimeServer, RealtimeBridge } from './realtime/socket-server.j
 import { createApp } from './app.js';
 import { createAreaScheduler } from './modules/admin/area-scheduler.js';
 import { publishOrderTaking } from './modules/canteens/order-taking-events.js';
+import { createUnpaidOrderExpiry } from './modules/payments/unpaid-order-expiry.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -44,6 +45,11 @@ function main(): void {
     clock: () => new Date(),
   });
   let stopScheduler: (() => void) | null = null;
+  // Abandoned app orders (unpaid, never claimed) expire after
+  // UNPAID_ORDER_EXPIRY_MINUTES; checked on start-up and every
+  // UNPAID_ORDER_EXPIRY_CHECK_SECONDS.
+  const unpaidExpiry = createUnpaidOrderExpiry({ prisma, events, logger, env });
+  let stopUnpaidExpiry: (() => void) | null = null;
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     logger.fatal(
@@ -59,6 +65,7 @@ function main(): void {
       `SERVE backend listening on port ${env.PORT}`,
     );
     stopScheduler = scheduler.start();
+    stopUnpaidExpiry = unpaidExpiry.start(env.UNPAID_ORDER_EXPIRY_CHECK_SECONDS * 1000);
     if (env.DEMO_MODE) {
       logger.warn('DEMO_MODE: payments are simulated by the mock provider; no real money is taken');
     }
@@ -77,6 +84,7 @@ function main(): void {
     force.unref();
 
     stopScheduler?.();
+    stopUnpaidExpiry?.();
     void realtime.close();
     server.close((closeErr) => {
       prisma

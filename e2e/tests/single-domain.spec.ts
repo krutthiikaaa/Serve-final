@@ -246,9 +246,10 @@ test('full flow on one origin: Flutter student pays, staff works the order live,
 
     // Nothing reaches the kitchen until the cashier confirms the payment.
     await expect(staff.getByRole('region', { name: 'New' }).getByText(orderNumber)).toHaveCount(0);
+    // Not claimed by the student: the cashier finds it under "Not claimed yet".
     const pending = await staffApi.data<{ id: string; orderNumber: string }[]>(
       'GET',
-      `/staff/payments/pending?limit=100&canteenId=${canteen.id}`,
+      `/staff/payments/pending?section=unclaimed&limit=100&canteenId=${canteen.id}`,
     );
     const unpaid = pending.find((o) => o.orderNumber === orderNumber);
     expect(unpaid, `pending order ${orderNumber}`).toBeTruthy();

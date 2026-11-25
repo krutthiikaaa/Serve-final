@@ -27,6 +27,9 @@ export const orderInclude = {
       refundedAt: true,
       failureReason: true,
       isSimulated: true,
+      claimedAt: true,
+      paymentDueAt: true,
+      expiredAt: true,
     },
   },
 } satisfies Prisma.OrderInclude;
@@ -61,6 +64,9 @@ function paymentDto(payment: OrderWithDetails['payment']) {
     refundedAt: payment.refundedAt,
     failureReason: payment.failureReason,
     isSimulated: payment.isSimulated,
+    claimedAt: payment.claimedAt,
+    paymentDueAt: payment.paymentDueAt,
+    expiredAt: payment.expiredAt,
   };
 }
 
