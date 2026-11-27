@@ -1,0 +1,369 @@
+SERVE — Shared Founder Work
+Founders: Kruthika Konni — CEO, Business Founder · Lakshmi Pranathi Balusu — CTO, Technology Founder
+
+Purpose: This document is our shared working plan. It explains how we will carry out the seven actions from the Capstone Project 1 review and keep track of the work we need to do together.
+
+Companion documents: cto-submission.md · ceo-submission.md
+
+Product facts are based on repository main, commit 9d68600, reviewed on 27 November 2026.
+
+Document status: Draft for founder review. We have not shared it with the panel yet.
+
+Current stage: SERVE is a demo prototype for the Capstone Project 1 review. Payments are simulated, so no real money moves through the demo. The prototype is not deployed. Real payments and production deployment are future requirements; they are not needed to complete this capstone work.
+
+Status labels: Implemented, Partially implemented, Planned, Needs verification, Not yet measured, Requires real-world validation, TO BE CONFIRMED, Future production requirement.
+
+Contents
+A. The seven-step shared plan
+B. Joint architecture walkthrough
+C. Six-user validation programme
+D. Venture metrics
+E. External services and AI accountability
+F. Founder decision log
+G. Semester 4 carry-forward register
+H. Founder collaboration and communication
+I. Swap demo preparation
+J. Final review readiness checklist
+A. The seven-step shared plan
+The panel's feedback gives us a clear next goal: make SERVE more prepared for real-world use, understand how it behaves as usage grows, and validate the idea with actual users. The panel gave us seven steps, with a clear order and ownership. The CTO can work on Steps 1–3 while the CEO starts Step 4 and both founders prepare for Step 5. Step 6 depends on what we learn in the sessions, and Step 7 checks whether either founder can present the other founder's side. The dependencies below reflect our understanding of the panel's plan, so both of us should confirm them.
+
+Architecture diagram — CTO
+Load testing — CTO
+Performance optimisation — CTO
+Six validation users — CEO
+Six validation sessions — Both
+Pitch and register — CEO
+Swap demo — Both
+Step 1 — Architecture diagram (lead: CTO)
+Why this matters: We should both be able to explain how SERVE works, rather than relying on one founder to explain the technical side and the other to explain the business side.
+What we will do: The CTO will draw one architecture diagram showing the three apps and their screens, the backend, database and external services. This includes Google sign-in, students' UPI apps and Razorpay as a possible future option. Both founders will then walk through the diagram together (see Section B).
+Ownership: The CTO leads the diagram. The CEO helps by explaining what each part does for the user.
+Deliverable: the diagram in cto-submission.md B.1 and the simplified drawing in ceo-submission.md D.2.
+We can consider this step complete when either founder can explain every part of the diagram without help.
+Evidence to keep: A dated photo of each founder's architecture drawing from memory, along with the walkthrough log in Section B.
+Dependencies: None. Current status: The diagram is prepared; the joint walkthrough is still pending.
+
+Step 2 — Load testing (lead: CTO)
+Why this matters: We need to understand how much traffic SERVE can handle today and identify where performance starts to slow down.
+What we will do: Run the k6 scripts in load-tests/ with 10, 50, 100, 250 and 500 virtual users. Use an isolated test backend on the target machine and run the resource monitor alongside it. Record the results using the format in cto-submission.md, Section G.5.
+Ownership: The CTO runs the tests. The CEO gathers peak-hour order estimates from the canteens so that our test scenarios reflect realistic demand.
+Deliverable: a baseline results table and a one-paragraph diagnosis.
+We can consider this step complete when we can state the measured capacity of SERVE on a clearly identified machine.
+Evidence to keep: The k6 summaries, resource-monitor CSV files, machine specifications and the exact commit that was tested.
+Dependencies: Step 1, because we should understand the system before testing it. Current status: The scripts are ready and have been validated. Initial measurements were taken in a development container: the main flow handled about 163–181 API requests per second and was CPU-bound. At 50 virtual users, individual-request p95 latency was 254 ms, while the full order-flow p95 was 1.7 seconds. We still need to run the tests on the target machine.
+
+Step 3 — Performance optimisation (lead: CTO)
+Why this matters: Testing tells us where the bottleneck is. We should make a change only when the measurements give us a reason to do so.
+What we will do: Choose one improvement from cto-submission.md, Section H, based on the bottleneck we measured. The current candidates relate to the CPU load of a single backend process and the database round trips involved in authentication. We will agree on the change first, implement it on a separate branch, run the test suites and repeat the load test on the same machine.
+Ownership: The CTO implements and measures the change. The CEO checks that it does not make the user experience worse—for example, by delaying how quickly access is removed when a staff account is revoked.
+Deliverable: a before/after table.
+Completion criterion: the load test shows a measurable improvement on the main flow.
+Evidence: both result sets, the commit, the decision log entry.
+Dependencies: Step 2. Current status: Not started. We need both founders to approve the proposed code change first.
+
+Step 4 — Find six validation users (lead: CEO)
+Why this matters: Before we can learn from users, we need to find people who are willing to try the prototype.
+What we will do: The CEO will identify six individuals from the people we have already met through our field interactions, invite them to try SERVE and schedule the sessions described in Section C.
+Ownership: The CEO leads recruitment. The CTO prepares a test environment in DEMO mode and helps coordinate the sessions.
+Deliverable: the recruitment tracker in ceo-submission.md E.3.
+We can consider this step complete when six named individuals have agreed to take part.
+Evidence to keep: A dated record of each person's agreement and whether they have given permission for us to quote their feedback. Keep these records internal.
+Dependencies: None. Current status: 0 of 6 users recruited.
+
+Step 5 — Conduct six validation sessions (both founders)
+Why this matters: We want to understand what people currently do, where they face difficulties, what they need from a solution, how much time or money the problem costs them and whether they would actually consider paying.
+What we will do: Run six sessions using the process in Section C. The CEO will lead the business and customer-discovery questions. The CTO will observe how people use the prototype and lead at least three of the sessions.
+Responsible: both. Deliverable: six session records and the written summary (section C.6).
+We can consider this step complete when all six sessions have been documented and we can identify clear patterns across the feedback.
+Evidence to keep: The six session records, a bank of direct quotes and a table summarising repeated patterns.
+Dependencies: Step 4. Current status: 0 of 6 sessions completed.
+
+Step 6 — Update pitch and carry-forward register (lead: CEO)
+Why this matters: Our next pitch should be based on what users actually tell us, not on assumptions. We also need to carry unresolved work into Semester 4.
+What we will do: Use the quotes and numbers collected during Step 5 to update the pitch. We will also review and update the carry-forward register in Section G.
+Ownership: The CEO updates the pitch and register. The CTO contributes measured technical results and any technical work that remains open.
+Deliverable: updated pitch and register.
+We can consider this step complete when the pitch uses genuine, traceable user evidence and the carry-forward register reflects our current priorities.
+Evidence to keep: The updated pitch, with every quote linked to a session ID, and the date of the latest register review.
+Dependencies: Step 5. Current status: The register has been started; the pitch update is waiting for the user sessions.
+
+Step 7 — Swap demo (both founders)
+Why this matters: We should both understand the full product and be able to handle questions outside our usual areas of responsibility.
+What we will do: Rehearse both demo scenarios in Section I until each founder can present and answer questions independently.
+Responsible: both. Deliverable: rehearsal log.
+We can consider this step complete when both founders can complete the swapped demo without the other stepping in.
+Evidence to keep: A record of two consecutive successful rehearsals for each scenario.
+Dependencies: Steps 1, 5 and 6. Step 7 depends on Step 5 being completed and the pitch/register being updated in Step 6. Current status: Not started.
+
+B. Joint architecture walkthrough
+The purpose of this walkthrough is simple: both of us should understand the whole product, not just our own areas. The CTO will show how each part is implemented, while the CEO will explain why that part matters to the user.
+
+Planned format: About 45 minutes, using the DEMO canteen and three separate browser profiles.
+
+#	Part of the system	CTO demonstrates	CEO explains
+1	Student App	Sign-in redirect, /api/auth/me, the menu request	Why only SRM accounts; what the student sees
+2	Backend pipeline	One request in the network tab and the files it passes (app.ts, middleware/auth.ts, a router, a service)	Why the server, not the phone, decides prices and permissions
+3	Database	The rows created by one order: Order, OrderItem, Payment, Notification	Why all parts of an order are saved together
+4	Payment claim and cashier	POST /api/payments/:orderId/claim, the cashier queue, the simulated confirmation (confirm-demo-payment)	Why "I've paid" is not proof; that the demo simulates payment without real money; how LIVE mode would use the canteen's real UPI QR later
+5	Kitchen and realtime	The board updating without refresh; the Socket.IO rooms	Why the kitchen sees only paid orders
+6	Pause and Day/Night	Pause refusing a new order; the scheduler	What the manager needs on a busy night
+7	Admin	Staff approval, the Cashier permission, payment mode, reports	Why cashier rights are granted separately
+8	External services	Google OAuth; the mock payment provider used in the demo; UPI and Razorpay only for future real payments (Razorpay not active); not deployed (future step)	What depends on whom; what fails if a service fails
+Walkthrough log:
+Date	Component explained by the CEO without help	Component explained by the CTO without help	Needed help with	Repeat by
+We will mark the walkthrough complete after both founders can redraw the architecture from memory and explain three components chosen at random, without help. We should repeat this exercise twice.				
+C. Six-user validation programme
+We will use these six sessions to check whether SERVE solves a real problem and to learn what needs to change before a pilot.
+
+C.1 Four different things
+Term	What it means	Current count
+Six potential business clients	The six organisations listed in ceo-submission.md F.3 (SRM Day canteen, SRM night canteens / Slice of Life, Hello Idly, E-Cell, a Saudi Arabian restaurant business, a Dubai restaurant business)	6 leads, all statuses TO BE CONFIRMED
+Six individual validation users	Six named people who agreed to try SERVE (panel Step 4)	0
+Six completed validation sessions	Sessions actually held and recorded (panel Step 5)	0
+Confirmed paying customers	Organisations that have paid or signed to pay	0
+It is important not to mix these numbers up. Six organisations in our lead list are not the same as six individual users, six completed interviews or six paying customers.		
+C.2 Finding and scheduling the six participants
+The CEO will prepare a list of potential participants from people we have already met: students living in the hostels, canteen owners or managers, cashiers and kitchen staff. We should aim to include at least one owner or manager, one cashier or kitchen staff member and three or more students. Each session will take around 40–45 minutes. The CTO will lead at least three sessions and make sure a DEMO-mode canteen is ready before each one.
+
+C.3 How we will run each session
+Before the session: Give the participant an ID and explain why we are speaking with them, how we will take notes and how their feedback may be used. Record audio only with their permission, and do not use their name publicly without consent. One founder asks the questions while the other records the participant's exact words. Agree on the three things we most want to learn before starting.
+Warm-up (5 min): who they are, their role.
+Past behaviour (15–20 min): the role-specific questions in ceo-submission.md E.2.
+Prototype observation (10–15 min): tasks, not instructions; think aloud; no help for 30 seconds when stuck (cto-submission.md I.2).
+Money and commitment (5 min): current spend first, then one concrete offer, then a commitment request.
+After the session (within 24 hours): Complete the session record and hesitation log, share the three main takeaways with the other founder and update the register if the feedback changes our priorities.
+
+C.4 Who observes what
+| The CEO records | The CTO records |
+| Current behaviour and existing solution | Every hesitation: screen, step, seconds stuck |
+| Pain points, frequency, cost in time or money | Errors or confusing messages seen |
+| Exact words and quote permissions | Technical feasibility of anything they ask for |
+| Willingness to use and to pay, and commitments | Candidate fixes and effort |
+
+C.5 Recording and organising feedback
+For every session, use the fields listed in ceo-submission.md, Section E.3: participant ID, organisation, role, current behaviour, existing solution, pain points, frequency, cost, exact words, prototype observations, willingness to use, willingness to pay and follow-up. Put the participant's exact words in quotation marks. Keep our own interpretation separate and label it clearly.
+
+C.6 Summary after all six sessions
+Section	Content
+Sessions at a glance	Participant id, date, role, led by, prototype tested, commitment
+Patterns (seen in ≥ 2 sessions)	Pattern, sessions, strongest quote, reported cost
+Struggles with the prototype	Screen, behaviour, sessions, agreed fix
+Requests	Request in their words, already built?, decision
+Current behaviour and tools	What they use today and what it costs
+Willingness to pay	Offer, reaction, commitment
+Hypotheses	Confirmed / not confirmed / mixed, with sessions
+Findings against our idea	Finding, sessions, what we will do
+Customer evidence paragraph	Half a page for the pitch; every sentence traceable to a session
+This section is intentionally left for after the interviews. We have not conducted the six sessions yet, so there are no findings to report.	
+D. Venture metrics
+The panel asked us to choose a meaningful venture metric. Our current proposal is the number of students who place repeat orders in a week. Both founders still need to confirm this choice (see decision D-09).
+
+D.1 Primary metric — weekly repeat-ordering students
+Definition: students who collected two or more app orders in the same calendar week.
+Formula: repeat rate = students with ≥ 2 collected app orders in the week ÷ students with ≥ 1 collected app order in the week.
+Sign-ups tell us that someone was curious enough to try SERVE. Repeat orders give us a better indication of whether the product is useful enough for them to return.
+Data source: the Order table (status, channel, studentId, createdAt).
+Frequency: weekly, reviewed at the weekly sync.
+This metric will become useful only after a pilot with real students begins. Early numbers may be small and can fluctuate. It also cannot explain why someone stopped ordering, and promotions or canteen closures may affect the result.
+The CEO can use this metric to understand whether students are returning and whether the product may have value worth paying for. The CTO can investigate whether a drop is linked to usability or reliability by checking the relevant logs.
+The following read-only query is intended for the pilot database. The CTO checked the table and column names against backend/prisma/schema.prisma and tested the query against the test database.
+
+SELECT week,
+       count(*) FILTER (WHERE orders >= 2) AS repeat_students,
+       count(*)                            AS active_students
+FROM (
+  SELECT "studentId", date_trunc('week', "createdAt") AS week, count(*) AS orders
+  FROM "Order"
+  WHERE status = 'COLLECTED' AND channel = 'APP'
+  GROUP BY "studentId", date_trunc('week', "createdAt")
+) per_student_week
+GROUP BY week
+ORDER BY week;
+D.2 Other pilot metrics
+Metric	Definition	Data source	Measurable today?
+Completed orders per hour	Orders reaching COLLECTED per hour	Order.collectedAt	Yes, from the database
+Average order-to-ready time	readyAt − paidAt (kitchen time) and readyAt − createdAt (student's total wait)	Order.paidAt, Order.readyAt, Order.createdAt	Yes
+Peak order volume	Most orders placed in any 15-minute or 1-hour window	Order.createdAt	Yes
+Payment mismatch rate	Claims rejected by the cashier ÷ all claims (meaningful only with real payments in a future LIVE pilot; in the demo, payments are simulated)	A rejection sets the payment to FAILED, but a new claim overwrites the status; the rejecting cashier's id stays on the row only until the next confirmation; rejections are not in the audit log	Not yet — needs a stored rejection record, or a manual tally during the pilot
+Stockouts	Items marked unavailable during service, and for how long	Availability is a current flag only; changes are not stored historically	Not yet — needs history of availability changes
+Unsold items	Food prepared but not sold	SERVE has no inventory	Not yet — manual record by the canteen
+Staff workload	Orders handled per staff member per hour	Payments record the confirming cashier (verifiedByStaffId); kitchen status changes do not record who made them	Partially — cashier only
+Repeat usage	See D.1	Order	Yes
+Pause usage	How often and how long canteens pause	Pause changes are not stored historically	Not yet
+We do not have pilot data yet, so no metric values have been recorded. The metrics marked as not yet measurable may need small changes to how we store data before a pilot begins. These are tracked as G-T12 and G-T13.			
+E. External services and AI accountability
+E.1 Services the product depends on
+Service	Purpose	Status	Cost status	If it fails
+PostgreSQL	All data	Implemented (local)	Quotation required when hosted	Everything stops; canteen falls back to the counter
+Mock payment provider	Simulated payments in the demo	Implemented; the intended demo workflow	Free (part of our code)	Part of the backend; it never moves real money
+Server hosting	Runs the backend and web apps	Not deployed — future production requirement	Quotation required	Everything stops
+HTTPS (Caddy / Let's Encrypt) and domain	Secure access	Configuration prepared — future production requirement	Certificate free (verify); domain quotation	Browsers refuse the site; sign-in fails
+Google OAuth	Student sign-in	Implemented	Free (verify)	New student sign-ins fail; existing sessions continue up to 7 days; staff and admin password sign-in unaffected
+Students' UPI apps and the canteen's UPI account	Moving money, outside SERVE	Supported for LIVE canteens in code; not used in the demo and not yet used with real payments	Paid by the canteen, if anything	In LIVE use: students cannot pay online; the canteen can sell at the counter
+Razorpay	Possible future online payments	Not active: signature checks only, payment calls return 503	Quotation and usage-dependent	No impact today
+App stores	Publishing the Flutter app	Not published	Quotation required	Updates cannot be published; the web version remains
+E.2 AI in the product and in our work
+We reviewed the backend, all three apps and the shared packages. Based on that code review, SERVE does not currently make calls to an AI service. That means there is no AI service cost per user and no AI-service dependency in the running product. If we add Market Intelligence or another AI feature later, we will record its cost per call and the effect of a service failure here.
+
+We have used AI tools while building SERVE and preparing some of the documentation. We want to be transparent about that. These are the checks we expect to follow:
+
+Code: The CTO must review and understand AI-assisted code. It must pass npm run typecheck, npm run lint and the relevant test suites, and be reviewed through a pull request.
+Research: We will open and check the original source for every factual claim used in the pitch.
+Content: We will never use AI-generated quotes, numbers or user findings. Quotes must come from session records, and numbers must come from actual measurements, bills or other recorded evidence.
+Documents: Both founders will review a document before it is committed or shared. Anything we have not verified will be marked TO BE CONFIRMED.
+Costs: The CEO will include any paid AI tools in the cost register using the actual plan or subscription cost. We still need to supply those figures.
+
+F. Founder decision log
+We will record any decision that affects the product, our plans, pricing, a client commitment or the way we work within one week of making it. The CTO will normally propose technical decisions and the CEO will normally propose business decisions. We will discuss important decisions at our weekly sync, and the relevant founder will update the log.
+
+The first seven entries below were reconstructed from the repository history. The code, commits or migrations show that the decisions were implemented, but we still need to confirm why we made each decision and who was responsible for it.
+
+ID	Decision	Date	Reason	Evidence	Responsible	Impact	Follow-up
+D-01	Replace Firebase Authentication with Better Auth, sessions in our PostgreSQL	2026-11-16 (commit 567db0e)	TO BE CONFIRMED	backend/src/lib/auth.ts; migration 20261118090000_better_auth	TO BE CONFIRMED	Identities and roles in one database; revocable sessions	Remove remaining Firebase references in older docs
+D-02	Students sign in with Google (SRM only); staff and admins with email + password	2026-11-24 (migration 20261124090000_role_sign_in_methods)	TO BE CONFIRMED	backend/src/modules/auth/sign-in-method.ts	TO BE CONFIRMED	Staff can join without SRM accounts; admin approval is the safeguard	Email verification later (G-T05)
+D-03	Payment by canteen UPI QR + student claim + cashier verification; no gateway yet	2026-11-21 (migration 20261121090000_upi_claim_queue)	TO BE CONFIRMED	payments.service.ts claim; cashier.service.ts	TO BE CONFIRMED	Works with existing canteen QRs; cashier effort remains	Gateway evaluation (G-T04)
+D-04	Unpaid, unclaimed orders expire after 20 minutes by default	2026-11-21	TO BE CONFIRMED	unpaid-order-expiry.ts; UNPAID_ORDER_EXPIRY_MINUTES	TO BE CONFIRMED	Kitchen never sees abandoned orders	Validate the window in sessions
+D-05	Day and Night canteens per area with automatic switching	2026-11-16 / 2026-11-17 (migrations 20261116090000_day_night_canteens, 20261117090000_area_scheduling)	TO BE CONFIRMED	area-scheduler.ts	TO BE CONFIRMED	Only one canteen per area takes orders	—
+D-06	Per-canteen DEMO / LIVE payment mode	2026-11-03 (migration 20261103120000_canteen_payment_mode)	TO BE CONFIRMED	CanteenPaymentConfig.mode	TO BE CONFIRMED	Demos never record real revenue	—
+D-07	Approval grants Kitchen, Menu and Pause; Cashier granted separately	TO BE CONFIRMED	TO BE CONFIRMED	change-requests.service.ts	TO BE CONFIRMED	Money permissions are deliberate	Include in staff onboarding
+D-08	Load-test target: main flow p95 < 500 ms, p99 < 1.5 s, errors < 1 %	2026-11-27 (proposed)	A responsive ordering experience	load-tests/k6/lib/config.js	CTO (to confirm)	Defines "handles N users"	Confirm at the next sync
+D-09	Primary venture metric: weekly repeat-ordering students	2026-11-27 (proposed)	Repeat use shows value better than sign-ups	Section D	CEO (to confirm)	Pilot focus	Confirm or replace
+D-10	Treat SRM AP as the validation environment and other leads as expansion	2026-11-27 (proposed)	The product is built for SRM's model; other leads need development	ceo-submission.md F; cto-submission.md J	CEO (to confirm)	Scope stays focused until validated	Confirm at the next sync
+D-11	Use simulated (mock) payments for the Capstone Project 1 demo prototype; no real money moves	2026-11-27 (stated by the founders; exact date of the original decision TO BE CONFIRMED)	A safe demonstration of the full order flow without handling money	Founders' statement; deploy/production.env.example (PAYMENT_MODE=mock, DEMO_MODE=true); DEMO canteen mode	TO BE CONFIRMED	Real payments, gateway integration and deployment become future production requirements	Close the mock-payment shortcut before any real deployment (G-T15)
+G. Semester 4 carry-forward register
+We will review this register every two weeks and before each panel review. It brings together technical work found in the repository, tasks from the panel and follow-ups from the business lead list. We will add user-driven work only after we have real feedback from sessions.
+
+ID	Description	Category	Owner	Priority	Status	Evidence	Next action
+G-P01	Joint architecture walkthrough	Plan	Both	High	Open	Section B	Schedule the session
+G-P02	Load test on the target machine; capacity today	Plan / Technical	CTO	High	Open	cto-submission.md G	Run all levels
+G-P03	One approved optimisation, re-tested	Plan / Technical	CTO	High	Open	cto-submission.md H	Choose O1 or O2
+G-P04	Six validation users lined up	Plan / Validation	CEO	High	Open	ceo-submission.md E.3	Contact candidates
+G-P05	Six sessions, CTO leading at least three	Plan / Validation	Both	High	Open	Section C	Book dates
+G-P06	Pitch updated with real quotes and numbers	Plan / Business	CEO	High	Blocked by G-P05	—	After sessions
+G-P07	Swap demo passed	Plan	Both	High	Open	Section I	First rehearsal
+G-B01	Confirm status, contact and role for each of the six leads	Business	CEO	High	Open	ceo-submission.md F.3	Call each lead
+G-B02	Confirm whether the Slice of Life contact is the owner or the manager	Business	CEO	Medium	Open	—	Ask at next contact
+G-B03	Collect actual bills and hosting quotations	Business	CEO	Medium	Open	ceo-submission.md G.2	Request quotes
+G-B04	Choose the first pricing hypothesis to test	Business	CEO	Medium	Open	ceo-submission.md G.4	Decide at the sync
+G-B05	Clarify E-Cell's role	Business	CEO	Low	Open	—	Meeting
+G-T01	Deploy with HTTPS using the prepared Dockerfile and deploy/Caddyfile	Technical — future production requirement	CTO	Medium (after the capstone)	Open — not required for the capstone	Not deployed	Choose hosting; depends on G-T16
+G-T02	Pickup verification beyond the order number	Technical / Product	CTO	High	Open	backend/src/modules/orders/receipt.ts	Design a short pickup code
+G-T03	Refund record for cancelled cashier-confirmed UPI orders	Technical	CTO	Medium	Open	refundCancelledOrder in orders.service.ts	Design
+G-T04	Online payment gateway	Technical	CTO	Medium	Open	razorpay.provider.ts (not active)	Evaluate after pilot
+G-T05	Staff email verification and password reset	Technical	CTO	Medium	Open	No email service	Choose a provider
+---	---	---	---	---	---	---	---
+G-T06	npm audit, gitleaks, Dependabot in routine	Technical	CTO	Medium	Open	cto-submission.md E.6	Run and save reports
+G-T07	Form-by-form validation check	Technical	CTO	Medium	Open	cto-submission.md E.1	Screenshots
+G-T08	Fix the outdated comment in backend/src/middleware/staff-capability.ts (says staff use Google)	Technical	CTO	Low	Open	Comment only; code correct	Small change after approval
+G-T09	Socket.IO adapter and job ownership before multiple processes	Technical	CTO	Medium	Open	cto-submission.md F.3	Design note
+G-T10	Monitoring: latency, CPU, event-loop delay, connections	Technical	CTO	Medium	Open	cto-submission.md F.5	Choose tools with hosting
+G-T11	Re-run Flutter and Playwright suites (last run 25 Nov 2026)	Technical	CTO	Low	Open	cto-submission.md E.9	Run before review
+G-T12	Store payment rejections (for the mismatch metric)	Technical	CTO	Medium	Open	Section D.2	Design
+G-T13	Store availability and pause history (stockouts, pause usage)	Technical	CTO	Low	Open	Section D.2	Design
+G-T14	Correct the earlier inventory note about student cancellation (students cancel only before payment)	Documentation	CTO	Low	Open	cancelByStudent in orders.service.ts	Update docs/founder-readiness if kept
+---	---	---	---	---	---	---	---
+G-T15	Close the mock-payment shortcut: initiate / mock-complete confirm an order without the cashier and ignore the canteen's DEMO/LIVE mode (reproduced on the test database)	Technical — production-readiness security limitation	CTO	High before any real deployment; not a demo blocker	Open	payments.service.ts initiate, mockComplete; payments.routes.ts; cto-submission.md B.6	Approve a code fix and a test
+G-T16	Choose a production payment configuration for real money (production accepts only the mock provider with DEMO_MODE=true, or the inactive Razorpay mode)	Technical — future production requirement	CTO	Medium (after the capstone)	Open	config/env.ts; cashier.service.ts provider labelling	Design decision, recorded in the decision log
+G-T17	Update docs/deployment.md (Firebase-era checks; refers to a student-app "mock step" that no longer exists)	Documentation	CTO	Low	Open	docs/deployment.md §9	Rewrite before deployment work
+G-T18	Claimed orders the cashier never handles never expire; claims after the deadline are accepted until the next expiry check	Technical	CTO	Medium	Open	unpaid-order-expiry.ts, payments.service.ts claim	Design an expiry or alert for old claims
+G-T19	Enforce the UPI reference on the server for LIVE canteens (today only the app requires it)	Technical	CTO	Medium (before LIVE use)	Open	payment_screen.dart _claim; payments.routes.ts	Small change after approval
+G-X01	Wait-time estimate	Product	Both	Medium	Open — validate demand first	Not built	Ask in sessions
+G-X02	Automatic (capacity-based) pause	Product	Both	Medium	Open — validate demand first	Pause is manual	Ask in sessions
+G-X03	Push notifications	Product	CTO	Low	Open	Not built	After pilot
+G-X04	Hourly reports for peak analysis	Product	CTO	Low	Open	Reports are daily	Ask owners
+G-X05	Requirements for non-SRM customers, other currencies, Gulf payments and tax	Product / Expansion	Both	Low until a lead is confirmed	Open	cto-submission.md J.2	After discovery with L3, L5, L6
+### Lessons we have taken from the work so far
+| ID | Date | Lesson | Evidence |
+The first load test suggests that CPU usage in the backend, rather than the database, was the main limit on throughput in the development container.
+Checking sessions and roles on every request is a deliberate security choice, but it also adds several database round trips to each request.
+Some of the metrics we want to track during a pilot will require us to store additional information first.
+
+H. How we will work together
+Topic	Who raises it	How we decide	Where it is recorded
+New features	Either	CEO brings user evidence; CTO assesses effort and risk; agreed at the weekly sync	Decision log, register
+User requests	CEO (from sessions)	Added to the register only if seen in two or more sessions or from a confirmed pilot partner	Register
+Technical feasibility	CTO	Every client requirement is marked supported / configuration / development before anything is promised	cto-submission.md J
+Pricing	CEO	Hypotheses tested in sessions; cost facts from the CTO	Decision log
+Client onboarding	CEO leads, CTO sets up	No pilot without a written scope, dates and a DEMO rehearsal	Pipeline table, decision log
+Product scope	Both	SRM AP first; expansion features only after a lead reaches "confirmed pilot partner"	Decision D-10
+Performance and reliability	CTO	Changes only with before/after measurements and passing tests	Register, performance results
+Deployment and maintenance	CTO	Hosting chosen with cost data from the CEO; backups and monitoring before real users	Decision log
+Weekly founder sync (15 minutes): Share one user insight each; review the venture metric once a pilot is running; check which plan items are complete or blocked; record new decisions; and add or close register items.			
+I. Preparing for the swapped demo
+I.1 Before we start
+PostgreSQL running; backend started; /api/health/db reports ok.
+Staff (5173), admin (5174) and student (5555) apps open, each in its own browser profile (all apps share one sign-in cookie on localhost).
+Database migrated and seeded; an admin created with npm run admin:create --workspace backend.
+A Google OAuth client configured on the demo machine (otherwise explain student sign-in instead of showing it).
+The demo canteen in DEMO payment mode and taking orders.
+A staff account approved for that canteen with Cashier granted.
+One full rehearsal on the demo machine on the same day.
+
+I.2 Demo flow (around 8 minutes)
+Start with the architecture in one sentence: three apps, one backend and one database.
+Student signs in and opens the menu.
+Student places an order; the server sets the price.
+Student pays the DEMO QR and taps I've paid.
+Cashier confirms with Simulate payment received; the order appears on the kitchen board.
+Kitchen moves it to Preparing and Ready; the student screen updates live.
+Pause orders; the student cannot order; Resume orders.
+Collected.
+Admin report.
+Be clear about the current limits: payments are simulated and no real money moves; wait-time estimates are not available; pausing is manual; and there is no pickup code. Real payments, fixing the mock-payment shortcut and deployment are production tasks for the future.
+
+I.3 Scenario 1 — CTO demonstrates, CEO answers business questions
+Likely question to the CEO	Answer from
+Who is the customer and who pays?	ceo-submission.md G.4 (hypotheses)
+Which businesses are interested, and how far along are they?	ceo-submission.md F.3 (statuses TO BE CONFIRMED)
+What do users do today and what does it cost?	Section C.6, real sessions only
+What is your price?	ceo-submission.md G.5 — tested offer, not a final price
+How will you expand beyond SRM?	ceo-submission.md I and F.5
+What is your metric?	Section D
+Does real money move?	No — demo prototype with simulated payments (ceo-submission.md I)
+I.4 Scenario 2 — CEO demonstrates, CTO answers business questions
+Likely question to the CTO	Answer from
+Who pays and why?	ceo-submission.md G.4
+What does it cost to serve one canteen or student?	ceo-submission.md G.3 — formula; costs not yet known
+Quote a user	Quote bank, real sessions only
+What happens if Google sign-in or the server fails?	Section E.1
+What did you change because of users?	Decision log
+What is next for the venture?	Register (section G)
+I.5 How we will assess the rehearsal
+The person presenting must handle the demo independently; the other founder should not take over the keyboard or answer on their behalf. If something breaks, the presenter should explain what was expected to happen and continue. We will count the rehearsal as successful after both scenarios have been completed cleanly twice in a row.
+
+Date	Scenario	Presenter completed without help	Answerer completed without help	Stumbles	Fix
+1	☐	☐			
+2	☐	☐			
+J. Final readiness checklist
+Technical (CTO)
+Architecture drawn from memory by both founders (Step 1)
+Target-machine load test with machine details (Step 2)
+One approved optimisation with before/after results (Step 3)
+Form-by-form validation screenshots; npm audit and gitleaks reports
+All test suites re-run and passing on the review commit
+Feasibility notes for each client lead that reached discovery
+Three CTO-led sessions with hesitation logs and a fixes list
+Production-readiness limitations stated clearly (mock-payment shortcut, payment configuration, deployment) — documenting them is required; fixing them is not required for the capstone
+
+Business and validation (CEO)
+Six named validation users who agreed (Step 4)
+Six session records with exact words (Step 5)
+Six-session summary with patterns (C.6)
+Three direct user quotes recorded word for word in the session notes
+Each client lead's status, contact and next action confirmed with dates
+Cost register with real bills and quotations; cost per user calculated
+Pricing hypothesis tested with recorded reactions
+Pitch updated with traceable quotes and numbers (Step 6)
+
+Shared
+Decision log entries confirmed (D-01 to D-11)
+Carry-forward register reviewed in the last two weeks
+Venture metric confirmed and, if a pilot runs, measured weekly
+External services and AI tools listed with costs and failure impact
+Swap demo passed in both scenarios (Step 7), with both presenters explaining that payments are simulated
+Both founders reviewed these three documents before sharing them with the panel
+
+
+
+
+
