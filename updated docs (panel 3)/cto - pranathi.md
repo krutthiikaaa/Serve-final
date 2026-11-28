@@ -12,24 +12,26 @@ The panel asked us to go deeper technically and to show how SERVE would cope wit
 
 The architecture diagram below shows the three client applications, the shared web packages, the Express backend, PostgreSQL, authentication, realtime updates, background jobs and external services. All client applications communicate with the backend; none connects directly to the database.
 
+```mermaid
 flowchart TB
+
     subgraph CLIENTS["Client Applications"]
         STUDENT["Student App<br/>(Flutter + Dart)"]
-        STAFF["Staff Dashboard<br/>(React + TypeScript + Vite)"]
-        ADMIN["Admin Portal<br/>(React + TypeScript + Vite)"]
+        STAFF["Staff Dashboard<br/>(React + TS + Vite)"]
+        ADMIN["Admin Portal<br/>(React + TS + Vite)"]
     end
 
-    BACKEND["Backend<br/>Node.js + Express 5<br/>Port: 5001"]
+    subgraph EXTERNAL["External Services"]
+        GOOGLE["Google OAuth<br/>(Student sign-in)"]
+        UPI["UPI<br/>(Future - live mode)"]
+        RAZORPAY["Razorpay<br/>(Adapter present, not active)"]
+    end
+
+    BACKEND["Backend<br/>(Node.js + Express 5)<br/>Port: 5001"]
 
     STUDENT -->|"HTTPS (JSON)"| BACKEND
     STAFF -->|"HTTPS (JSON)"| BACKEND
     ADMIN -->|"HTTPS (JSON)"| BACKEND
-
-    subgraph EXTERNAL["External Services"]
-        GOOGLE["Google OAuth<br/>(Student sign-in)"]
-        UPI["UPI<br/>(Future – live mode)"]
-        RAZORPAY["Razorpay<br/>(Adapter present, not active)"]
-    end
 
     BACKEND <-->|"OAuth redirect & token"| GOOGLE
     BACKEND <-.->|"Future only"| UPI
@@ -37,7 +39,7 @@ flowchart TB
 
     subgraph MODULES["Backend Components"]
         AUTH["Auth<br/>(Better Auth)"]
-        FEATURES["Feature Modules<br/>Orders, payments,<br/>staff, admin, menu"]
+        FEATURES["Feature Modules<br/>(Orders, payments,<br/>staff, admin, menu)"]
         SOCKET["Socket.IO<br/>(Real-time updates)"]
         JOBS["Background Jobs<br/>• Day/Night scheduler<br/>• Unpaid order expiry (20 min)"]
     end
@@ -48,24 +50,25 @@ flowchart TB
     BACKEND --- JOBS
 
     subgraph SHARED["Shared Packages (TypeScript)"]
-        WEB["packages/web-shared<br/>(auth, API client, realtime, UI)"]
+        WEB["packages/web-shared<br/>(Auth, API client, realtime, UI)"]
         CONTRACTS["packages/contracts<br/>(Zod schemas)"]
     end
 
     BACKEND <--> SHARED
 
-    DB[("PostgreSQL 16<br/>Prisma 7 + adapter-pg")]
+    DB[("PostgreSQL 16<br/>(Prisma 7 + adapter-pg)")]
+
     BACKEND <--> DB
 
     subgraph KEYPOINTS["Key Points"]
         KP1["3 client apps, 1 backend"]
         KP2["All apps communicate only with backend"]
-        KP3["Real-time updates using Socket.IO"]
-        KP4["Two background jobs:<br/>Day/Night scheduling and unpaid order expiry"]
-        KP5["Payments are simulated in the demo"]
+        KP3["Real-time updates with Socket.IO"]
+        KP4["Two background jobs<br/>(Day/Night & unpaid order expiry)"]
+        KP5["Payments are simulated in demo"]
     end
 
-
+```
 
 ## 
 
