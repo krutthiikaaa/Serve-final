@@ -128,40 +128,8 @@ SERVE follows a client-server architecture.
 The three client applications communicate with a shared Node.js and Express backend. The backend handles authentication, authorization, business logic, database operations and realtime communication.
 
 ### Architecture diagram
+![Uploading image.png…]()
 
-```
-flowchart TD
-    S["Student App<br/>Flutter"]
-    ST["Staff Dashboard<br/>React"]
-    A["Admin Portal<br/>React"]
-
-    AUTH["Better Auth<br/>Authentication"]
-    API["REST API<br/>Express"]
-    RT["Socket.IO<br/>Realtime Updates"]
-    JOB["Background Jobs"]
-
-    DB[("PostgreSQL<br/>Prisma ORM")]
-    GOOGLE["Google OAuth<br/>Students"]
-
-    S --> AUTH
-    ST --> AUTH
-    A --> AUTH
-
-    AUTH --> GOOGLE
-
-    S --> API
-    ST --> API
-    A --> API
-
-    S <--> RT
-    ST <--> RT
-    A <--> RT
-
-    AUTH --> DB
-    API --> DB
-    RT --> DB
-    JOB --> DB
-```
 
 ### How the architecture works
 
