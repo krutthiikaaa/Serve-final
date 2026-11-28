@@ -127,10 +127,6 @@ SERVE follows a client-server architecture.
 
 The three client applications communicate with a shared Node.js and Express backend. The backend handles authentication, authorization, business logic, database operations and realtime communication.
 
-### Architecture diagram
-![Uploading image.png…]()
-
-
 ### How the architecture works
 
 1. **Client applications:** Students, staff and administrators use their respective interfaces.
