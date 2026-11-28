@@ -65,9 +65,7 @@ Feature status: **Implemented**, **Partially Implemented** or **Planned**.
 | Order number and live order tracking                  | Implemented           |
 | Order history and cancellation before preparation     | Implemented           |
 | In-app notifications and profile                      | Implemented           |
-| Favourites and recently viewed (saved on device)      | Partially Implemented |
-| Native Android/iOS Google sign-in                     | Partially Implemented |
-| Push notifications through FCM/APNs                   | Planned               |
+          
 
 ### Staff Dashboard
 
@@ -122,32 +120,6 @@ Staff permissions are controlled through capabilities assigned by an administrat
 | Admin Portal    | Administrators | React      | Implemented |
 
 All three interfaces communicate with one shared backend.
-
----
-
-## 3. Technology Stack
-
-| Layer                  | Technology                       | Version / Details           | Purpose                             |
-| ---------------------- | -------------------------------- | --------------------------- | ----------------------------------- |
-| Student Application    | Flutter, Dart                    | Flutter 3.47+, Dart 3.13.3  | Cross-platform student app          |
-| State Management       | Provider                         | Flutter package             | Application state                   |
-| API Communication      | HTTP                             | Flutter package             | REST API requests                   |
-| Realtime Client        | Socket.IO Client                 | 4.x                         | Live order updates                  |
-| Staff Dashboard        | React, TypeScript                | React 19.3                  | Staff web interface                 |
-| Admin Portal           | React, TypeScript                | React 19.3                  | Admin web interface                 |
-| Build Tool             | Vite                             | 8.3                         | Web development and builds          |
-| Routing                | React Router                     | 7.18                        | Dashboard navigation                |
-| Backend                | Node.js, Express                 | Node.js ≥22.12, Express 5.2 | Server and REST APIs                |
-| Backend Language       | TypeScript                       | 6.x                         | Backend development                 |
-| Database               | PostgreSQL                       | 16                          | Persistent data storage             |
-| ORM                    | Prisma                           | 7.10                        | Database access and migrations      |
-| Authentication         | Better Auth                      | 1.7.25                      | Authentication and sessions         |
-| Realtime Communication | Socket.IO                        | 4.8                         | Live events                         |
-| Validation             | Zod                              | 4.6                         | Request and API contract validation |
-| Testing                | Vitest, Playwright, flutter_test | Repository versions         | Automated testing                   |
-| Security               | Helmet, express-rate-limit       | Repository versions         | Security headers and rate limiting  |
-
----
 
 ## 4. System Architecture
 
@@ -967,196 +939,12 @@ The E2E suite uses its own test database and test application ports.
 
 ---
 
-## 12. Troubleshooting
 
-| Problem                                     | Possible solution                                       |
-| ------------------------------------------- | ------------------------------------------------------- |
-| `npm ci` fails                              | Check that Node.js 22.12 or newer is installed          |
-| `psql` is not recognized                    | Use the full PostgreSQL installation path               |
-| Backend environment validation fails        | Compare `backend/.env` with `backend/.env.example`      |
-| `BETTER_AUTH_SECRET` is missing             | Generate and configure the secret                       |
-| PostgreSQL connection refused               | Start PostgreSQL and check port 5432                    |
-| Database password authentication fails      | Verify the database username and password               |
-| Prisma Client is missing                    | Run `npm run prisma:generate --workspace backend`       |
-| Database tables are missing                 | Run `npm run prisma:migrate:deploy --workspace backend` |
-| Canteen dropdown is empty                   | Run `npm run db:seed --workspace backend`               |
-| Flutter command not found                   | Install Flutter and add it to PATH                      |
-| Flutter SDK version mismatch                | Install the required Flutter/Dart version               |
-| Port already in use                         | Stop the process using that port                        |
-| Staff or admin dashboard cannot reach SERVE | Check that the backend is running                       |
-| `VITE_API_URL` missing                      | Create the relevant dashboard environment file          |
-| Google redirect URI mismatch                | Verify the OAuth redirect URI                           |
-| Student is not eligible                     | Use a verified `@srmap.edu.in` account                  |
-| Staff cannot access Cashier                 | Ask an admin to grant the `CASHIER` capability          |
-| Session expires after using another portal  | Use separate browser profiles                           |
-| Android emulator cannot connect             | Use `10.0.2.2` instead of `localhost`                   |
-| `db:setup:local` fails on Windows           | Use the PostgreSQL `psql` commands in section 7         |
 
-For more setup help, see `docs/development.md`.
 
----
 
-## 13. GitHub Contribution Guide
 
-Contributions should be made through feature branches and pull requests.
 
-Do not commit directly to `main`.
-
-### Step 1: Fork the repository
-
-If you do not have direct write access:
-
-1. Open the SERVE repository on GitHub.
-2. Click **Fork**.
-3. Select your GitHub account.
-
-### Step 2: Clone your fork
-
-```
-git clone https://github.com/<your-username>/Serve-final.git
-cd Serve-final
-```
-
-### Step 3: Add the original repository
-
-```
-git remote add upstream https://github.com/pranathigit11/Serve-final.git
-git remote -v
-```
-
-- `origin` refers to your fork.
-- `upstream` refers to the original repository.
-
-### Step 4: Create a feature branch
-
-```
-git checkout main
-git pull upstream main
-git checkout -b feature/short-description
-```
-
-Example:
-
-```
-git checkout -b feature/student-order-history
-```
-
-### Step 5: Make changes and test
-
-Before committing, run the relevant checks:
-
-```
-npm run lint
-npm run typecheck
-npm run build
-```
-
-Run the appropriate tests for the modules you changed.
-
-### Step 6: Commit your changes
-
-```
-git add <changed-files>
-git commit -m "feat: add student order history"
-```
-
-Use clear commit messages.
-
-Common prefixes:
-
-| Prefix     | Purpose            |
-| ---------- | ------------------ |
-| `feat`     | New feature        |
-| `fix`      | Bug fix            |
-| `docs`     | Documentation      |
-| `refactor` | Code restructuring |
-| `test`     | Tests              |
-| `chore`    | Maintenance        |
-
-### Step 7: Push your branch
-
-```
-git push -u origin feature/short-description
-```
-
-### Step 8: Create a Pull Request
-
-1. Open your fork on GitHub.
-2. Select **Compare & pull request**.
-3. Set the original repository as the base repository.
-4. Select `main` as the base branch.
-5. Add a clear title and description.
-6. Explain what changed and how it was tested.
-7. Submit the Pull Request for review.
-
-### Step 9: Synchronize your fork
-
-```
-git checkout main
-git fetch upstream
-git merge upstream/main
-git push origin main
-```
-
-Resolve merge conflicts carefully and test the project before pushing.
-
----
-
-## 14. Project Status and License
-
-### Current development status
-
-| Component                                        | Status                 |
-| ------------------------------------------------ | ---------------------- |
-| Backend foundation                               | Complete               |
-| PostgreSQL schema, migrations and seed           | Complete               |
-| Authentication and authorization                 | Complete               |
-| REST APIs                                        | Complete               |
-| Socket.IO realtime communication                 | Complete               |
-| Flutter Student App                              | Complete               |
-| React Staff Dashboard                            | Complete               |
-| React Admin Portal                               | Complete               |
-| Unit, integration, widget and E2E tests          | Complete               |
-| Single-domain deployment preparation             | Complete, not deployed |
-| Real Razorpay integration                        | Not started            |
-| Independent security review of deployed instance | Not started            |
-
-### Planned enhancements
-
-- Complete real Razorpay payment integration.
-- Add push notifications through FCM/APNs.
-- Deploy SERVE on a public domain.
-- Add Redis adapter support for multiple backend instances.
-- Explore student hostel/canteen change requests.
-- Explore demand forecasting and operational analytics.
-
-### License
-
-No license file is currently included in this repository.
-
-Until the project owners specify a license, ask for permission before reusing or redistributing the code.
-
-### Brand
-
-The official SERVE logo and colour palette are maintained in `brand/`.
-
-The project tagline is:
-
-**Order. Track. Collect.**
-
-### Further documentation
-
-- Architecture
-- API Reference
-- Database
-- Authentication
-- Development Setup
-- Deployment
-- Frontend Architecture
-- Frontend Integration
-- Student Application
-
----
 
 **SERVE — Order. Track. Collect.**
 
