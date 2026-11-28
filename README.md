@@ -12,26 +12,7 @@ SERVE helps students order food ahead, track their orders in real time and colle
 > - Staff: Email and password; new accounts remain pending until approved by an administrator.
 > - Admins: Email and password; accounts are provisioned through the `admin:create` command.
 
----
 
-## Table of Contents
-
-1. Project Overview
-2. Features
-3. Technology Stack
-4. System Architecture
-5. Repository Structure
-6. Prerequisites
-7. Clone and Setup
-8. Run the Complete Application
-9. Authentication and API
-10. Database
-11. Testing and Build
-12. Troubleshooting
-13. GitHub Contribution Guide
-14. Project Status and License
-
----
 
 ## 1. Project Overview
 
